@@ -6,8 +6,8 @@ My Farm is a standalone local farming sim prototype. A Rust server owns the farm
 
 ```sh
 bun install
-cargo run -p my_farm_server
-bun run dev:web
+cargo run
+bun run dev
 ```
 
 Open `http://127.0.0.1:5174`.
@@ -30,4 +30,3 @@ bun run build:web
 - No real-money purchases.
 - No premium currency.
 - Original placeholder assets and terminology.
-

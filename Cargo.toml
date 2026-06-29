@@ -4,6 +4,7 @@ members = [
   "crates/my_farm_server",
   "crates/contract_codegen",
 ]
+default-members = ["crates/my_farm_server"]
 resolver = "2"
 
 [workspace.package]
