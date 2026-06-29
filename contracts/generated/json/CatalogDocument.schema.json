@@ -1,0 +1,319 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CatalogDocument",
+  "type": "object",
+  "required": [
+    "balance",
+    "crops",
+    "items",
+    "level_xp",
+    "machines",
+    "recipes",
+    "shelters"
+  ],
+  "properties": {
+    "balance": {
+      "$ref": "#/definitions/BalanceConfig"
+    },
+    "crops": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CropDef"
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ItemDef"
+      }
+    },
+    "level_xp": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0.0
+      }
+    },
+    "machines": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/MachineDef"
+      }
+    },
+    "recipes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/RecipeDef"
+      }
+    },
+    "shelters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ShelterDef"
+      }
+    }
+  },
+  "definitions": {
+    "BalanceConfig": {
+      "type": "object",
+      "required": [
+        "max_orders",
+        "time_scale"
+      ],
+      "properties": {
+        "max_orders": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "time_scale": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "CropDef": {
+      "type": "object",
+      "required": [
+        "harvest_quantity",
+        "item_id",
+        "reference_seconds",
+        "unlock_level",
+        "xp"
+      ],
+      "properties": {
+        "harvest_quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "reference_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "xp": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ItemDef": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "unlock_level"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/ItemKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ItemKind": {
+      "type": "string",
+      "enum": [
+        "crop",
+        "feed",
+        "animal_product",
+        "product"
+      ]
+    },
+    "ItemStack": {
+      "type": "object",
+      "required": [
+        "item_id",
+        "quantity"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MachineDef": {
+      "type": "object",
+      "required": [
+        "build_cost",
+        "kind",
+        "name",
+        "queue_limit",
+        "unlock_level"
+      ],
+      "properties": {
+        "build_cost": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "kind": {
+          "$ref": "#/definitions/MachineKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "queue_limit": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MachineKind": {
+      "type": "string",
+      "enum": [
+        "bakery",
+        "feed_mill"
+      ]
+    },
+    "RecipeDef": {
+      "type": "object",
+      "required": [
+        "id",
+        "inputs",
+        "machine_kind",
+        "name",
+        "outputs",
+        "reference_seconds",
+        "unlock_level",
+        "xp"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ItemStack"
+          }
+        },
+        "machine_kind": {
+          "$ref": "#/definitions/MachineKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ItemStack"
+          }
+        },
+        "reference_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "xp": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ShelterDef": {
+      "type": "object",
+      "required": [
+        "animal_name",
+        "build_cost",
+        "feed_item_id",
+        "kind",
+        "name",
+        "product_item_id",
+        "reference_seconds",
+        "slots",
+        "unlock_level",
+        "xp"
+      ],
+      "properties": {
+        "animal_name": {
+          "type": "string"
+        },
+        "build_cost": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "feed_item_id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/ShelterKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "product_item_id": {
+          "type": "string"
+        },
+        "reference_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "slots": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "xp": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ShelterKind": {
+      "type": "string",
+      "enum": [
+        "chicken_coop",
+        "cow_pasture"
+      ]
+    }
+  }
+}

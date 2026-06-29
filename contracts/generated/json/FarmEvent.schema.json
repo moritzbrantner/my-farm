@@ -1,0 +1,206 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FarmEvent",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "crop_id",
+        "type"
+      ],
+      "properties": {
+        "crop_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "crop_planted"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "crop_id",
+        "quantity",
+        "type"
+      ],
+      "properties": {
+        "crop_id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "crop_harvested"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "structure_kind",
+        "type"
+      ],
+      "properties": {
+        "structure_kind": {
+          "$ref": "#/definitions/StructureKind"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "structure_built"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "recipe_id",
+        "type"
+      ],
+      "properties": {
+        "recipe_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "recipe_queued"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "recipe_id",
+        "type"
+      ],
+      "properties": {
+        "recipe_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "machine_job_collected"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "shelter_id",
+        "type"
+      ],
+      "properties": {
+        "shelter_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "animal_fed"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "item_id",
+        "type"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "animal_product_collected"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "order_id",
+        "type"
+      ],
+      "properties": {
+        "order_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "delivery_order_fulfilled"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "order_id",
+        "type"
+      ],
+      "properties": {
+        "order_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "delivery_order_discarded"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "level",
+        "type"
+      ],
+      "properties": {
+        "level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "level_changed"
+          ]
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "StructureKind": {
+      "type": "string",
+      "enum": [
+        "bakery",
+        "feed_mill",
+        "chicken_coop",
+        "cow_pasture",
+        "delivery_board"
+      ]
+    }
+  }
+}

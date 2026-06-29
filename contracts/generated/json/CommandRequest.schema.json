@@ -1,0 +1,234 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CommandRequest",
+  "type": "object",
+  "required": [
+    "command",
+    "expected_version"
+  ],
+  "properties": {
+    "command": {
+      "$ref": "#/definitions/FarmCommand"
+    },
+    "expected_version": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    }
+  },
+  "definitions": {
+    "FarmCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "crop_id",
+            "plot_id",
+            "type"
+          ],
+          "properties": {
+            "crop_id": {
+              "type": "string"
+            },
+            "plot_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "plant_crop"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "plot_id",
+            "type"
+          ],
+          "properties": {
+            "plot_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "harvest_crop"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "structure_kind",
+            "tile",
+            "type"
+          ],
+          "properties": {
+            "structure_kind": {
+              "$ref": "#/definitions/StructureKind"
+            },
+            "tile": {
+              "$ref": "#/definitions/Tile"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "buy_structure"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "machine_id",
+            "recipe_id",
+            "type"
+          ],
+          "properties": {
+            "machine_id": {
+              "type": "string"
+            },
+            "recipe_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "queue_recipe"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "machine_id",
+            "type"
+          ],
+          "properties": {
+            "machine_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "collect_machine_job"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "animal_slot",
+            "shelter_id",
+            "type"
+          ],
+          "properties": {
+            "animal_slot": {
+              "type": "string"
+            },
+            "shelter_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "feed_animal"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "animal_slot",
+            "shelter_id",
+            "type"
+          ],
+          "properties": {
+            "animal_slot": {
+              "type": "string"
+            },
+            "shelter_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "collect_animal_product"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "order_id",
+            "type"
+          ],
+          "properties": {
+            "order_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "fulfill_delivery_order"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "order_id",
+            "type"
+          ],
+          "properties": {
+            "order_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "discard_delivery_order"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "StructureKind": {
+      "type": "string",
+      "enum": [
+        "bakery",
+        "feed_mill",
+        "chicken_coop",
+        "cow_pasture",
+        "delivery_board"
+      ]
+    },
+    "Tile": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "y": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    }
+  }
+}

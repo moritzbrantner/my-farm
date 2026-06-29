@@ -1,0 +1,22 @@
+{
+  "name": "my-farm",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "build:web": "cd apps/web && bun run build",
+    "dev:web": "cd apps/web && bun run dev",
+    "test:e2e": "cd apps/web && bun run test:e2e",
+    "contracts": "cargo run -p contract_codegen",
+    "contracts:check": "cargo run -p contract_codegen -- --check",
+    "test:rust": "cargo test --workspace",
+    "check": "cargo test --workspace && bun run build:web && bun run contracts:check"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "bun@1.3.14"
+}
+

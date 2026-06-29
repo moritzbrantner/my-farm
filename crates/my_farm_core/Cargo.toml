@@ -1,0 +1,11 @@
+[package]
+name = "my_farm_core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+schemars.workspace = true
+serde.workspace = true
+ts-rs.workspace = true
+

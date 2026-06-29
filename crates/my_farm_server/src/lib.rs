@@ -1,0 +1,247 @@
+use anyhow::Context;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::routing::{get, post};
+use axum::{Json, Router};
+use my_farm_core::{
+    CatalogDocument, CatalogResponse, CommandRequest, CommandResponse, FarmResponse, FarmState,
+    HealthResponse, apply_command, apply_elapsed, farm_view, new_farm,
+};
+use serde::Serialize;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use sqlx::{Row, SqlitePool};
+use std::str::FromStr;
+use tower_http::cors::CorsLayer;
+
+const FARM_ID: &str = "local-farm";
+
+#[derive(Clone)]
+pub struct AppState {
+    pool: SqlitePool,
+    catalog: CatalogDocument,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ApiError {
+    pub error: String,
+}
+
+impl AppState {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self {
+            pool,
+            catalog: CatalogDocument::default_catalog(),
+        }
+    }
+}
+
+pub fn app(state: AppState) -> Router {
+    Router::new()
+        .route("/api/health", get(health))
+        .route("/api/catalog", get(get_catalog))
+        .route("/api/farm", get(get_farm))
+        .route("/api/farm/reset", post(reset_farm))
+        .route("/api/commands", post(post_command))
+        .layer(CorsLayer::permissive())
+        .with_state(state)
+}
+
+pub async fn connect_database(database_url: &str) -> anyhow::Result<SqlitePool> {
+    let options = SqliteConnectOptions::from_str(database_url)
+        .with_context(|| format!("invalid SQLite URL: {database_url}"))?
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect_with(options)
+        .await
+        .context("connect SQLite database")?;
+    sqlx::migrate!("../../migrations")
+        .run(&pool)
+        .await
+        .context("run SQLite migrations")?;
+    Ok(pool)
+}
+
+async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        ok: true,
+        service: "my-farm".to_owned(),
+    })
+}
+
+async fn get_catalog(State(state): State<AppState>) -> Json<CatalogResponse> {
+    Json(CatalogResponse {
+        catalog: state.catalog,
+    })
+}
+
+async fn get_farm(
+    State(state): State<AppState>,
+) -> Result<Json<FarmResponse>, (StatusCode, Json<ApiError>)> {
+    let now_ms = now_ms();
+    let (version, mut farm) = load_or_create_farm(&state, now_ms).await?;
+    apply_elapsed(&mut farm, &state.catalog, now_ms);
+    Ok(Json(FarmResponse {
+        version,
+        view: farm_view(&farm, &state.catalog),
+    }))
+}
+
+async fn reset_farm(
+    State(state): State<AppState>,
+) -> Result<Json<FarmResponse>, (StatusCode, Json<ApiError>)> {
+    let now_ms = now_ms();
+    let farm = new_farm(now_ms, &state.catalog);
+    save_farm(&state.pool, 0, &farm, now_ms).await?;
+    Ok(Json(FarmResponse {
+        version: 0,
+        view: farm_view(&farm, &state.catalog),
+    }))
+}
+
+async fn post_command(
+    State(state): State<AppState>,
+    Json(request): Json<CommandRequest>,
+) -> Result<Json<CommandResponse>, (StatusCode, Json<ApiError>)> {
+    let now_ms = now_ms();
+    let (version, mut farm) = load_or_create_farm(&state, now_ms).await?;
+
+    if request.expected_version != version {
+        apply_elapsed(&mut farm, &state.catalog, now_ms);
+        return Ok(Json(CommandResponse {
+            accepted: false,
+            version,
+            events: Vec::new(),
+            view: farm_view(&farm, &state.catalog),
+            error: Some(format!(
+                "version mismatch: expected {}, found {}",
+                request.expected_version, version
+            )),
+        }));
+    }
+
+    let outcome = apply_command(&mut farm, &state.catalog, request.command.clone(), now_ms);
+    let next_version = if outcome.accepted {
+        let next = version + 1;
+        save_farm(&state.pool, next, &farm, now_ms).await?;
+        append_journal(
+            &state.pool,
+            next,
+            &request,
+            &serde_json::to_value(&outcome).map_err(internal_error)?,
+            now_ms,
+        )
+        .await?;
+        next
+    } else {
+        version
+    };
+
+    Ok(Json(CommandResponse {
+        accepted: outcome.accepted,
+        version: next_version,
+        events: outcome.events,
+        view: farm_view(&farm, &state.catalog),
+        error: outcome.error.map(|error| error.message),
+    }))
+}
+
+async fn load_or_create_farm(
+    state: &AppState,
+    now_ms: i64,
+) -> Result<(u64, FarmState), (StatusCode, Json<ApiError>)> {
+    if let Some((version, farm)) = load_farm(&state.pool).await? {
+        return Ok((version, farm));
+    }
+    let farm = new_farm(now_ms, &state.catalog);
+    save_farm(&state.pool, 0, &farm, now_ms).await?;
+    Ok((0, farm))
+}
+
+async fn load_farm(
+    pool: &SqlitePool,
+) -> Result<Option<(u64, FarmState)>, (StatusCode, Json<ApiError>)> {
+    let row = sqlx::query("SELECT version, state_json FROM farm_save WHERE id = ?")
+        .bind(FARM_ID)
+        .fetch_optional(pool)
+        .await
+        .map_err(database_error)?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let version = row.get::<i64, _>("version") as u64;
+    let state_json = row.get::<String, _>("state_json");
+    let farm = serde_json::from_str(&state_json).map_err(internal_error)?;
+    Ok(Some((version, farm)))
+}
+
+async fn save_farm(
+    pool: &SqlitePool,
+    version: u64,
+    farm: &FarmState,
+    updated_at_ms: i64,
+) -> Result<(), (StatusCode, Json<ApiError>)> {
+    let state_json = serde_json::to_string(farm).map_err(internal_error)?;
+    sqlx::query(
+        "INSERT INTO farm_save (id, version, state_json, updated_at_ms)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           version = excluded.version,
+           state_json = excluded.state_json,
+           updated_at_ms = excluded.updated_at_ms",
+    )
+    .bind(FARM_ID)
+    .bind(version as i64)
+    .bind(state_json)
+    .bind(updated_at_ms)
+    .execute(pool)
+    .await
+    .map_err(database_error)?;
+    Ok(())
+}
+
+async fn append_journal(
+    pool: &SqlitePool,
+    version: u64,
+    request: &CommandRequest,
+    result: &serde_json::Value,
+    created_at_ms: i64,
+) -> Result<(), (StatusCode, Json<ApiError>)> {
+    let command_json = serde_json::to_string(request).map_err(internal_error)?;
+    let result_json = serde_json::to_string(result).map_err(internal_error)?;
+    sqlx::query(
+        "INSERT INTO command_journal (version, command_json, result_json, created_at_ms)
+         VALUES (?, ?, ?, ?)",
+    )
+    .bind(version as i64)
+    .bind(command_json)
+    .bind(result_json)
+    .bind(created_at_ms)
+    .execute(pool)
+    .await
+    .map_err(database_error)?;
+    Ok(())
+}
+
+fn now_ms() -> i64 {
+    chrono::Utc::now().timestamp_millis()
+}
+
+fn database_error(error: sqlx::Error) -> (StatusCode, Json<ApiError>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ApiError {
+            error: format!("database error: {error}"),
+        }),
+    )
+}
+
+fn internal_error(error: impl std::fmt::Display) -> (StatusCode, Json<ApiError>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ApiError {
+            error: error.to_string(),
+        }),
+    )
+}
