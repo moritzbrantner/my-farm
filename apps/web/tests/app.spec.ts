@@ -76,6 +76,38 @@ test("right mouse drag on a structure opens menu instead of panning canvas", asy
   await expect(page.getByTestId("structure-context-menu")).toContainText("Bakery");
 });
 
+test("right mouse drag on free ground pans the canvas", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-drag behavior is covered in desktop.");
+  await mockFarmApi(page);
+  await page.goto("/");
+
+  const groundPoint = await findFreeCanvasPoint(page);
+  const before = await canvasSnapshot(page);
+
+  await page.mouse.move(groundPoint.x, groundPoint.y);
+  await page.mouse.down({ button: "right" });
+  await page.mouse.move(groundPoint.x + 140, groundPoint.y + 80, { steps: 6 });
+  await page.mouse.up({ button: "right" });
+  await page.waitForTimeout(100);
+
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  await expect(canvasSnapshot(page)).resolves.not.toBe(before);
+});
+
+test("touch drag on free ground pans the canvas", async ({ page }) => {
+  await mockFarmApi(page);
+  await page.goto("/");
+
+  const groundPoint = await findFreeCanvasPoint(page);
+  const before = await canvasSnapshot(page);
+
+  await touchDragCanvas(page, groundPoint, { x: groundPoint.x + 140, y: groundPoint.y + 80 });
+  await page.waitForTimeout(100);
+
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  await expect(canvasSnapshot(page)).resolves.not.toBe(before);
+});
+
 test("right click on ready field opens harvest menu", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page, readyFieldView());
@@ -327,6 +359,28 @@ async function findCanvasSelectionPoint(page: Page, selectionText: string) {
   return findCanvasSelectionPointByText(page, selectionText, true);
 }
 
+async function findFreeCanvasPoint(page: Page) {
+  const canvas = page.locator("canvas").first();
+  const emptySelection = page.getByText("Select a field, machine, shelter, or order board.");
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  if (!box) {
+    throw new Error("Canvas has no bounding box");
+  }
+  const maxX = Math.min(box.x + box.width - 24, box.x + Math.max(320, box.width * 0.72));
+  const maxY = box.y + box.height - 96;
+  for (let y = box.y + 96; y < maxY; y += 32) {
+    for (let x = box.x + 24; x < maxX; x += 32) {
+      await page.mouse.click(x, y);
+      if (await emptySelection.isVisible().catch(() => false)) {
+        return { x, y };
+      }
+      await page.keyboard.press("Escape");
+    }
+  }
+  throw new Error("Could not find a free canvas point");
+}
+
 async function findCanvasSelectionPointByRegex(page: Page, selectionText: RegExp) {
   return findCanvasSelectionPointByText(page, selectionText, false);
 }
@@ -365,6 +419,21 @@ async function touchPressCanvas(page: Page, point: { x: number; y: number }, dur
   await canvas.dispatchEvent("pointerdown", touchEvent(point));
   await page.waitForTimeout(durationMs);
   await canvas.dispatchEvent("pointerup", touchEvent(point));
+}
+
+async function touchDragCanvas(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
+  const canvas = page.locator("canvas").first();
+  await canvas.dispatchEvent("pointerdown", touchEvent(from));
+  await canvas.dispatchEvent(
+    "pointermove",
+    touchEvent({ x: from.x + (to.x - from.x) / 2, y: from.y + (to.y - from.y) / 2 }),
+  );
+  await canvas.dispatchEvent("pointermove", touchEvent(to));
+  await canvas.dispatchEvent("pointerup", touchEvent(to));
+}
+
+async function canvasSnapshot(page: Page) {
+  return page.locator("canvas").first().evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL());
 }
 
 function readyFieldView(): FarmView {

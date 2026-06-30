@@ -85,6 +85,11 @@ export function FarmScene({ view, selection, onSelect, onOpenFieldMenu, onOpenSt
         mouseButtons={{
           LEFT: THREE.MOUSE.PAN,
           MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.PAN,
+        }}
+        touches={{
+          ONE: THREE.TOUCH.PAN,
+          TWO: THREE.TOUCH.DOLLY_PAN,
         }}
         minZoom={28}
         maxZoom={82}
