@@ -5,6 +5,7 @@ import type {
   FarmCommand,
   FarmView,
   FieldPlot,
+  ItemKind,
   ItemStack,
   MachineState,
 } from "../types";
@@ -13,6 +14,10 @@ import type { StructureSelection } from "./selectors";
 export type StructureMenuItem = {
   id: string;
   label: string;
+  icon?: {
+    itemId: string;
+    itemKind?: ItemKind;
+  };
   disabled?: boolean;
   reason?: string;
   command?: FarmCommand;
@@ -43,8 +48,8 @@ export function buildStructureMenuModel(
     ? {
         title: "Delivery Board",
         items: [
-          { id: "view-orders", label: "View delivery orders" },
-          { id: "move-structure", label: "Move Delivery Board", action: "move_structure" },
+          { id: "view-orders", label: "Orders" },
+          { id: "move-structure", label: "Move", action: "move_structure" },
         ],
       }
     : null;
@@ -66,7 +71,8 @@ export function buildFieldMenuModel(
           const reason = missing.length > 0 ? `Need ${itemName(catalog, crop.item_id)}` : undefined;
           return {
             id: `plant-${crop.item_id}`,
-            label: `Plant ${itemName(catalog, crop.item_id)}`,
+            label: itemName(catalog, crop.item_id),
+            icon: itemIcon(catalog, crop.item_id),
             disabled: Boolean(reason),
             reason,
             command: reason
@@ -82,7 +88,15 @@ export function buildFieldMenuModel(
   if (remaining > 0) {
     return {
       title: cropName,
-      items: [{ id: "growing", label: "Growing", disabled: true, reason: `Ready in ${remaining}s` }],
+      items: [
+        {
+          id: "growing",
+          label: "Growing",
+          icon: itemIcon(catalog, plot.crop.item_id),
+          disabled: true,
+          reason: `${remaining}s`,
+        },
+      ],
     };
   }
 
@@ -95,6 +109,7 @@ export function buildFieldMenuModel(
       {
         id: "harvest",
         label: "Harvest",
+        icon: itemIcon(catalog, plot.crop.item_id),
         disabled: storageFull,
         reason: storageFull ? "Storage full" : undefined,
         command: storageFull ? undefined : { type: "harvest_crop", plot_id: plot.id },
@@ -163,8 +178,9 @@ function buildMachineMenu(
     items.push({
       id: `collect-${first.id}`,
       label: `Collect ${recipeName(catalog, first.recipe_id)}`,
+      icon: outputs[0] ? itemIcon(catalog, outputs[0].item_id) : undefined,
       disabled: remaining > 0 || storageFull,
-      reason: remaining > 0 ? `Ready in ${remaining}s` : storageFull ? "Storage full" : undefined,
+      reason: remaining > 0 ? `${remaining}s` : storageFull ? "Storage full" : undefined,
       command:
         remaining === 0 && !storageFull
           ? { type: "collect_machine_job", machine_id: machine.id }
@@ -187,7 +203,8 @@ function buildMachineMenu(
           : undefined;
     items.push({
       id: `make-${recipe.id}`,
-      label: `Make ${recipe.name}`,
+      label: recipe.name,
+      icon: recipe.outputs[0] ? itemIcon(catalog, recipe.outputs[0].item_id) : undefined,
       disabled: Boolean(reason),
       reason,
       command: reason
@@ -203,7 +220,7 @@ function buildMachineMenu(
       ...items,
       {
         id: "move-structure",
-        label: `Move ${structureLabel(machine.kind)}`,
+        label: "Move",
         action: "move_structure",
       },
     ],
@@ -219,7 +236,6 @@ function buildShelterMenu(
   const shelterDef = catalog.shelters.find((entry) => entry.kind === shelter.kind);
   const animalName = shelterDef?.animal_name ?? "Animal";
   const feedName = shelterDef ? itemName(catalog, shelterDef.feed_item_id) : "Feed";
-  const productName = shelterDef ? itemName(catalog, shelterDef.product_item_id) : "Product";
   const productStack = shelterDef ? [{ item_id: shelterDef.product_item_id, quantity: 1 }] : [];
   const animalItems: StructureMenuItem[] = shelter.animals.map((animal, index) => {
     const labelIndex = index + 1;
@@ -229,7 +245,8 @@ function buildShelterMenu(
       const reason = missing.length > 0 ? `Need ${missing.join(", ")}` : undefined;
       return {
         id: `feed-${animal.id}`,
-        label: `Feed ${animalName} ${labelIndex}`,
+        label: `Feed ${labelIndex}`,
+        icon: shelterDef ? itemIcon(catalog, shelterDef.feed_item_id) : undefined,
         disabled: Boolean(reason),
         reason,
         command: reason
@@ -241,7 +258,8 @@ function buildShelterMenu(
       const storageFull = !hasStorageRoom(catalog, view, productStack);
       return {
         id: `collect-${animal.id}`,
-        label: `Collect ${productName} from ${animalName} ${labelIndex}`,
+        label: `Collect ${labelIndex}`,
+        icon: shelterDef ? itemIcon(catalog, shelterDef.product_item_id) : undefined,
         disabled: storageFull,
         reason: storageFull ? "Storage full" : undefined,
         command: storageFull
@@ -251,19 +269,21 @@ function buildShelterMenu(
     }
     return {
       id: `producing-${animal.id}`,
-      label: `${animalName} ${labelIndex}: Ready in ${secondsRemaining(animal.state.ready_at_ms, nowMs)}s`,
+      label: `${animalName} ${labelIndex}`,
+      icon: shelterDef ? itemIcon(catalog, shelterDef.product_item_id) : undefined,
+      reason: `${secondsRemaining(animal.state.ready_at_ms, nowMs)}s`,
       disabled: true,
     };
   });
 
   return {
     title: shelterDef?.name ?? structureLabel(shelter.kind),
-    subtitle: `${animalName}s - feed ${feedName}`,
+    subtitle: `${animalName}s - ${feedName}`,
     items: [
       ...animalItems,
       {
         id: "move-structure",
-        label: `Move ${shelterDef?.name ?? structureLabel(shelter.kind)}`,
+        label: "Move",
         action: "move_structure",
       },
     ],
@@ -276,4 +296,11 @@ function inventoryMap(view: FarmView): Map<string, number> {
 
 function itemKind(catalog: CatalogDocument, itemId: string) {
   return catalog.items.find((item) => item.id === itemId)?.kind;
+}
+
+function itemIcon(catalog: CatalogDocument, itemId: string) {
+  return {
+    itemId,
+    itemKind: itemKind(catalog, itemId),
+  };
 }

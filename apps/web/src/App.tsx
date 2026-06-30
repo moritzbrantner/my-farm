@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createFarmClient } from "./api";
 import { FarmScene } from "./components/FarmScene";
+import { ResourceIcon } from "./components/ResourceIcon";
 import {
   availableRecipes,
   builtStructureKinds,
@@ -42,6 +43,7 @@ import type {
   FarmCommand,
   FarmView,
   FieldPlot,
+  InventoryItemView,
   MachineState,
   StructureKind,
 } from "./types";
@@ -334,13 +336,28 @@ function TopBar({ view, message }: { view: FarmView; message: string }) {
   return (
     <header className="top-bar">
       <strong>My Farm</strong>
-      <span>Level {view.level}</span>
-      <span>{view.xp} XP</span>
-      <span>{view.coins} coins</span>
-      <span>Silo {view.silo_used}/{view.silo_capacity}</span>
-      <span>Barn {view.barn_used}/{view.barn_capacity}</span>
+      <Metric type="level" label={`Level ${view.level}`} />
+      <Metric type="xp" label={`${view.xp} XP`} />
+      <Metric type="coins" label={`${view.coins} coins`} />
+      <Metric type="silo" label={`Silo ${view.silo_used}/${view.silo_capacity}`} />
+      <Metric type="barn" label={`Barn ${view.barn_used}/${view.barn_capacity}`} />
       <small>{message}</small>
     </header>
+  );
+}
+
+function Metric({
+  type,
+  label,
+}: {
+  type: "coins" | "xp" | "level" | "silo" | "barn";
+  label: string;
+}) {
+  return (
+    <span className="metric">
+      <ResourceIcon type={type} />
+      {label}
+    </span>
   );
 }
 
@@ -381,13 +398,31 @@ function Inventory({
       <h2>Inventory</h2>
       <div className="inventory-grid">
         {items.map((item) => (
-          <span key={item.item_id}>
-            {item.name} <strong>{item.quantity}</strong>
-          </span>
+          <ResourceAmount key={item.item_id} item={item} amount={String(item.quantity)} />
         ))}
       </div>
     </section>
   );
+}
+
+function ResourceAmount({ item, amount }: { item: InventoryItemView; amount: string }) {
+  return (
+    <span className="resource-amount">
+      <ResourceIcon type="item" itemId={item.item_id} itemKind={item.kind} />
+      <span className="resource-amount__name">{item.name}</span>
+      <strong>{amount}</strong>
+    </span>
+  );
+}
+
+function resourceItem(catalog: CatalogDocument, itemId: string, quantity: number): InventoryItemView {
+  const item = catalog.items.find((entry) => entry.id === itemId);
+  return {
+    item_id: itemId,
+    name: item?.name ?? itemId,
+    quantity,
+    kind: item?.kind ?? "product",
+  };
 }
 
 function relevantInventoryItems(catalog: CatalogDocument, view: FarmView, selection: Selection) {
@@ -637,12 +672,17 @@ function Orders({
         <div className="order" key={order.id}>
           <div>
             {order.requirements.map((stack) => (
-              <span key={stack.item_id}>
-                {itemName(catalog, stack.item_id)} x{stack.quantity}
-              </span>
+              <ResourceAmount
+                key={stack.item_id}
+                item={resourceItem(catalog, stack.item_id, stack.quantity)}
+                amount={`x${stack.quantity}`}
+              />
             ))}
           </div>
-          <strong>{order.reward_coins} coins - {order.reward_xp} XP</strong>
+          <strong className="order__reward">
+            <Metric type="coins" label={`${order.reward_coins} coins`} />
+            <Metric type="xp" label={`${order.reward_xp} XP`} />
+          </strong>
           <button
             type="button"
             onClick={() => send({ type: "fulfill_delivery_order", order_id: order.id })}
@@ -809,7 +849,7 @@ function buildStructureBuildMenuModel(
     items: [
       {
         id: `build-${kind}`,
-        label: `Build ${label}`,
+        label: "Build",
         disabled: Boolean(reason),
         reason,
         command: reason
@@ -916,7 +956,9 @@ function StructureContextMenuItem({
   const canRun = Boolean(item.command) || isViewOrders || isMoveStructure;
   return (
     <button
-      className="structure-context-menu__item"
+      className={`structure-context-menu__item${
+        item.icon ? " structure-context-menu__item--with-icon" : ""
+      }`}
       type="button"
       role="menuitem"
       disabled={item.disabled || !canRun}
@@ -934,8 +976,13 @@ function StructureContextMenuItem({
         }
       }}
     >
-      <span>{item.label}</span>
-      {item.reason ? <small>{item.reason}</small> : null}
+      {item.icon ? (
+        <ResourceIcon type="item" itemId={item.icon.itemId} itemKind={item.icon.itemKind} />
+      ) : null}
+      <span className="structure-context-menu__item-copy">
+        <span>{item.label}</span>
+        {item.reason ? <small>{item.reason}</small> : null}
+      </span>
     </button>
   );
 }

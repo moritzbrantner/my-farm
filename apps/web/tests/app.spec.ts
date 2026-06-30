@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import type { CatalogDocument, CommandRequest, FarmView } from "../src/types";
 
 test("renders the playable farm shell", async ({ page }) => {
@@ -22,7 +22,7 @@ test("opens a structure menu from an unavailable build tray button", async ({ pa
   await page.getByRole("button", { name: "Bakery" }).click({ button: "right", force: true });
 
   await expect(page.getByTestId("structure-context-menu")).toContainText("Bakery");
-  await expect(page.getByRole("menuitem", { name: "Build Bakery Unlocks at level 2" })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: "Build Unlocks at level 2" })).toBeDisabled();
 });
 
 test("opens a structure menu from right click without replacing normal selection", async ({
@@ -36,9 +36,9 @@ test("opens a structure menu from right click without replacing normal selection
   await bakeryHitTarget.click({ button: "right" });
   const menu = page.getByTestId("structure-context-menu");
   await expect(menu).toContainText("Queue 0/2");
-  await expect(menu.getByRole("menuitem", { name: /Make Bread/ })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Bread Need Wheat x1" })).toBeDisabled();
   await expect(page.getByText("Need Wheat x1")).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: /Make Corn Bread/ })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Corn Bread Unlocks at level 4" })).toBeDisabled();
   await expect(page.getByText("Unlocks at level 4")).toBeVisible();
 
   await page.keyboard.press("Escape");
@@ -155,8 +155,8 @@ test("empty field menu shows plant options", async ({ page }, testInfo) => {
 
   const menu = page.getByTestId("structure-context-menu");
   await expect(menu).toContainText("Field Plot");
-  await expect(menu.getByRole("menuitem", { name: "Plant Wheat" })).toBeEnabled();
-  await expect(menu.getByRole("menuitem", { name: "Plant Corn Need Corn" })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Wheat" })).toBeEnabled();
+  await expect(menu.getByRole("menuitem", { name: "Corn Need Corn" })).toBeDisabled();
 });
 
 test("growing field menu shows timer", async ({ page }, testInfo) => {
@@ -169,7 +169,7 @@ test("growing field menu shows timer", async ({ page }, testInfo) => {
 
   const menu = page.getByTestId("structure-context-menu");
   await expect(menu).toContainText("Wheat");
-  await expect(menu.getByRole("menuitem", { name: /Growing Ready in \d+s/ })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: /Growing \d+s/ })).toBeDisabled();
 });
 
 test("ready harvest is disabled when storage is full", async ({ page }, testInfo) => {
@@ -212,12 +212,15 @@ test("delivery board menu focuses delivery orders", async ({ page }, testInfo) =
   await page.getByLabel("Delivery Board structure").click({ button: "right" });
   await page
     .getByTestId("structure-context-menu")
-    .getByRole("menuitem", { name: "View delivery orders" })
+    .getByRole("menuitem", { name: "Orders" })
     .click();
 
   await expect(page.getByTestId("structure-context-menu")).toBeHidden();
   await expect(page.getByText("Use delivery orders below.")).toBeVisible();
-  await expect(page.getByText("Wheat x1")).toBeVisible();
+  const orders = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Delivery Orders" }),
+  });
+  await expect(resourceAmount(orders, "Wheat", "x1")).toBeVisible();
 });
 
 test("filters inventory to the selected structure materials", async ({ page }) => {
@@ -229,14 +232,14 @@ test("filters inventory to the selected structure materials", async ({ page }) =
   });
 
   await page.getByLabel("Bakery structure").click();
-  await expect(inventory.getByText("Wheat 2", { exact: true })).toBeVisible();
-  await expect(inventory.getByText("Bread 0", { exact: true })).toBeVisible();
-  await expect(inventory.getByText("Corn Bread 0", { exact: true })).toBeVisible();
+  await expect(resourceAmount(inventory, "Wheat", "2")).toBeVisible();
+  await expect(resourceAmount(inventory, "Bread", "0")).toBeVisible();
+  await expect(resourceAmount(inventory, "Corn Bread", "0")).toBeVisible();
   await expect(inventory).not.toContainText("Chicken Feed");
 
   await page.getByLabel("Chicken Coop structure").click();
-  await expect(inventory.getByText("Chicken Feed 0", { exact: true })).toBeVisible();
-  await expect(inventory.getByText("Egg 0", { exact: true })).toBeVisible();
+  await expect(resourceAmount(inventory, "Chicken Feed", "0")).toBeVisible();
+  await expect(resourceAmount(inventory, "Egg", "0")).toBeVisible();
   await expect(inventory).not.toContainText("Wheat");
   await expect(inventory).not.toContainText("Bread");
 });
@@ -250,7 +253,7 @@ test("moves a structure by choosing move and clicking a destination tile", async
   await page.goto("/");
 
   await page.getByLabel("Bakery structure").click({ button: "right" });
-  await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move Bakery" }).click();
+  await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move" }).click();
   await expect(page.getByTestId("structure-context-menu")).toBeHidden();
   await expect(page.getByText("Moving Bakery")).toBeVisible();
 
@@ -268,7 +271,7 @@ test("shows a footprint preview while moving a structure", async ({ page }, test
   await page.goto("/");
 
   await page.getByLabel("Bakery structure").click({ button: "right" });
-  await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move Bakery" }).click();
+  await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move" }).click();
   await expect(page.getByText("Moving Bakery")).toBeVisible();
 
   await expectCanvasToChangeAfterHover(page);
@@ -414,7 +417,7 @@ async function clickUntilCommand(page: Page, commands: CommandRequest[]) {
   if (!box) {
     throw new Error("Canvas has no bounding box");
   }
-  const maxX = Math.min(box.x + box.width - 24, box.x + Math.max(320, box.width * 0.72));
+  const maxX = await canvasSearchMaxX(page, box);
   const maxY = box.y + box.height - 96;
   for (let y = box.y + 96; y < maxY; y += 28) {
     for (let x = box.x + 24; x < maxX; x += 28) {
@@ -449,7 +452,7 @@ async function findFreeCanvasPoint(page: Page) {
   if (!box) {
     throw new Error("Canvas has no bounding box");
   }
-  const maxX = Math.min(box.x + box.width - 24, box.x + Math.max(320, box.width * 0.72));
+  const maxX = await canvasSearchMaxX(page, box);
   const maxY = box.y + box.height - 96;
   for (let y = box.y + 96; y < maxY; y += 32) {
     for (let x = box.x + 24; x < maxX; x += 32) {
@@ -479,7 +482,7 @@ async function findCanvasSelectionPointByText(
   if (!box) {
     throw new Error("Canvas has no bounding box");
   }
-  const maxX = Math.min(box.x + box.width - 24, box.x + Math.max(320, box.width * 0.72));
+  const maxX = await canvasSearchMaxX(page, box);
   const maxY = box.y + box.height - 24;
   for (let y = box.y + 48; y < maxY; y += 28) {
     for (let x = box.x + 24; x < maxX; x += 28) {
@@ -526,7 +529,7 @@ async function expectCanvasToChangeAfterHover(page: Page) {
     throw new Error("Canvas has no bounding box");
   }
   const before = await canvasSnapshot(page);
-  const maxX = Math.min(box.x + box.width - 24, box.x + Math.max(320, box.width * 0.72));
+  const maxX = await canvasSearchMaxX(page, box);
   const maxY = box.y + box.height - 96;
   for (let y = box.y + 96; y < maxY; y += 32) {
     for (let x = box.x + 24; x < maxX; x += 32) {
@@ -538,6 +541,23 @@ async function expectCanvasToChangeAfterHover(page: Page) {
     }
   }
   throw new Error("Moving over the canvas did not draw a placement preview");
+}
+
+function resourceAmount(scope: Locator, name: string, amount: string) {
+  return scope.locator(".resource-amount").filter({
+    hasText: new RegExp(`^${escapeRegExp(name)}${escapeRegExp(amount)}$`),
+  });
+}
+
+async function canvasSearchMaxX(page: Page, box: { x: number; width: number }) {
+  const canvasRight = box.x + box.width - 24;
+  const sidePanelBox = await page.locator(".side-panel").boundingBox();
+  const sidePanelLeft = sidePanelBox && sidePanelBox.x > box.x ? sidePanelBox.x - 24 : canvasRight;
+  return Math.min(canvasRight, sidePanelLeft, box.x + Math.max(320, box.width * 0.72));
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function readyFieldView(): FarmView {

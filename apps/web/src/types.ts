@@ -10,6 +10,7 @@ export type {
   FarmView,
   FieldPlot,
   InventoryItemView,
+  ItemKind,
   ItemStack,
   MachineKind,
   MachineState,
