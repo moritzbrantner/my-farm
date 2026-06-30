@@ -41,7 +41,7 @@ export type AnimalState = { "type": "idle" } | { "type": "producing", fed_at_ms:
 
 export type AnimalSlot = { id: string, state: AnimalState, };
 
-export type FarmState = { last_update_ms: number, xp: number, level: number, coins: number, silo_capacity: number, silo_tile: Tile, barn_capacity: number, barn_tile: Tile, inventory: { [key in string]?: number }, field_plots: Array<FieldPlot>, machines: Array<MachineState>, shelters: Array<AnimalShelterState>, delivery_board_built: boolean, delivery_board_tile: Tile, delivery_orders: Array<DeliveryOrder>, next_id: number, };
+export type FarmState = { last_update_ms: number, xp: number, level: number, coins: number, silo_capacity: number, silo_tile: Tile, barn_capacity: number, barn_tile: Tile, inventory: { [key in string]?: number }, claimed_crop_unlocks: Array<string>, field_plots: Array<FieldPlot>, machines: Array<MachineState>, shelters: Array<AnimalShelterState>, delivery_board_built: boolean, delivery_board_tile: Tile, delivery_orders: Array<DeliveryOrder>, next_id: number, };
 
 export type FieldPlot = { id: string, tile: Tile, crop: PlantedCrop | null, };
 

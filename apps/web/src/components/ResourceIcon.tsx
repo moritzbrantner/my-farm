@@ -36,6 +36,10 @@ function itemIconMeta(itemId: string, itemKind?: ItemKind): IconMeta {
       return { className: "soybean", glyph: "S" };
     case "carrot":
       return { className: "carrot", glyph: "Ca" };
+    case "potato":
+      return { className: "potato", glyph: "P" };
+    case "tomato":
+      return { className: "tomato", glyph: "T" };
     case "chicken_feed":
       return { className: "feed", glyph: "F" };
     case "cow_feed":
@@ -48,6 +52,12 @@ function itemIconMeta(itemId: string, itemKind?: ItemKind): IconMeta {
       return { className: "bread", glyph: "B" };
     case "corn_bread":
       return { className: "corn-bread", glyph: "CB" };
+    case "potato_bread":
+      return { className: "potato-bread", glyph: "PB" };
+    case "carrot_cake":
+      return { className: "carrot-cake", glyph: "CC" };
+    case "tomato_tart":
+      return { className: "tomato-tart", glyph: "TT" };
   }
 
   switch (itemKind) {

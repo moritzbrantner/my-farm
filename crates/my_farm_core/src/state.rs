@@ -30,6 +30,8 @@ pub struct FarmState {
     #[serde(default = "default_barn_tile")]
     pub barn_tile: Tile,
     pub inventory: BTreeMap<String, u32>,
+    #[serde(default = "default_claimed_crop_unlocks")]
+    pub claimed_crop_unlocks: Vec<String>,
     pub field_plots: Vec<FieldPlot>,
     pub machines: Vec<MachineState>,
     pub shelters: Vec<AnimalShelterState>,
@@ -124,6 +126,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         barn_capacity: 30,
         barn_tile: default_barn_tile(),
         inventory,
+        claimed_crop_unlocks: default_claimed_crop_unlocks(),
         field_plots: starting_plots(),
         machines: Vec::new(),
         shelters: Vec::new(),
@@ -257,6 +260,10 @@ pub fn default_delivery_board_tile() -> Tile {
 
 pub fn default_silo_tile() -> Tile {
     Tile::new(14, 2)
+}
+
+pub fn default_claimed_crop_unlocks() -> Vec<String> {
+    vec!["wheat".to_owned(), "corn".to_owned()]
 }
 
 pub fn default_barn_tile() -> Tile {

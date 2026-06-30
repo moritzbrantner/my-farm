@@ -242,6 +242,15 @@ h2 {
   background: #e9873a;
 }
 
+.resource-icon--potato {
+  background: #b8925a;
+}
+
+.resource-icon--tomato {
+  background: #cf4747;
+  color: #fff6e8;
+}
+
 .resource-icon--feed {
   background: #b8d27a;
 }
@@ -255,6 +264,9 @@ h2 {
 }
 
 .resource-icon--bread,
+.resource-icon--potato-bread,
+.resource-icon--carrot-cake,
+.resource-icon--tomato-tart,
 .resource-icon--product {
   background: #c68a4a;
   color: #fff6e8;

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 const FARM_GRID_SIZE: i32 = 18;
+const CROP_STARTER_STOCK: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StructureFootprint {
@@ -119,6 +120,7 @@ pub fn apply_elapsed(farm: &mut FarmState, catalog: &CatalogDocument, now_ms: i6
         }
     }
     update_level(farm, catalog);
+    grant_unclaimed_crop_starter_stock(farm, catalog);
     ensure_delivery_orders(farm, catalog);
     farm.last_update_ms = now_ms;
 }
@@ -167,6 +169,7 @@ pub fn apply_command(
 
     match result {
         Ok(mut events) => {
+            grant_unclaimed_crop_starter_stock(farm, catalog);
             if farm.level != previous_level {
                 events.push(FarmEvent::LevelChanged { level: farm.level });
             }
@@ -327,6 +330,27 @@ fn dedupe_plot_ids(plot_ids: &[String]) -> Vec<&str> {
         }
     }
     ordered
+}
+
+fn grant_unclaimed_crop_starter_stock(farm: &mut FarmState, catalog: &CatalogDocument) {
+    for crop in &catalog.crops {
+        if crop.unlock_level > farm.level
+            || farm
+                .claimed_crop_unlocks
+                .iter()
+                .any(|claimed| claimed == &crop.item_id)
+        {
+            continue;
+        }
+
+        let starter_stock = ItemStack::new(&crop.item_id, CROP_STARTER_STOCK);
+        if !has_storage_room(farm, catalog, std::slice::from_ref(&starter_stock)) {
+            continue;
+        }
+
+        add_inventory(farm, &starter_stock.item_id, starter_stock.quantity);
+        farm.claimed_crop_unlocks.push(crop.item_id.clone());
+    }
 }
 
 fn buy_structure(

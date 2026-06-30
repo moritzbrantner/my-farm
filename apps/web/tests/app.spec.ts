@@ -441,16 +441,27 @@ const catalog: CatalogDocument = {
   items: [
     { id: "wheat", name: "Wheat", kind: "crop", unlock_level: 1 },
     { id: "corn", name: "Corn", kind: "crop", unlock_level: 2 },
+    { id: "soybean", name: "Soybean", kind: "crop", unlock_level: 3 },
+    { id: "carrot", name: "Carrot", kind: "crop", unlock_level: 5 },
+    { id: "potato", name: "Potato", kind: "crop", unlock_level: 6 },
+    { id: "tomato", name: "Tomato", kind: "crop", unlock_level: 7 },
     { id: "chicken_feed", name: "Chicken Feed", kind: "feed", unlock_level: 3 },
     { id: "cow_feed", name: "Cow Feed", kind: "feed", unlock_level: 5 },
     { id: "egg", name: "Egg", kind: "animal_product", unlock_level: 3 },
     { id: "milk", name: "Milk", kind: "animal_product", unlock_level: 5 },
     { id: "bread", name: "Bread", kind: "product", unlock_level: 2 },
     { id: "corn_bread", name: "Corn Bread", kind: "product", unlock_level: 4 },
+    { id: "potato_bread", name: "Potato Bread", kind: "product", unlock_level: 6 },
+    { id: "carrot_cake", name: "Carrot Cake", kind: "product", unlock_level: 6 },
+    { id: "tomato_tart", name: "Tomato Tart", kind: "product", unlock_level: 7 },
   ],
   crops: [
     { item_id: "wheat", reference_seconds: 120, harvest_quantity: 2, xp: 1, unlock_level: 1 },
     { item_id: "corn", reference_seconds: 300, harvest_quantity: 2, xp: 2, unlock_level: 2 },
+    { item_id: "soybean", reference_seconds: 1200, harvest_quantity: 2, xp: 3, unlock_level: 3 },
+    { item_id: "carrot", reference_seconds: 600, harvest_quantity: 2, xp: 3, unlock_level: 5 },
+    { item_id: "potato", reference_seconds: 1500, harvest_quantity: 2, xp: 4, unlock_level: 6 },
+    { item_id: "tomato", reference_seconds: 1800, harvest_quantity: 2, xp: 5, unlock_level: 7 },
   ],
   recipes: [
     {
@@ -477,6 +488,47 @@ const catalog: CatalogDocument = {
       unlock_level: 4,
     },
     {
+      id: "potato_bread",
+      name: "Potato Bread",
+      machine_kind: "bakery",
+      inputs: [
+        { item_id: "wheat", quantity: 2 },
+        { item_id: "potato", quantity: 2 },
+      ],
+      outputs: [{ item_id: "potato_bread", quantity: 1 }],
+      reference_seconds: 2100,
+      xp: 9,
+      unlock_level: 6,
+    },
+    {
+      id: "carrot_cake",
+      name: "Carrot Cake",
+      machine_kind: "bakery",
+      inputs: [
+        { item_id: "wheat", quantity: 2 },
+        { item_id: "carrot", quantity: 2 },
+        { item_id: "milk", quantity: 1 },
+      ],
+      outputs: [{ item_id: "carrot_cake", quantity: 1 }],
+      reference_seconds: 2400,
+      xp: 10,
+      unlock_level: 6,
+    },
+    {
+      id: "tomato_tart",
+      name: "Tomato Tart",
+      machine_kind: "bakery",
+      inputs: [
+        { item_id: "wheat", quantity: 2 },
+        { item_id: "tomato", quantity: 2 },
+        { item_id: "egg", quantity: 1 },
+      ],
+      outputs: [{ item_id: "tomato_tart", quantity: 1 }],
+      reference_seconds: 2700,
+      xp: 12,
+      unlock_level: 7,
+    },
+    {
       id: "chicken_feed",
       name: "Chicken Feed",
       machine_kind: "feed_mill",
@@ -488,6 +540,19 @@ const catalog: CatalogDocument = {
       reference_seconds: 300,
       xp: 2,
       unlock_level: 3,
+    },
+    {
+      id: "cow_feed",
+      name: "Cow Feed",
+      machine_kind: "feed_mill",
+      inputs: [
+        { item_id: "soybean", quantity: 2 },
+        { item_id: "corn", quantity: 1 },
+      ],
+      outputs: [{ item_id: "cow_feed", quantity: 3 }],
+      reference_seconds: 600,
+      xp: 3,
+      unlock_level: 5,
     },
   ],
   machines: [
@@ -520,7 +585,7 @@ const catalog: CatalogDocument = {
       xp: 5,
     },
   ],
-  level_xp: [0, 0, 4, 14, 30],
+  level_xp: [0, 0, 4, 14, 30, 55, 90, 140],
 };
 
 const farmView: FarmView = {

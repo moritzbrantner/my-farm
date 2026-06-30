@@ -80,6 +80,8 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
             unlock(3, "Feed mill, chickens, eggs, and soybeans", farm.level),
             unlock(4, "Delivery orders and corn bread", farm.level),
             unlock(5, "Cow pasture, milk, carrots, and cow feed", farm.level),
+            unlock(6, "Potatoes, potato bread, and carrot cake", farm.level),
+            unlock(7, "Tomatoes and tomato tart", farm.level),
         ],
     }
 }

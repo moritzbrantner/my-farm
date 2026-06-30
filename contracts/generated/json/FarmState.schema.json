@@ -34,6 +34,16 @@
         }
       ]
     },
+    "claimed_crop_unlocks": {
+      "default": [
+        "wheat",
+        "corn"
+      ],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "coins": {
       "type": "integer",
       "format": "uint32",

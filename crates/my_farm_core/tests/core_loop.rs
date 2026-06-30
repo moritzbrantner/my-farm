@@ -1,7 +1,7 @@
 use my_farm_core::{
     AnimalState, CatalogDocument, FarmCommand, FarmEvent, ItemStack, MachineKind, ShelterKind,
     StructureKind, StructureTarget, Tile, add_inventory, apply_command, apply_elapsed,
-    inventory_quantity, new_farm, scaled_duration_ms,
+    inventory_quantity, new_farm, scaled_duration_ms, update_level,
 };
 
 #[test]
@@ -265,6 +265,128 @@ fn sweep_harvest_rejects_empty_selection() {
     assert_eq!(
         harvested.error.unwrap().message,
         "no field plots selected".to_owned()
+    );
+}
+
+#[test]
+fn crop_unlocks_grant_starter_stock_when_silo_has_room() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 13;
+    update_level(&mut farm, &catalog);
+
+    let planted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(planted.accepted);
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::HarvestCrop {
+            plot_id: "plot-1".to_owned(),
+        },
+        scaled_duration_ms(120, catalog.balance.time_scale),
+    );
+
+    assert!(harvested.accepted);
+    assert!(
+        harvested
+            .events
+            .contains(&FarmEvent::LevelChanged { level: 3 })
+    );
+    assert_eq!(inventory_quantity(&farm, "soybean"), 2);
+
+    apply_elapsed(
+        &mut farm,
+        &catalog,
+        scaled_duration_ms(120, catalog.balance.time_scale) + 1,
+    );
+    assert_eq!(inventory_quantity(&farm, "soybean"), 2);
+}
+
+#[test]
+fn crop_unlock_starter_stock_retries_after_silo_space_opens() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 13;
+    farm.silo_capacity = 11;
+    update_level(&mut farm, &catalog);
+
+    let planted_wheat = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(planted_wheat.accepted);
+
+    let harvested_wheat = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::HarvestCrop {
+            plot_id: "plot-1".to_owned(),
+        },
+        scaled_duration_ms(120, catalog.balance.time_scale),
+    );
+    assert!(harvested_wheat.accepted);
+    assert_eq!(farm.level, 3);
+    assert_eq!(inventory_quantity(&farm, "soybean"), 0);
+
+    let planted_corn = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-2".to_owned(),
+            crop_id: "corn".to_owned(),
+        },
+        scaled_duration_ms(120, catalog.balance.time_scale) + 1,
+    );
+    assert!(planted_corn.accepted);
+    assert_eq!(inventory_quantity(&farm, "soybean"), 2);
+}
+
+#[test]
+fn catalog_extends_late_crop_and_bakery_progression() {
+    let catalog = CatalogDocument::default_catalog();
+
+    assert!(catalog.crop("soybean").is_some());
+    assert!(catalog.crop("carrot").is_some());
+    assert_eq!(catalog.crop("potato").unwrap().unlock_level, 6);
+    assert_eq!(catalog.crop("tomato").unwrap().unlock_level, 7);
+    assert_eq!(catalog.level_for_xp(140), 7);
+
+    let carrot_cake = catalog.recipe("carrot_cake").unwrap();
+    assert_eq!(carrot_cake.unlock_level, 6);
+    assert!(
+        carrot_cake
+            .inputs
+            .iter()
+            .any(|stack| stack.item_id == "carrot")
+    );
+    assert!(
+        carrot_cake
+            .inputs
+            .iter()
+            .any(|stack| stack.item_id == "milk")
+    );
+
+    let tomato_tart = catalog.recipe("tomato_tart").unwrap();
+    assert_eq!(tomato_tart.unlock_level, 7);
+    assert!(
+        tomato_tart
+            .inputs
+            .iter()
+            .any(|stack| stack.item_id == "tomato")
     );
 }
 
