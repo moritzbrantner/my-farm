@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { colorForItem, spriteTexture } from "../assets/sprites";
 import type { FarmView, FieldPlot, MachineState, StructureKind, Tile } from "../types";
 import {
+  isTileOccupiedForPlacement,
   isTileAvailableForNewStructure,
   isTileAvailableForStructure,
   structureFootprint,
@@ -20,7 +21,7 @@ const MOVE_TILE_AVAILABLE_COLOR = "#2f7d55";
 const MOVE_TILE_AVAILABLE_EMISSIVE = "#123826";
 const MOVE_TILE_BLOCKED_COLOR = "#a9333f";
 const MOVE_TILE_BLOCKED_EMISSIVE = "#461016";
-const MOVE_OCCUPIED_BLOCKED_TINT = "#ffd9d6";
+const MOVE_OCCUPIED_BLOCKED_TINT = "#ef6a66";
 const MOVE_TARGET_TINT = "#fff7c7";
 
 type Props = {
@@ -226,12 +227,7 @@ function FarmGround({
   for (let x = 0; x < 18; x += 1) {
     for (let y = 0; y < 18; y += 1) {
       const tile = { x, y };
-      const canPlace =
-        movingStructure !== null
-          ? isTileAvailableForStructure(view, tile, movingStructure)
-          : buildPlacement !== null
-            ? isTileAvailableForNewStructure(view, tile, buildPlacement.kind)
-            : false;
+      const isOccupied = isTileOccupiedForPlacement(view, tile, movingStructure);
       tiles.push(
         <mesh
           key={`${x}-${y}`}
@@ -257,8 +253,8 @@ function FarmGround({
           <planeGeometry args={[0.96, 0.96]} />
           {movingStructure || buildPlacement ? (
             <meshStandardMaterial
-              color={canPlace ? MOVE_TILE_AVAILABLE_COLOR : MOVE_TILE_BLOCKED_COLOR}
-              emissive={canPlace ? MOVE_TILE_AVAILABLE_EMISSIVE : MOVE_TILE_BLOCKED_EMISSIVE}
+              color={isOccupied ? MOVE_TILE_BLOCKED_COLOR : MOVE_TILE_AVAILABLE_COLOR}
+              emissive={isOccupied ? MOVE_TILE_BLOCKED_EMISSIVE : MOVE_TILE_AVAILABLE_EMISSIVE}
               emissiveIntensity={0.22}
               roughness={0.9}
             />
@@ -797,13 +793,13 @@ function StructureSprite({
           if (movingStructure) {
             clearLongPress();
             stop(event);
-            onPlaceStructure(tile);
+            onPlaceStructure(tileFromPointerEvent(event) ?? tile);
             return;
           }
           if (buildPlacement) {
             clearLongPress();
             stop(event);
-            onPlaceNewStructure(tile);
+            onPlaceNewStructure(tileFromPointerEvent(event) ?? tile);
             return;
           }
           if (ignoreNextClick.current) {
@@ -847,7 +843,7 @@ function StructureSprite({
         }}
         onPointerMove={(event) => {
           if (movingStructure || buildPlacement) {
-            onHoverTile(tile);
+            onHoverTile(tileFromPointerEvent(event) ?? tile);
           }
           if (!longPressStart.current) {
             return;
@@ -885,7 +881,11 @@ function StructureSprite({
           type="button"
           tabIndex={-1}
           aria-label={`${hitLabel} structure`}
-          style={{ width: `${78 * footprint.width}px`, height: `${58 * footprint.height}px` }}
+          style={{
+            width: `${78 * footprint.width}px`,
+            height: `${58 * footprint.height}px`,
+            pointerEvents: movingStructure || buildPlacement ? "none" : "auto",
+          }}
           onClick={selectFromDom}
           onContextMenu={openDomMenu}
           onPointerDown={startDomLongPress}
@@ -914,8 +914,8 @@ function PlacementPreview({
   const center = footprintCenter(tile, footprint);
   const width = footprint.width - 0.04;
   const height = footprint.height - 0.04;
-  const color = valid ? "#f7f0a3" : "#ffb0a7";
-  const outlineColor = valid ? "#fff3a8" : "#ffd0cb";
+  const color = valid ? "#f7f0a3" : "#ff8b80";
+  const outlineColor = valid ? "#fff3a8" : MOVE_TILE_BLOCKED_COLOR;
   const edgeThickness = 0.06;
 
   return (
@@ -980,6 +980,22 @@ function footprintCenter(tile: Tile, footprint: StructureFootprint): Tile {
     x: tile.x + (footprint.width - 1) / 2,
     y: tile.y + (footprint.height - 1) / 2,
   };
+}
+
+function tileFromPointerEvent(event: ThreeEvent<MouseEvent | PointerEvent>): Tile | null {
+  const parent = event.object.parent;
+  if (!parent) {
+    return null;
+  }
+  const point = parent.worldToLocal(event.point.clone());
+  const tile = {
+    x: Math.round(point.x),
+    y: Math.round(point.z),
+  };
+  if (tile.x < 0 || tile.x >= 18 || tile.y < 0 || tile.y >= 18) {
+    return null;
+  }
+  return tile;
 }
 
 function isSameStructure(left: StructureSelection | null, right: StructureSelection): boolean {

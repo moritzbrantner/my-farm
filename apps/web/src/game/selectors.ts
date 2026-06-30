@@ -167,6 +167,39 @@ export function isTileAvailableForNewStructure(
   return isTileAvailableForFootprint(view, tile, structureFootprint(kind), null);
 }
 
+export function isTileOccupiedForPlacement(
+  view: FarmView,
+  tile: Tile,
+  moving: StructureSelection | null,
+): boolean {
+  if (view.field_plots.some((plot) => sameTile(plot.tile, tile))) {
+    return true;
+  }
+  if (
+    view.machines.some(
+      (machine) =>
+        !isSameStructure(moving, { type: "machine", id: machine.id }) &&
+        footprintContains(machine.tile, structureFootprint(machine.kind), tile),
+    )
+  ) {
+    return true;
+  }
+  if (
+    view.shelters.some(
+      (shelter) =>
+        !isSameStructure(moving, { type: "shelter", id: shelter.id }) &&
+        footprintContains(shelter.tile, structureFootprint(shelter.kind), tile),
+    )
+  ) {
+    return true;
+  }
+  return (
+    view.delivery_board_built &&
+    !isSameStructure(moving, { type: "delivery_board" }) &&
+    sameTile(view.delivery_board_tile, tile)
+  );
+}
+
 function isTileAvailableForFootprint(
   view: FarmView,
   tile: Tile,
@@ -250,6 +283,10 @@ function footprintContains(origin: Tile, footprint: StructureFootprint, tile: Ti
     tile.y >= origin.y &&
     tile.y < origin.y + footprint.height
   );
+}
+
+function sameTile(left: Tile, right: Tile): boolean {
+  return left.x === right.x && left.y === right.y;
 }
 
 function footprintsOverlap(
