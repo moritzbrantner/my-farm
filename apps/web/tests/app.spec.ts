@@ -6,6 +6,7 @@ test("renders the playable farm shell", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("My Farm")).toBeVisible();
   await expect(page.getByText(/Level 1/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toBeVisible();
 
   const canvas = page.locator("canvas").first();
@@ -71,6 +72,22 @@ test("placing an available structure sends buy_structure with the chosen tile", 
     type: "buy_structure",
     structure_kind: "bakery",
   });
+  expect(command.command).toHaveProperty("tile");
+});
+
+test("placing a field plot sends buy_field_plot with the chosen tile", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Field Plot/ }).click();
+  await expect(page.getByText("Place Field Plot")).toBeVisible();
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Choose a tile");
+
+  const command = await clickUntilCommand(page, commands);
+  expect(command.command).toMatchObject({ type: "buy_field_plot" });
   expect(command.command).toHaveProperty("tile");
 });
 
@@ -254,6 +271,7 @@ test("dragging across ready matching crops sends one sweep harvest command", asy
   await expect(page.getByText("Local farm synced")).toBeVisible();
   const readyStartPoint = await fieldTargetPoint(page, "plot-1");
 
+  await page.locator(".field-tools").getByRole("button", { name: "Harvest" }).click();
   await dragHarvestSweep(page, readyStartPoint, secondFieldPoint);
 
   await expect
@@ -274,11 +292,53 @@ test("dragging across a different ready crop keeps sweep harvest crop-specific",
   const wheatPoint = await fieldTargetPoint(page, "plot-1");
   const cornPoint = await fieldTargetPoint(page, "plot-2");
 
+  await page.locator(".field-tools").getByRole("button", { name: "Harvest" }).click();
   await dragHarvestSweep(page, wheatPoint, cornPoint);
 
   await expect
     .poll(() => commands.find((request) => request.command.type === "sweep_harvest")?.command)
     .toMatchObject({ type: "sweep_harvest", plot_ids: ["plot-1"] });
+});
+
+test("dragging the seed tool across empty fields sends one sweep plant command", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, farmView, catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  const firstFieldPoint = await fieldTargetPoint(page, "plot-1");
+  const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
+
+  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await dragHarvestSweep(page, firstFieldPoint, secondFieldPoint);
+
+  await expect
+    .poll(() => commands.find((request) => request.command.type === "sweep_plant")?.command)
+    .toMatchObject({ type: "sweep_plant", crop_id: "wheat", plot_ids: ["plot-1", "plot-2"] });
+});
+
+test("default field tool cancels harvest dragging", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, twoReadyWheatFieldView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  const firstFieldPoint = await fieldTargetPoint(page, "plot-1");
+  const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
+  const tools = page.locator(".field-tools");
+
+  await tools.getByRole("button", { name: "Harvest" }).click();
+  await tools.getByRole("button", { name: "Default" }).click();
+  await dragHarvestSweep(page, firstFieldPoint, secondFieldPoint);
+  await page.waitForTimeout(150);
+
+  expect(commands.find((request) => request.command.type === "sweep_harvest")).toBeUndefined();
 });
 
 test("right mouse drag on a field opens menu instead of panning canvas", async ({ page }, testInfo) => {

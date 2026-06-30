@@ -1,8 +1,8 @@
 use crate::{
-    AnimalShelterState, AnimalState, CatalogDocument, DeliveryOrder, FarmState, ItemKind,
-    ItemStack, MachineJob, MachineKind, MachineState, ShelterKind, StructureKind, Tile,
-    add_inventory, add_shelter_animals, gain_xp, has_storage_room, next_id, remove_inventory,
-    scaled_duration_ms, update_level,
+    AnimalShelterState, AnimalState, CatalogDocument, DeliveryOrder, FarmState, FieldPlot,
+    ItemKind, ItemStack, MachineJob, MachineKind, MachineState, ShelterKind, StructureKind,
+    Tile, add_inventory, add_shelter_animals, gain_xp, has_storage_room, next_id,
+    remove_inventory, scaled_duration_ms, update_level,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,7 @@ use ts_rs::TS;
 
 const FARM_GRID_SIZE: i32 = 18;
 const CROP_STARTER_STOCK: u32 = 2;
+const FIELD_PLOT_COST: u32 = 12;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StructureFootprint {
@@ -24,6 +25,10 @@ pub enum FarmCommand {
         plot_id: String,
         crop_id: String,
     },
+    SweepPlant {
+        crop_id: String,
+        plot_ids: Vec<String>,
+    },
     HarvestCrop {
         plot_id: String,
     },
@@ -32,6 +37,9 @@ pub enum FarmCommand {
     },
     BuyStructure {
         structure_kind: StructureKind,
+        tile: Tile,
+    },
+    BuyFieldPlot {
         tile: Tile,
     },
     MoveStructure {
@@ -76,6 +84,7 @@ pub enum StructureTarget {
 pub enum FarmEvent {
     CropPlanted { crop_id: String },
     CropHarvested { crop_id: String, quantity: u32 },
+    FieldPlotBuilt { plot_id: String },
     StructureBuilt { structure_kind: StructureKind },
     StructureMoved { target: StructureTarget, tile: Tile },
     RecipeQueued { recipe_id: String },
@@ -137,12 +146,16 @@ pub fn apply_command(
         FarmCommand::PlantCrop { plot_id, crop_id } => {
             plant_crop(farm, catalog, now_ms, &plot_id, &crop_id)
         }
+        FarmCommand::SweepPlant { crop_id, plot_ids } => {
+            sweep_plant(farm, catalog, now_ms, &crop_id, &plot_ids)
+        }
         FarmCommand::HarvestCrop { plot_id } => harvest_crop(farm, catalog, now_ms, &plot_id),
         FarmCommand::SweepHarvest { plot_ids } => sweep_harvest(farm, catalog, now_ms, &plot_ids),
         FarmCommand::BuyStructure {
             structure_kind,
             tile,
         } => buy_structure(farm, catalog, structure_kind, tile),
+        FarmCommand::BuyFieldPlot { tile } => buy_field_plot(farm, tile),
         FarmCommand::MoveStructure { target, tile } => move_structure(farm, target, tile),
         FarmCommand::QueueRecipe {
             machine_id,
@@ -217,6 +230,54 @@ fn plant_crop(
     Ok(vec![FarmEvent::CropPlanted {
         crop_id: crop_id.to_owned(),
     }])
+}
+
+fn sweep_plant(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    now_ms: i64,
+    crop_id: &str,
+    plot_ids: &[String],
+) -> Result<Vec<FarmEvent>, CommandError> {
+    let crop = catalog
+        .crop(crop_id)
+        .ok_or_else(|| CommandError::new("unknown crop"))?;
+    require_level(farm, crop.unlock_level)?;
+
+    let plot_indexes = dedupe_plot_ids(plot_ids)
+        .into_iter()
+        .map(|plot_id| find_field_plot_index(farm, plot_id))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut events = Vec::new();
+    let mut stopped_for_inventory = false;
+    for plot_index in plot_indexes {
+        if farm.field_plots[plot_index].crop.is_some() {
+            continue;
+        }
+        if remove_inventory(farm, &[ItemStack::new(crop_id, 1)]).is_err() {
+            stopped_for_inventory = true;
+            break;
+        }
+        farm.field_plots[plot_index].crop = Some(crate::PlantedCrop {
+            item_id: crop_id.to_owned(),
+            planted_at_ms: now_ms,
+            ready_at_ms: now_ms
+                + scaled_duration_ms(crop.reference_seconds, catalog.balance.time_scale),
+        });
+        events.push(FarmEvent::CropPlanted {
+            crop_id: crop_id.to_owned(),
+        });
+    }
+
+    if events.is_empty() {
+        return Err(CommandError::new(if stopped_for_inventory {
+            format!("not enough {}", crop_id)
+        } else {
+            "no empty field plots selected".to_owned()
+        }));
+    }
+
+    Ok(events)
 }
 
 fn harvest_crop(
@@ -351,6 +412,21 @@ fn grant_unclaimed_crop_starter_stock(farm: &mut FarmState, catalog: &CatalogDoc
         add_inventory(farm, &starter_stock.item_id, starter_stock.quantity);
         farm.claimed_crop_unlocks.push(crop.item_id.clone());
     }
+}
+
+fn buy_field_plot(farm: &mut FarmState, tile: Tile) -> Result<Vec<FarmEvent>, CommandError> {
+    ensure_tile_can_hold_structure(farm, &tile, StructureFootprint { width: 1, height: 1 }, None)?;
+    spend_coins(farm, FIELD_PLOT_COST)?;
+    let mut plot_id = next_id(farm, "plot");
+    while farm.field_plots.iter().any(|plot| plot.id == plot_id) {
+        plot_id = next_id(farm, "plot");
+    }
+    farm.field_plots.push(FieldPlot {
+        id: plot_id.clone(),
+        tile,
+        crop: None,
+    });
+    Ok(vec![FarmEvent::FieldPlotBuilt { plot_id }])
 }
 
 fn buy_structure(

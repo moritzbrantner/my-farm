@@ -7,6 +7,7 @@ import { colorForItem, spriteTexture } from "../assets/sprites";
 import type { FarmView, FieldPlot, MachineState, StructureKind, Tile } from "../types";
 import {
   isTileOccupiedForPlacement,
+  isTileAvailableForNewFieldPlot,
   isTileAvailableForNewStructure,
   isTileAvailableForStructure,
   structureFootprint,
@@ -27,14 +28,18 @@ const MOVE_TARGET_TINT = "#fff7c7";
 type Props = {
   view: FarmView;
   selection: Selection;
+  activeFieldTool: ActiveFieldTool;
   buildPlacement: BuildPlacementState;
   movingStructure: StructureSelection | null;
+  plantSweep: PlantSweepState;
   harvestSweep: HarvestSweepState;
   onSelect: (selection: Selection) => void;
   onOpenFieldMenu: (plotId: string, point: { x: number; y: number }) => void;
   onOpenStructureMenu: (target: StructureSelection, point: { x: number; y: number }) => void;
   onPlaceNewStructure: (tile: Tile) => void;
   onPlaceStructure: (tile: Tile) => void;
+  onStartPlantSweep: (plotId: string, pointerId: number) => void;
+  onEnterPlantSweepPlot: (plotId: string) => void;
   onStartHarvestSweep: (plotId: string, pointerId: number) => void;
   onEnterHarvestSweepPlot: (plotId: string) => void;
 };
@@ -42,14 +47,18 @@ type Props = {
 export function FarmScene({
   view,
   selection,
+  activeFieldTool,
   buildPlacement,
   movingStructure,
+  plantSweep,
   harvestSweep,
   onSelect,
   onOpenFieldMenu,
   onOpenStructureMenu,
   onPlaceNewStructure,
   onPlaceStructure,
+  onStartPlantSweep,
+  onEnterPlantSweepPlot,
   onStartHarvestSweep,
   onEnterHarvestSweepPlot,
 }: Props) {
@@ -87,14 +96,18 @@ export function FarmScene({
             key={plot.id}
             plot={plot}
             selected={selection?.type === "plot" && selection.id === plot.id}
+            activeFieldTool={activeFieldTool}
             buildPlacement={buildPlacement}
             movingStructure={movingStructure}
+            plantSweep={plantSweep}
             harvestSweep={harvestSweep}
             onHoverTile={setHoverTile}
             onSelect={onSelect}
             onOpenFieldMenu={onOpenFieldMenu}
             onPlaceNewStructure={onPlaceNewStructure}
             onPlaceStructure={onPlaceStructure}
+            onStartPlantSweep={onStartPlantSweep}
+            onEnterPlantSweepPlot={onEnterPlantSweepPlot}
             onStartHarvestSweep={onStartHarvestSweep}
             onEnterHarvestSweepPlot={onEnterHarvestSweepPlot}
           />
@@ -199,13 +212,21 @@ export function FarmScene({
         ) : buildPlacement && hoverTile ? (
           <PlacementPreview
             tile={hoverTile}
-            footprint={structureFootprint(buildPlacement.kind)}
-            valid={isTileAvailableForNewStructure(view, hoverTile, buildPlacement.kind)}
+            footprint={
+              buildPlacement.kind === "field_plot"
+                ? { width: 1, height: 1 }
+                : structureFootprint(buildPlacement.kind)
+            }
+            valid={
+              buildPlacement.kind === "field_plot"
+                ? isTileAvailableForNewFieldPlot(view, hoverTile)
+                : isTileAvailableForNewStructure(view, hoverTile, buildPlacement.kind)
+            }
           />
         ) : null}
       </group>
       <OrbitControls
-        enabled={!harvestSweep}
+        enabled={!harvestSweep && !plantSweep}
         enableRotate={false}
         enablePan
         enableZoom
@@ -232,8 +253,16 @@ type HarvestSweepState = {
   pointerId: number;
 } | null;
 
+type PlantSweepState = {
+  cropId: string;
+  plotIds: string[];
+  pointerId: number;
+} | null;
+
+type ActiveFieldTool = { type: "default" } | { type: "plant"; cropId: string } | { type: "harvest" };
+
 type BuildPlacementState = {
-  kind: StructureKind;
+  kind: StructureKind | "field_plot";
 } | null;
 
 function FarmGround({
@@ -307,27 +336,35 @@ function FarmGround({
 function FieldMesh({
   plot,
   selected,
+  activeFieldTool,
   buildPlacement,
   movingStructure,
+  plantSweep,
   harvestSweep,
   onHoverTile,
   onSelect,
   onOpenFieldMenu,
   onPlaceNewStructure,
   onPlaceStructure,
+  onStartPlantSweep,
+  onEnterPlantSweepPlot,
   onStartHarvestSweep,
   onEnterHarvestSweepPlot,
 }: {
   plot: FieldPlot;
   selected: boolean;
+  activeFieldTool: ActiveFieldTool;
   buildPlacement: BuildPlacementState;
   movingStructure: StructureSelection | null;
+  plantSweep: PlantSweepState;
   harvestSweep: HarvestSweepState;
   onHoverTile: (tile: Tile) => void;
   onSelect: (selection: Selection) => void;
   onOpenFieldMenu: (plotId: string, point: { x: number; y: number }) => void;
   onPlaceNewStructure: (tile: Tile) => void;
   onPlaceStructure: (tile: Tile) => void;
+  onStartPlantSweep: (plotId: string, pointerId: number) => void;
+  onEnterPlantSweepPlot: (plotId: string) => void;
   onStartHarvestSweep: (plotId: string, pointerId: number) => void;
   onEnterHarvestSweepPlot: (plotId: string) => void;
 }) {
@@ -335,7 +372,6 @@ function FieldMesh({
   const color = plot.crop ? colorForItem(plot.crop.item_id) : "#8a5a35";
   const longPressTimer = useRef<number | null>(null);
   const longPressStart = useRef<{ x: number; y: number } | null>(null);
-  const harvestSweepStart = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const ignoreNextClick = useRef(false);
   const texture = useMemo(
     () => spriteTexture(plot.crop ? (cropReady ? "Ready" : plot.crop.item_id) : "Field", color),
@@ -343,6 +379,8 @@ function FieldMesh({
   );
   const blockedByPlacement = movingStructure !== null || buildPlacement !== null;
   const sweptByHarvest = harvestSweep?.plotIds.includes(plot.id) ?? false;
+  const sweptByPlant = plantSweep?.plotIds.includes(plot.id) ?? false;
+  const fieldToolActive = activeFieldTool.type !== "default";
   const eligibleForHarvestSweep =
     harvestSweep !== null &&
     plot.crop?.item_id === harvestSweep.cropId &&
@@ -351,7 +389,6 @@ function FieldMesh({
   useEffect(() => {
     return () => {
       clearLongPress();
-      clearHarvestSweepStart();
     };
   }, []);
 
@@ -364,13 +401,6 @@ function FieldMesh({
     window.removeEventListener("pointermove", handleWindowPointerMove);
     window.removeEventListener("pointerup", clearLongPress);
     window.removeEventListener("pointercancel", clearLongPress);
-  }
-
-  function clearHarvestSweepStart() {
-    harvestSweepStart.current = null;
-    window.removeEventListener("pointermove", handleWindowHarvestSweepPointerMove);
-    window.removeEventListener("pointerup", clearHarvestSweepStart);
-    window.removeEventListener("pointercancel", clearHarvestSweepStart);
   }
 
   function handleWindowPointerMove(event: PointerEvent) {
@@ -386,26 +416,9 @@ function FieldMesh({
     }
   }
 
-  function handleWindowHarvestSweepPointerMove(event: PointerEvent) {
-    if (!harvestSweepStart.current || event.pointerId !== harvestSweepStart.current.pointerId) {
-      return;
-    }
-    const moved = Math.hypot(
-      event.clientX - harvestSweepStart.current.x,
-      event.clientY - harvestSweepStart.current.y,
-    );
-    if (moved <= 8) {
-      return;
-    }
-    ignoreNextClick.current = true;
-    onStartHarvestSweep(plot.id, harvestSweepStart.current.pointerId);
-    clearHarvestSweepStart();
-  }
-
   const openMenu = (event: ThreeEvent<MouseEvent | PointerEvent>) => {
     stop(event);
     event.nativeEvent.preventDefault();
-    clearHarvestSweepStart();
     onOpenFieldMenu(plot.id, {
       x: event.nativeEvent.clientX,
       y: event.nativeEvent.clientY,
@@ -415,7 +428,6 @@ function FieldMesh({
   const openDomMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    clearHarvestSweepStart();
     onOpenFieldMenu(plot.id, {
       x: event.clientX,
       y: event.clientY,
@@ -444,8 +456,11 @@ function FieldMesh({
       event.stopPropagation();
       return;
     }
+    if (plantSweep || fieldToolActive) {
+      event.stopPropagation();
+      return;
+    }
     clearLongPress();
-    clearHarvestSweepStart();
     event.stopPropagation();
     onSelect({ type: "plot", id: plot.id });
   };
@@ -455,16 +470,21 @@ function FieldMesh({
       event.stopPropagation();
       return;
     }
-    if (plot.crop && cropReady) {
+    if (activeFieldTool.type === "plant") {
       event.stopPropagation();
-      harvestSweepStart.current = {
-        x: event.clientX,
-        y: event.clientY,
-        pointerId: event.pointerId,
-      };
-      window.addEventListener("pointermove", handleWindowHarvestSweepPointerMove);
-      window.addEventListener("pointerup", clearHarvestSweepStart);
-      window.addEventListener("pointercancel", clearHarvestSweepStart);
+      ignoreNextClick.current = true;
+      if (!plot.crop) {
+        onStartPlantSweep(plot.id, event.pointerId);
+      }
+      return;
+    }
+    if (activeFieldTool.type === "harvest") {
+      event.stopPropagation();
+      ignoreNextClick.current = true;
+      if (plot.crop && cropReady) {
+        onStartHarvestSweep(plot.id, event.pointerId);
+      }
+      return;
     }
     if (event.pointerType !== "touch" && event.pointerType !== "pen") {
       return;
@@ -514,8 +534,11 @@ function FieldMesh({
             stop(event);
             return;
           }
+          if (plantSweep || fieldToolActive) {
+            stop(event);
+            return;
+          }
           clearLongPress();
-          clearHarvestSweepStart();
           stop(event);
           onSelect({ type: "plot", id: plot.id });
         }}
@@ -529,16 +552,21 @@ function FieldMesh({
             openMenu(event);
             return;
           }
-          if (plot.crop && cropReady) {
+          if (activeFieldTool.type === "plant") {
             stop(event);
-            harvestSweepStart.current = {
-              x: event.nativeEvent.clientX,
-              y: event.nativeEvent.clientY,
-              pointerId: event.nativeEvent.pointerId,
-            };
-            window.addEventListener("pointermove", handleWindowHarvestSweepPointerMove);
-            window.addEventListener("pointerup", clearHarvestSweepStart);
-            window.addEventListener("pointercancel", clearHarvestSweepStart);
+            ignoreNextClick.current = true;
+            if (!plot.crop) {
+              onStartPlantSweep(plot.id, event.nativeEvent.pointerId);
+            }
+            return;
+          }
+          if (activeFieldTool.type === "harvest") {
+            stop(event);
+            ignoreNextClick.current = true;
+            if (plot.crop && cropReady) {
+              onStartHarvestSweep(plot.id, event.nativeEvent.pointerId);
+            }
+            return;
           }
           if (event.nativeEvent.pointerType !== "touch" && event.nativeEvent.pointerType !== "pen") {
             return;
@@ -568,6 +596,13 @@ function FieldMesh({
             }
             return;
           }
+          if (plantSweep && event.nativeEvent.pointerId === plantSweep.pointerId) {
+            stop(event);
+            if (!plot.crop) {
+              onEnterPlantSweepPlot(plot.id);
+            }
+            return;
+          }
           if (movingStructure || buildPlacement) {
             onHoverTile(plot.tile);
           }
@@ -584,11 +619,9 @@ function FieldMesh({
         }}
         onPointerUp={() => {
           clearLongPress();
-          clearHarvestSweepStart();
         }}
         onPointerCancel={() => {
           clearLongPress();
-          clearHarvestSweepStart();
         }}
       >
         <planeGeometry args={[0.9, 0.9]} />
@@ -597,6 +630,8 @@ function FieldMesh({
           color={
             blockedByPlacement
               ? MOVE_OCCUPIED_BLOCKED_TINT
+              : sweptByPlant
+                ? "#d5f4c6"
               : sweptByHarvest
                 ? MOVE_TARGET_TINT
                 : selected
@@ -604,7 +639,7 @@ function FieldMesh({
                   : "#f4ead2"
           }
           emissive={blockedByPlacement ? MOVE_TILE_BLOCKED_EMISSIVE : selected ? "#446d38" : "#000000"}
-          emissiveIntensity={blockedByPlacement ? 0.18 : selected || sweptByHarvest ? 0.22 : 0}
+          emissiveIntensity={blockedByPlacement ? 0.18 : selected || sweptByHarvest || sweptByPlant ? 0.22 : 0}
         />
       </mesh>
       <Html
@@ -629,17 +664,22 @@ function FieldMesh({
               }
               return;
             }
+            if (plantSweep && event.pointerId === plantSweep.pointerId) {
+              event.stopPropagation();
+              if (!plot.crop) {
+                onEnterPlantSweepPlot(plot.id);
+              }
+              return;
+            }
             if (movingStructure || buildPlacement) {
               onHoverTile(plot.tile);
             }
           }}
           onPointerUp={() => {
             clearLongPress();
-            clearHarvestSweepStart();
           }}
           onPointerCancel={() => {
             clearLongPress();
-            clearHarvestSweepStart();
           }}
         />
       </Html>

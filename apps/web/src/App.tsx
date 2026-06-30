@@ -13,6 +13,7 @@ import { ResourceIcon } from "./components/ResourceIcon";
 import {
   availableRecipes,
   builtStructureKinds,
+  isTileAvailableForNewFieldPlot,
   isTileAvailableForNewStructure,
   isTileAvailableForStructure,
   itemName,
@@ -47,9 +48,12 @@ import type {
 } from "./types";
 
 type BuildableStructureKind = Exclude<StructureKind, "silo" | "barn">;
+type BuildableKind = "field_plot" | BuildableStructureKind;
 
 const client = createFarmClient();
-const buildKinds: BuildableStructureKind[] = [
+const fieldPlotBuildCost = 12;
+const buildKinds: BuildableKind[] = [
+  "field_plot",
   "bakery",
   "feed_mill",
   "chicken_coop",
@@ -59,20 +63,31 @@ const buildKinds: BuildableStructureKind[] = [
 
 type SendCommand = (command: FarmCommand) => Promise<boolean>;
 type BuildPlacementState = {
-  kind: BuildableStructureKind;
+  kind: BuildableKind;
 } | null;
 type StructureBuildCardMeta = {
-  kind: BuildableStructureKind;
+  kind: BuildableKind;
   role: string;
   accentClass: string;
 };
+type ActiveFieldTool = { type: "default" } | { type: "plant"; cropId: string } | { type: "harvest" };
+type PlantSweepState = {
+  cropId: string;
+  plotIds: string[];
+  pointerId: number;
+} | null;
 type HarvestSweepState = {
   cropId: string;
   plotIds: string[];
   pointerId: number;
 } | null;
 
-const structureBuildCardMetas: Record<BuildableStructureKind, StructureBuildCardMeta> = {
+const structureBuildCardMetas: Record<BuildableKind, StructureBuildCardMeta> = {
+  field_plot: {
+    kind: "field_plot",
+    role: "Adds another field plot for crop growing.",
+    accentClass: "field-plot",
+  },
   bakery: {
     kind: "bakery",
     role: "Turns wheat into bread for delivery orders.",
@@ -107,9 +122,11 @@ export function App() {
   const [selection, setSelection] = useState<Selection>(null);
   const [fieldMenu, setFieldMenu] = useState<FieldContextMenuState>(null);
   const [structureMenu, setStructureMenu] = useState<StructureContextMenuState>(null);
+  const [activeFieldTool, setActiveFieldTool] = useState<ActiveFieldTool>({ type: "default" });
   const [buildPlacement, setBuildPlacement] = useState<BuildPlacementState>(null);
-  const [selectedBuildKind, setSelectedBuildKind] = useState<BuildableStructureKind | null>(null);
+  const [selectedBuildKind, setSelectedBuildKind] = useState<BuildableKind | null>(null);
   const [movingStructure, setMovingStructure] = useState<StructureSelection | null>(null);
+  const [plantSweep, setPlantSweep] = useState<PlantSweepState>(null);
   const [harvestSweep, setHarvestSweep] = useState<HarvestSweepState>(null);
   const [message, setMessage] = useState("Connecting to local server...");
   const [nowMs, setNowMs] = useState(Date.now());
@@ -163,7 +180,15 @@ export function App() {
   }, [fieldMenu, view]);
 
   useEffect(() => {
-    if (!fieldMenu && !structureMenu && !buildPlacement && !movingStructure && !harvestSweep) {
+    if (
+      !fieldMenu &&
+      !structureMenu &&
+      !buildPlacement &&
+      !movingStructure &&
+      !plantSweep &&
+      !harvestSweep &&
+      activeFieldTool.type === "default"
+    ) {
       return;
     }
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -179,7 +204,9 @@ export function App() {
         setStructureMenu(null);
         setBuildPlacement(null);
         setMovingStructure(null);
+        setPlantSweep(null);
         setHarvestSweep(null);
+        setActiveFieldTool({ type: "default" });
       }
     };
     document.addEventListener("pointerdown", closeOnOutsidePointer, true);
@@ -188,7 +215,7 @@ export function App() {
       document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [buildPlacement, fieldMenu, harvestSweep, movingStructure, structureMenu]);
+  }, [activeFieldTool.type, buildPlacement, fieldMenu, harvestSweep, movingStructure, plantSweep, structureMenu]);
 
   const select = useCallback((nextSelection: Selection) => {
     setSelection(nextSelection);
@@ -196,6 +223,7 @@ export function App() {
     setStructureMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    setPlantSweep(null);
     setHarvestSweep(null);
   }, []);
 
@@ -204,6 +232,7 @@ export function App() {
     setStructureMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    setPlantSweep(null);
     setHarvestSweep(null);
     setFieldMenu({ plotId, x: point.x, y: point.y });
   }, []);
@@ -213,26 +242,29 @@ export function App() {
     setFieldMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    setPlantSweep(null);
     setHarvestSweep(null);
     setStructureMenu({ target, x: point.x, y: point.y });
   }, []);
 
-  const selectBuildKind = useCallback((kind: BuildableStructureKind, canPlace: boolean) => {
+  const selectBuildKind = useCallback((kind: BuildableKind, canPlace: boolean) => {
     setSelectedBuildKind(kind);
+    setActiveFieldTool({ type: "default" });
     setFieldMenu(null);
     setStructureMenu(null);
     setMovingStructure(null);
+    setPlantSweep(null);
     setHarvestSweep(null);
     if (canPlace) {
       setBuildPlacement({ kind });
       setSelection(null);
-      setMessage(`Place ${structureLabel(kind)}`);
+      setMessage(`Place ${buildKindLabel(kind)}`);
       return;
     }
     setBuildPlacement(null);
   }, []);
 
-  const inspectBuildKind = useCallback((kind: BuildableStructureKind) => {
+  const inspectBuildKind = useCallback((kind: BuildableKind) => {
     setSelectedBuildKind(kind);
   }, []);
 
@@ -259,8 +291,10 @@ export function App() {
     setSelection(null);
     setFieldMenu(null);
     setStructureMenu(null);
+    setActiveFieldTool({ type: "default" });
     setBuildPlacement(null);
     setMovingStructure(null);
+    setPlantSweep(null);
     setHarvestSweep(null);
     setMessage("Farm reset");
   }, []);
@@ -271,6 +305,7 @@ export function App() {
     setStructureMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    setPlantSweep(null);
     setHarvestSweep(null);
     window.setTimeout(() => {
       ordersRef.current?.scrollIntoView({ block: "nearest" });
@@ -286,8 +321,10 @@ export function App() {
       setSelection(target);
       setFieldMenu(null);
       setStructureMenu(null);
+      setActiveFieldTool({ type: "default" });
       setBuildPlacement(null);
       setMovingStructure(target);
+      setPlantSweep(null);
       setHarvestSweep(null);
       setMessage(`Moving ${selectedStructureLabel(view, target)}`);
     },
@@ -316,6 +353,17 @@ export function App() {
       if (!view || !buildPlacement) {
         return;
       }
+      if (buildPlacement.kind === "field_plot") {
+        if (!isTileAvailableForNewFieldPlot(view, tile)) {
+          setMessage("Tile is occupied");
+          return;
+        }
+        const accepted = await send({ type: "buy_field_plot", tile });
+        if (accepted) {
+          setBuildPlacement(null);
+        }
+        return;
+      }
       if (!isTileAvailableForNewStructure(view, tile, buildPlacement.kind)) {
         setMessage("Tile is occupied");
         return;
@@ -332,6 +380,102 @@ export function App() {
     [buildPlacement, send, view],
   );
 
+  const selectDefaultFieldTool = useCallback(() => {
+    setActiveFieldTool({ type: "default" });
+    setFieldMenu(null);
+    setStructureMenu(null);
+    setBuildPlacement(null);
+    setMovingStructure(null);
+    setPlantSweep(null);
+    setHarvestSweep(null);
+    setMessage("Default tool");
+  }, []);
+
+  const selectPlantFieldTool = useCallback(
+    (cropId: string) => {
+      setActiveFieldTool({ type: "plant", cropId });
+      setFieldMenu(null);
+      setStructureMenu(null);
+      setBuildPlacement(null);
+      setMovingStructure(null);
+      setPlantSweep(null);
+      setHarvestSweep(null);
+      setMessage(`Seed tool: ${itemName(catalog, cropId)}`);
+    },
+    [catalog],
+  );
+
+  const selectHarvestFieldTool = useCallback(() => {
+    setActiveFieldTool({ type: "harvest" });
+    setFieldMenu(null);
+    setStructureMenu(null);
+    setBuildPlacement(null);
+    setMovingStructure(null);
+    setPlantSweep(null);
+    setHarvestSweep(null);
+    setMessage("Harvest tool");
+  }, []);
+
+  const startPlantSweep = useCallback(
+    (plotId: string, pointerId: number) => {
+      if (!view || activeFieldTool.type !== "plant") {
+        return;
+      }
+      const plot = view.field_plots.find((entry) => entry.id === plotId);
+      const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+      if (plot?.crop || (inventory.get(activeFieldTool.cropId) ?? 0) < 1) {
+        return;
+      }
+      setSelection({ type: "plot", id: plotId });
+      setFieldMenu(null);
+      setStructureMenu(null);
+      setBuildPlacement(null);
+      setMovingStructure(null);
+      setHarvestSweep(null);
+      setPlantSweep({
+        cropId: activeFieldTool.cropId,
+        plotIds: [plotId],
+        pointerId,
+      });
+    },
+    [activeFieldTool, view],
+  );
+
+  const enterPlantSweepPlot = useCallback(
+    (plotId: string) => {
+      if (!view) {
+        return;
+      }
+      setPlantSweep((current) => {
+        if (!current || current.plotIds.includes(plotId)) {
+          return current;
+        }
+        const plot = view.field_plots.find((entry) => entry.id === plotId);
+        const inventory = view.inventory.find((item) => item.item_id === current.cropId)?.quantity ?? 0;
+        if (plot?.crop || current.plotIds.length >= inventory) {
+          return current;
+        }
+        return { ...current, plotIds: [...current.plotIds, plotId] };
+      });
+    },
+    [view],
+  );
+
+  const finishPlantSweep = useCallback(async () => {
+    if (!plantSweep) {
+      return;
+    }
+    const { cropId, plotIds } = plantSweep;
+    setPlantSweep(null);
+    const accepted = await send({ type: "sweep_plant", crop_id: cropId, plot_ids: plotIds });
+    if (accepted) {
+      setSelection({ type: "plot", id: plotIds[0] });
+      setFieldMenu(null);
+      setStructureMenu(null);
+      setBuildPlacement(null);
+    }
+  }, [plantSweep, send]);
+
   const startHarvestSweep = useCallback(
     (plotId: string, pointerId: number) => {
       if (!view) {
@@ -346,6 +490,7 @@ export function App() {
       setStructureMenu(null);
       setBuildPlacement(null);
       setMovingStructure(null);
+      setPlantSweep(null);
       setHarvestSweep({
         cropId: plot.crop.item_id,
         plotIds: [plotId],
@@ -390,6 +535,23 @@ export function App() {
   }, [harvestSweep, send]);
 
   useEffect(() => {
+    if (!plantSweep) {
+      return;
+    }
+    const finish = (event: PointerEvent) => {
+      if (event.pointerId === plantSweep.pointerId) {
+        void finishPlantSweep();
+      }
+    };
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    return () => {
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+  }, [finishPlantSweep, plantSweep]);
+
+  useEffect(() => {
     if (!harvestSweep) {
       return;
     }
@@ -431,14 +593,18 @@ export function App() {
       <FarmScene
         view={view}
         selection={selection}
+        activeFieldTool={activeFieldTool}
         buildPlacement={buildPlacement}
         movingStructure={movingStructure}
+        plantSweep={plantSweep}
         harvestSweep={harvestSweep}
         onSelect={select}
         onOpenFieldMenu={openFieldMenu}
         onOpenStructureMenu={openStructureMenu}
         onPlaceNewStructure={placeNewStructure}
         onPlaceStructure={placeMovingStructure}
+        onStartPlantSweep={startPlantSweep}
+        onEnterPlantSweepPlot={enterPlantSweepPlot}
         onStartHarvestSweep={startHarvestSweep}
         onEnterHarvestSweepPlot={enterHarvestSweepPlot}
       />
@@ -446,6 +612,14 @@ export function App() {
       <aside className="side-panel">
         <PanelHeader view={view} version={version} onReset={reset} />
         <Inventory catalog={catalog} view={view} selection={selection} />
+        <FieldTools
+          catalog={catalog}
+          view={view}
+          activeFieldTool={activeFieldTool}
+          onDefault={selectDefaultFieldTool}
+          onPlant={selectPlantFieldTool}
+          onHarvest={selectHarvestFieldTool}
+        />
         <SelectionPanel
           catalog={catalog}
           view={view}
@@ -559,6 +733,67 @@ function Inventory({
         {items.map((item) => (
           <ResourceAmount key={item.item_id} item={item} amount={String(item.quantity)} />
         ))}
+      </div>
+    </section>
+  );
+}
+
+function FieldTools({
+  catalog,
+  view,
+  activeFieldTool,
+  onDefault,
+  onPlant,
+  onHarvest,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  activeFieldTool: ActiveFieldTool;
+  onDefault: () => void;
+  onPlant: (cropId: string) => void;
+  onHarvest: () => void;
+}) {
+  const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  return (
+    <section className="panel-section field-tools">
+      <h2>Field Tools</h2>
+      <div className="field-tool-grid">
+        <button
+          type="button"
+          className={activeFieldTool.type === "default" ? "field-tool field-tool--active" : "field-tool"}
+          aria-pressed={activeFieldTool.type === "default"}
+          onClick={onDefault}
+        >
+          Default
+        </button>
+        <button
+          type="button"
+          className={activeFieldTool.type === "harvest" ? "field-tool field-tool--active" : "field-tool"}
+          aria-pressed={activeFieldTool.type === "harvest"}
+          onClick={onHarvest}
+        >
+          Harvest
+        </button>
+        {catalog.crops
+          .filter((crop) => crop.unlock_level <= view.level)
+          .map((crop) => {
+            const quantity = inventory.get(crop.item_id) ?? 0;
+            const active = activeFieldTool.type === "plant" && activeFieldTool.cropId === crop.item_id;
+            return (
+              <button
+                type="button"
+                key={crop.item_id}
+                className={active ? "field-tool field-tool--active field-tool--seed" : "field-tool field-tool--seed"}
+                aria-pressed={active}
+                disabled={quantity < 1}
+                onClick={() => onPlant(crop.item_id)}
+              >
+                <ResourceIcon type="item" itemId={crop.item_id} itemKind="crop" />
+                <span>{itemName(catalog, crop.item_id)}</span>
+                <strong>{quantity}</strong>
+              </button>
+            );
+          })}
       </div>
     </section>
   );
@@ -876,10 +1111,10 @@ function BuildTray({
 }: {
   catalog: CatalogDocument;
   view: FarmView;
-  selectedKind: BuildableStructureKind | null;
+  selectedKind: BuildableKind | null;
   buildPlacement: BuildPlacementState;
-  onInspectKind: (kind: BuildableStructureKind) => void;
-  onSelectKind: (kind: BuildableStructureKind, canPlace: boolean) => void;
+  onInspectKind: (kind: BuildableKind) => void;
+  onSelectKind: (kind: BuildableKind, canPlace: boolean) => void;
 }) {
   const built = useMemo(() => builtStructureKinds(view), [view]);
   const cardStates = buildKinds.map((kind) =>
@@ -964,14 +1199,14 @@ function StructureBuildCard({
 function buildStructureCardState(
   catalog: CatalogDocument,
   view: FarmView,
-  kind: BuildableStructureKind,
+  kind: BuildableKind,
   built: Set<StructureKind>,
-  selectedKind: BuildableStructureKind | null,
+  selectedKind: BuildableKind | null,
   buildPlacement: BuildPlacementState,
 ): StructureBuildCardState {
-  const unlockLevel = unlockLevelForStructure(catalog, kind);
-  const cost = buildCostForStructure(catalog, kind);
-  const isBuilt = built.has(kind);
+  const unlockLevel = unlockLevelForBuildKind(catalog, kind);
+  const cost = buildCostForBuildKind(catalog, kind);
+  const isBuilt = kind !== "field_plot" && built.has(kind);
   const locked = view.level < unlockLevel;
   const unaffordable = view.coins < cost;
   const placing = buildPlacement?.kind === kind;
@@ -986,7 +1221,7 @@ function buildStructureCardState(
 
   return {
     ...meta,
-    label: structureLabel(kind),
+    label: buildKindLabel(kind),
     cost,
     status: isBuilt ? "Built" : locked ? `Level ${unlockLevel}` : unaffordable ? "Need coins" : "Ready",
     reason,
@@ -1004,7 +1239,14 @@ function structureInitials(label: string): string {
     .slice(0, 2);
 }
 
-function unlockLevelForStructure(catalog: CatalogDocument, kind: BuildableStructureKind): number {
+function buildKindLabel(kind: BuildableKind): string {
+  return kind === "field_plot" ? "Field Plot" : structureLabel(kind);
+}
+
+function unlockLevelForBuildKind(catalog: CatalogDocument, kind: BuildableKind): number {
+  if (kind === "field_plot") {
+    return 1;
+  }
   if (kind === "bakery" || kind === "feed_mill") {
     return catalog.machines.find((machine) => machine.kind === kind)?.unlock_level ?? 1;
   }
@@ -1015,7 +1257,10 @@ function unlockLevelForStructure(catalog: CatalogDocument, kind: BuildableStruct
   return catalog.shelters.find((shelter) => shelter.kind === shelterKind)?.unlock_level ?? 1;
 }
 
-function buildCostForStructure(catalog: CatalogDocument, kind: BuildableStructureKind): number {
+function buildCostForBuildKind(catalog: CatalogDocument, kind: BuildableKind): number {
+  if (kind === "field_plot") {
+    return fieldPlotBuildCost;
+  }
   if (kind === "bakery" || kind === "feed_mill") {
     return catalog.machines.find((machine) => machine.kind === kind)?.build_cost ?? 0;
   }

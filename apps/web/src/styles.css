@@ -299,6 +299,40 @@ h2 {
   gap: 8px;
 }
 
+.field-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.field-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px 8px;
+}
+
+.field-tool span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.field-tool--seed {
+  justify-content: flex-start;
+}
+
+.field-tool--seed strong {
+  margin-left: auto;
+}
+
+.field-tool--active {
+  background: #fff7d0;
+  outline: 2px solid rgba(68, 109, 56, 0.5);
+  outline-offset: 1px;
+}
+
 .order {
   display: grid;
   gap: 8px;
@@ -355,6 +389,10 @@ h2 {
   gap: 14px;
   padding: 8px 10px;
   overflow: hidden;
+}
+
+.build-detail-strip--field-plot {
+  border-left: 8px solid #8a5a35;
 }
 
 .build-detail-strip--bakery {
@@ -452,6 +490,10 @@ h2 {
 
 .structure-build-card--bakery .structure-build-card__art {
   background: #d99668;
+}
+
+.structure-build-card--field-plot .structure-build-card__art {
+  background: #b6814f;
 }
 
 .structure-build-card--feed-mill .structure-build-card__art {

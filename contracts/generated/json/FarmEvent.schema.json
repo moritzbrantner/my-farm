@@ -47,6 +47,24 @@
     {
       "type": "object",
       "required": [
+        "plot_id",
+        "type"
+      ],
+      "properties": {
+        "plot_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "field_plot_built"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "structure_kind",
         "type"
       ],

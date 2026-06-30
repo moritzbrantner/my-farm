@@ -126,6 +126,168 @@ fn player_can_sweep_harvest_ready_wheat() {
 }
 
 #[test]
+fn player_can_buy_more_field_plots_on_open_tiles() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyFieldPlot {
+            tile: Tile::new(4, 0),
+        },
+        0,
+    );
+
+    assert!(built.accepted);
+    assert_eq!(farm.coins, 168);
+    assert_eq!(farm.field_plots.len(), 7);
+    assert_eq!(farm.field_plots[6].id, "plot-7");
+    assert_eq!(farm.field_plots[6].tile, Tile::new(4, 0));
+    assert_eq!(
+        built.events,
+        vec![FarmEvent::FieldPlotBuilt {
+            plot_id: "plot-7".to_owned(),
+        }]
+    );
+}
+
+#[test]
+fn buying_field_plot_rejects_occupied_tiles() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let built_on_existing_plot = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyFieldPlot {
+            tile: Tile::new(0, 0),
+        },
+        0,
+    );
+    assert!(!built_on_existing_plot.accepted);
+    assert_eq!(
+        built_on_existing_plot.error.unwrap().message,
+        "tile is occupied"
+    );
+
+    let built_on_storage = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyFieldPlot {
+            tile: Tile::new(14, 2),
+        },
+        0,
+    );
+    assert!(!built_on_storage.accepted);
+    assert_eq!(built_on_storage.error.unwrap().message, "tile is occupied");
+}
+
+#[test]
+fn player_can_sweep_plant_empty_field_plots() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let planted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepPlant {
+            crop_id: "wheat".to_owned(),
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+            ],
+        },
+        0,
+    );
+
+    assert!(planted.accepted);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 3);
+    assert!(farm.field_plots[0].crop.is_some());
+    assert!(farm.field_plots[1].crop.is_some());
+    assert!(farm.field_plots[2].crop.is_some());
+    assert_eq!(planted.events.len(), 3);
+}
+
+#[test]
+fn sweep_plant_skips_planted_fields_and_stops_when_seed_runs_out() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+
+    let planted_first = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(planted_first.accepted);
+
+    let planted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepPlant {
+            crop_id: "corn".to_owned(),
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+                "plot-4".to_owned(),
+                "plot-5".to_owned(),
+            ],
+        },
+        0,
+    );
+
+    assert!(planted.accepted);
+    assert_eq!(inventory_quantity(&farm, "corn"), 0);
+    assert_eq!(
+        farm.field_plots[0].crop.as_ref().unwrap().item_id,
+        "wheat".to_owned()
+    );
+    assert_eq!(
+        farm.field_plots[1].crop.as_ref().unwrap().item_id,
+        "corn".to_owned()
+    );
+    assert_eq!(
+        farm.field_plots[2].crop.as_ref().unwrap().item_id,
+        "corn".to_owned()
+    );
+    assert_eq!(
+        farm.field_plots[3].crop.as_ref().unwrap().item_id,
+        "corn".to_owned()
+    );
+    assert!(farm.field_plots[4].crop.is_none());
+    assert_eq!(planted.events.len(), 3);
+}
+
+#[test]
+fn sweep_plant_rejects_unknown_plot_without_partial_mutation() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let planted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepPlant {
+            crop_id: "wheat".to_owned(),
+            plot_ids: vec!["plot-1".to_owned(), "missing-plot".to_owned()],
+        },
+        0,
+    );
+
+    assert!(!planted.accepted);
+    assert_eq!(planted.error.unwrap().message, "field plot not found");
+    assert!(farm.field_plots[0].crop.is_none());
+    assert_eq!(inventory_quantity(&farm, "wheat"), 6);
+}
+
+#[test]
 fn sweep_harvest_only_harvests_matching_ready_crop() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);

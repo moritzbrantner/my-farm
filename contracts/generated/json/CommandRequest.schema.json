@@ -44,6 +44,31 @@
         {
           "type": "object",
           "required": [
+            "crop_id",
+            "plot_ids",
+            "type"
+          ],
+          "properties": {
+            "crop_id": {
+              "type": "string"
+            },
+            "plot_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "sweep_plant"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "plot_id",
             "type"
           ],
@@ -98,6 +123,24 @@
               "type": "string",
               "enum": [
                 "buy_structure"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "tile",
+            "type"
+          ],
+          "properties": {
+            "tile": {
+              "$ref": "#/definitions/Tile"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "buy_field_plot"
               ]
             }
           }

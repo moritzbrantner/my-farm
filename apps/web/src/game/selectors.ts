@@ -200,6 +200,10 @@ export function isTileAvailableForNewStructure(
   return isTileAvailableForFootprint(view, tile, structureFootprint(kind), null);
 }
 
+export function isTileAvailableForNewFieldPlot(view: FarmView, tile: Tile): boolean {
+  return isTileAvailableForFootprint(view, tile, { width: 1, height: 1 }, null);
+}
+
 export function isTileOccupiedForPlacement(
   view: FarmView,
   tile: Tile,
