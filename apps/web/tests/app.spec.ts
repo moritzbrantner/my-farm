@@ -6,7 +6,7 @@ test("renders the playable farm shell", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("My Farm")).toBeVisible();
   await expect(page.getByText(/Level 1/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Bakery" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toBeVisible();
 
   const canvas = page.locator("canvas").first();
   await expect(canvas).toBeVisible();
@@ -15,14 +15,101 @@ test("renders the playable farm shell", async ({ page }) => {
   expect(box?.height).toBeGreaterThan(250);
 });
 
-test("opens a structure menu from an unavailable build tray button", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+test("build tray shows disabled structure details without opening a context menu", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Bakery" }).click({ button: "right", force: true });
+  const tray = page.getByRole("navigation", { name: "Structures" });
+  await tray.getByRole("button", { name: /Bakery/ }).click();
 
-  await expect(page.getByTestId("structure-context-menu")).toContainText("Bakery");
-  await expect(page.getByRole("menuitem", { name: "Build Unlocks at level 2" })).toBeDisabled();
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Bakery");
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Unlocks at level 2");
+});
+
+test("placing an available structure sends buy_structure with the chosen tile", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ }).click();
+  await expect(page.getByText("Place Bakery")).toBeVisible();
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Choose a tile");
+  await expectCanvasToChangeAfterHover(page);
+
+  const command = await clickUntilCommand(page, commands);
+  expect(command.command).toMatchObject({
+    type: "buy_structure",
+    structure_kind: "bakery",
+  });
+  expect(command.command).toHaveProperty("tile");
+});
+
+test("blocked structure placement explains the occupied tile without sending a command", async ({
+  page,
+}) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  const fieldPoint = await fieldTargetPoint(page, "plot-1");
+  await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ }).click();
+  await page.mouse.click(fieldPoint.x, fieldPoint.y);
+
+  await expect(page.getByText("Tile is occupied")).toBeVisible();
+  expect(commands).toHaveLength(0);
+});
+
+test("escape cancels structure placement", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  const groundPoint = await findFreeCanvasPoint(page);
+  await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ }).click();
+  await expect(page.getByText("Place Bakery")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.mouse.click(groundPoint.x, groundPoint.y);
+
+  expect(commands).toHaveLength(0);
+});
+
+test("built and locked structure cards show reasons without buying", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, farmView, catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  const tray = page.getByRole("navigation", { name: "Structures" });
+  const details = page.getByTestId("build-detail-strip");
+
+  await tray.getByRole("button", { name: /Bakery/ }).click();
+  await expect(details).toContainText("Already built");
+
+  await tray.getByRole("button", { name: /Cow Pasture/ }).click();
+  await expect(details).toContainText("Unlocks at level 5");
+  expect(commands).toHaveLength(0);
+});
+
+test("unaffordable structure card shows its coin shortfall without buying", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, { ...buildableFarmView(), coins: 0 }, catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  const tray = page.getByRole("navigation", { name: "Structures" });
+  const details = page.getByTestId("build-detail-strip");
+
+  await tray.getByRole("button", { name: /Bakery/ }).click();
+  await expect(details).toContainText("Need 40 coins");
+  expect(commands).toHaveLength(0);
 });
 
 test("opens a structure menu from right click without replacing normal selection", async ({
@@ -113,7 +200,7 @@ test("right click on ready field opens harvest menu", async ({ page }, testInfo)
   await mockFarmApi(page, readyFieldView());
   await page.goto("/");
 
-  const fieldPoint = await findCanvasSelectionPoint(page, "Wheat - ready");
+  const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
 
   const menu = page.getByTestId("structure-context-menu");
@@ -132,12 +219,12 @@ test("dragging across ready matching crops sends one sweep harvest command", asy
   });
   await page.goto("/");
 
-  const secondFieldPoint = await findCanvasSelectionPoint(page, "Plant Wheat");
+  const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
 
   currentView = twoReadyWheatFieldView();
   await page.reload();
   await expect(page.getByText("Local farm synced")).toBeVisible();
-  const readyStartPoint = await findCanvasSelectionPoint(page, "Wheat - ready");
+  const readyStartPoint = await fieldTargetPoint(page, "plot-1");
 
   await dragHarvestSweep(page, readyStartPoint, secondFieldPoint);
 
@@ -156,8 +243,8 @@ test("dragging across a different ready crop keeps sweep harvest crop-specific",
   });
   await page.goto("/");
 
-  const wheatPoint = await findCanvasSelectionPoint(page, "Wheat - ready");
-  const cornPoint = await findCanvasSelectionPoint(page, "Corn - ready");
+  const wheatPoint = await fieldTargetPoint(page, "plot-1");
+  const cornPoint = await fieldTargetPoint(page, "plot-2");
 
   await dragHarvestSweep(page, wheatPoint, cornPoint);
 
@@ -171,7 +258,7 @@ test("right mouse drag on a field opens menu instead of panning canvas", async (
   await mockFarmApi(page, readyFieldView());
   await page.goto("/");
 
-  const fieldPoint = await findCanvasSelectionPoint(page, "Wheat - ready");
+  const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.move(fieldPoint.x, fieldPoint.y);
   await page.mouse.down({ button: "right" });
   await page.mouse.move(fieldPoint.x + 96, fieldPoint.y + 64);
@@ -184,8 +271,7 @@ test("long press on field opens field menu", async ({ page }) => {
   await mockFarmApi(page, readyFieldView());
   await page.goto("/");
 
-  const fieldPoint = await findCanvasSelectionPoint(page, "Wheat - ready");
-  await touchPressCanvas(page, fieldPoint, 560);
+  await touchPress(page.getByLabel("Field Plot plot-1"), 560);
 
   await expect(page.getByTestId("structure-context-menu")).toContainText("Harvest");
 });
@@ -195,7 +281,7 @@ test("empty field menu shows plant options", async ({ page }, testInfo) => {
   await mockFarmApi(page, farmView);
   await page.goto("/");
 
-  const fieldPoint = await findCanvasSelectionPoint(page, "Plant Wheat");
+  const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
 
   const menu = page.getByTestId("structure-context-menu");
@@ -209,7 +295,7 @@ test("growing field menu shows timer", async ({ page }, testInfo) => {
   await mockFarmApi(page, growingFieldView());
   await page.goto("/");
 
-  const fieldPoint = await findCanvasSelectionPointByRegex(page, /Wheat - \d+s/);
+  const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
 
   const menu = page.getByTestId("structure-context-menu");
@@ -222,7 +308,7 @@ test("ready harvest is disabled when storage is full", async ({ page }, testInfo
   await mockFarmApi(page, { ...readyFieldView(), silo_used: 40, silo_capacity: 40 });
   await page.goto("/");
 
-  const fieldPoint = await findCanvasSelectionPoint(page, "Wheat - ready");
+  const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
 
   await expect(
@@ -328,7 +414,9 @@ const catalog: CatalogDocument = {
     { id: "wheat", name: "Wheat", kind: "crop", unlock_level: 1 },
     { id: "corn", name: "Corn", kind: "crop", unlock_level: 2 },
     { id: "chicken_feed", name: "Chicken Feed", kind: "feed", unlock_level: 3 },
+    { id: "cow_feed", name: "Cow Feed", kind: "feed", unlock_level: 5 },
     { id: "egg", name: "Egg", kind: "animal_product", unlock_level: 3 },
+    { id: "milk", name: "Milk", kind: "animal_product", unlock_level: 5 },
     { id: "bread", name: "Bread", kind: "product", unlock_level: 2 },
     { id: "corn_bread", name: "Corn Bread", kind: "product", unlock_level: 4 },
   ],
@@ -391,6 +479,18 @@ const catalog: CatalogDocument = {
       reference_seconds: 1200,
       xp: 3,
     },
+    {
+      kind: "cow_pasture",
+      name: "Cow Pasture",
+      animal_name: "Cow",
+      build_cost: 50,
+      unlock_level: 5,
+      slots: 2,
+      feed_item_id: "cow_feed",
+      product_item_id: "milk",
+      reference_seconds: 3600,
+      xp: 5,
+    },
   ],
   level_xp: [0, 0, 4, 14, 30],
 };
@@ -437,6 +537,18 @@ const farmView: FarmView = {
   unlocks: [],
 };
 
+function buildableFarmView(): FarmView {
+  return {
+    ...farmView,
+    level: 3,
+    coins: 120,
+    machines: [],
+    shelters: [],
+    delivery_board_built: false,
+    delivery_orders: [],
+  };
+}
+
 async function mockFarmApi(
   page: Page,
   view: FarmView = farmView,
@@ -472,9 +584,13 @@ async function clickUntilCommand(page: Page, commands: CommandRequest[]) {
     throw new Error("Canvas has no bounding box");
   }
   const maxX = await canvasSearchMaxX(page, box);
-  const maxY = box.y + box.height - 96;
+  const maxY = canvasSearchMaxY(box, 96);
+  const appChromeBoxes = await visibleAppChromeBoxes(page);
   for (let y = box.y + 96; y < maxY; y += 28) {
     for (let x = box.x + 24; x < maxX; x += 28) {
+      if (isPointInBoxes(appChromeBoxes, x, y)) {
+        continue;
+      }
       await page.mouse.click(x, y);
       const command = commands.at(-1);
       if (command) {
@@ -498,6 +614,18 @@ async function findCanvasSelectionPoint(page: Page, selectionText: string) {
   return findCanvasSelectionPointByText(page, selectionText, true);
 }
 
+async function fieldTargetPoint(page: Page, plotId: string) {
+  const fieldTarget = page.getByLabel(`Field Plot ${plotId}`);
+  const box = await fieldTarget.boundingBox();
+  if (!box) {
+    throw new Error(`Could not find field target for ${plotId}`);
+  }
+  return {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
+}
+
 async function findFreeCanvasPoint(page: Page) {
   const canvas = page.locator("canvas").first();
   const emptySelection = page.getByText("Select a field, machine, shelter, or order board.");
@@ -507,9 +635,13 @@ async function findFreeCanvasPoint(page: Page) {
     throw new Error("Canvas has no bounding box");
   }
   const maxX = await canvasSearchMaxX(page, box);
-  const maxY = box.y + box.height - 96;
+  const maxY = canvasSearchMaxY(box, 96);
+  const appChromeBoxes = await visibleAppChromeBoxes(page);
   for (let y = box.y + 96; y < maxY; y += 32) {
     for (let x = box.x + 24; x < maxX; x += 32) {
+      if (isPointInBoxes(appChromeBoxes, x, y)) {
+        continue;
+      }
       await page.mouse.click(x, y);
       if (await emptySelection.isVisible().catch(() => false)) {
         return { x, y };
@@ -536,10 +668,38 @@ async function findCanvasSelectionPointByText(
   if (!box) {
     throw new Error("Canvas has no bounding box");
   }
+  const appChromeBoxes = await visibleAppChromeBoxes(page);
+  const fieldTargets = page.locator(".field-hit-target");
+  const fieldTargetCount = await fieldTargets.count();
+  for (let index = 0; index < fieldTargetCount; index += 1) {
+    const fieldTarget = fieldTargets.nth(index);
+    const targetBox = await fieldTarget.boundingBox();
+    if (!targetBox) {
+      continue;
+    }
+    const point = {
+      x: targetBox.x + targetBox.width / 2,
+      y: targetBox.y + targetBox.height / 2,
+    };
+    if (isPointInBoxes(appChromeBoxes, point.x, point.y)) {
+      continue;
+    }
+    await fieldTarget.click({ force: true });
+    const match =
+      typeof selectionText === "string"
+        ? selectionPanel.getByText(selectionText, { exact })
+        : selectionPanel.getByText(selectionText);
+    if (await match.isVisible().catch(() => false)) {
+      return point;
+    }
+  }
   const maxX = await canvasSearchMaxX(page, box);
-  const maxY = box.y + box.height - 24;
+  const maxY = canvasSearchMaxY(box, 24);
   for (let y = box.y + 48; y < maxY; y += 28) {
     for (let x = box.x + 24; x < maxX; x += 28) {
+      if (isPointInBoxes(appChromeBoxes, x, y)) {
+        continue;
+      }
       await page.mouse.click(x, y);
       const match =
         typeof selectionText === "string"
@@ -596,9 +756,13 @@ async function expectCanvasToChangeAfterHover(page: Page) {
   }
   const before = await canvasSnapshot(page);
   const maxX = await canvasSearchMaxX(page, box);
-  const maxY = box.y + box.height - 96;
+  const maxY = canvasSearchMaxY(box, 96);
+  const appChromeBoxes = await visibleAppChromeBoxes(page);
   for (let y = box.y + 96; y < maxY; y += 32) {
     for (let x = box.x + 24; x < maxX; x += 32) {
+      if (isPointInBoxes(appChromeBoxes, x, y)) {
+        continue;
+      }
       await page.mouse.move(x, y);
       await page.waitForTimeout(40);
       if ((await canvasSnapshot(page)) !== before) {
@@ -620,6 +784,28 @@ async function canvasSearchMaxX(page: Page, box: { x: number; width: number }) {
   const sidePanelBox = await page.locator(".side-panel").boundingBox();
   const sidePanelLeft = sidePanelBox && sidePanelBox.x > box.x ? sidePanelBox.x - 24 : canvasRight;
   return Math.min(canvasRight, sidePanelLeft, box.x + Math.max(320, box.width * 0.72));
+}
+
+function canvasSearchMaxY(box: { y: number; height: number }, bottomPadding: number) {
+  return box.y + box.height - bottomPadding;
+}
+
+type SearchBox = { x: number; y: number; width: number; height: number };
+
+async function visibleAppChromeBoxes(page: Page): Promise<SearchBox[]> {
+  const boxes = await Promise.all(
+    [".top-bar", ".side-panel", ".build-dock", ".structure-context-menu"].map(async (selector) => {
+      const element = await page.$(selector);
+      return element ? element.boundingBox() : null;
+    }),
+  );
+  return boxes.filter((box): box is SearchBox => box !== null);
+}
+
+function isPointInBoxes(boxes: SearchBox[], x: number, y: number) {
+  return boxes.some(
+    (box) => x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height,
+  );
 }
 
 function escapeRegExp(value: string) {

@@ -156,6 +156,23 @@ export function isTileAvailableForStructure(
   moving: StructureSelection | null,
 ): boolean {
   const footprint = moving ? structureFootprintForSelection(view, moving) : { width: 1, height: 1 };
+  return isTileAvailableForFootprint(view, tile, footprint, moving);
+}
+
+export function isTileAvailableForNewStructure(
+  view: FarmView,
+  tile: Tile,
+  kind: StructureKind,
+): boolean {
+  return isTileAvailableForFootprint(view, tile, structureFootprint(kind), null);
+}
+
+function isTileAvailableForFootprint(
+  view: FarmView,
+  tile: Tile,
+  footprint: StructureFootprint,
+  moving: StructureSelection | null,
+): boolean {
   if (!isFootprintInsideFarm(tile, footprint)) {
     return false;
   }

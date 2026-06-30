@@ -5,8 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
   type Ref,
 } from "react";
 import { createFarmClient } from "./api";
@@ -15,6 +13,7 @@ import { ResourceIcon } from "./components/ResourceIcon";
 import {
   availableRecipes,
   builtStructureKinds,
+  isTileAvailableForNewStructure,
   isTileAvailableForStructure,
   itemName,
   recipeName,
@@ -24,7 +23,6 @@ import {
   selectedShelter,
   selectedStructureLabel,
   structureLabel,
-  structureTile,
   type FieldContextMenuState,
   type StructureContextMenuState,
   type StructureSelection,
@@ -58,16 +56,47 @@ const buildKinds: StructureKind[] = [
 ];
 
 type SendCommand = (command: FarmCommand) => Promise<boolean>;
-type BuildContextMenuState = {
+type BuildPlacementState = {
   kind: StructureKind;
-  x: number;
-  y: number;
 } | null;
+type StructureBuildCardMeta = {
+  kind: StructureKind;
+  role: string;
+  accentClass: string;
+};
 type HarvestSweepState = {
   cropId: string;
   plotIds: string[];
   pointerId: number;
 } | null;
+
+const structureBuildCardMetas: Record<StructureKind, StructureBuildCardMeta> = {
+  bakery: {
+    kind: "bakery",
+    role: "Turns wheat into bread for delivery orders.",
+    accentClass: "bakery",
+  },
+  feed_mill: {
+    kind: "feed_mill",
+    role: "Mills crops into animal feed.",
+    accentClass: "feed-mill",
+  },
+  chicken_coop: {
+    kind: "chicken_coop",
+    role: "Houses chickens that produce eggs.",
+    accentClass: "chicken-coop",
+  },
+  delivery_board: {
+    kind: "delivery_board",
+    role: "Unlocks delivery orders for coins and XP.",
+    accentClass: "delivery-board",
+  },
+  cow_pasture: {
+    kind: "cow_pasture",
+    role: "Houses cows that produce milk.",
+    accentClass: "cow-pasture",
+  },
+};
 
 export function App() {
   const [catalog, setCatalog] = useState<CatalogDocument | null>(null);
@@ -76,7 +105,8 @@ export function App() {
   const [selection, setSelection] = useState<Selection>(null);
   const [fieldMenu, setFieldMenu] = useState<FieldContextMenuState>(null);
   const [structureMenu, setStructureMenu] = useState<StructureContextMenuState>(null);
-  const [buildMenu, setBuildMenu] = useState<BuildContextMenuState>(null);
+  const [buildPlacement, setBuildPlacement] = useState<BuildPlacementState>(null);
+  const [selectedBuildKind, setSelectedBuildKind] = useState<StructureKind | null>(null);
   const [movingStructure, setMovingStructure] = useState<StructureSelection | null>(null);
   const [harvestSweep, setHarvestSweep] = useState<HarvestSweepState>(null);
   const [message, setMessage] = useState("Connecting to local server...");
@@ -131,7 +161,7 @@ export function App() {
   }, [fieldMenu, view]);
 
   useEffect(() => {
-    if (!fieldMenu && !structureMenu && !buildMenu && !movingStructure && !harvestSweep) {
+    if (!fieldMenu && !structureMenu && !buildPlacement && !movingStructure && !harvestSweep) {
       return;
     }
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -140,13 +170,12 @@ export function App() {
       }
       setFieldMenu(null);
       setStructureMenu(null);
-      setBuildMenu(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setFieldMenu(null);
         setStructureMenu(null);
-        setBuildMenu(null);
+        setBuildPlacement(null);
         setMovingStructure(null);
         setHarvestSweep(null);
       }
@@ -157,13 +186,13 @@ export function App() {
       document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [buildMenu, fieldMenu, harvestSweep, movingStructure, structureMenu]);
+  }, [buildPlacement, fieldMenu, harvestSweep, movingStructure, structureMenu]);
 
   const select = useCallback((nextSelection: Selection) => {
     setSelection(nextSelection);
     setFieldMenu(null);
     setStructureMenu(null);
-    setBuildMenu(null);
+    setBuildPlacement(null);
     setMovingStructure(null);
     setHarvestSweep(null);
   }, []);
@@ -171,7 +200,7 @@ export function App() {
   const openFieldMenu = useCallback((plotId: string, point: { x: number; y: number }) => {
     setSelection({ type: "plot", id: plotId });
     setStructureMenu(null);
-    setBuildMenu(null);
+    setBuildPlacement(null);
     setMovingStructure(null);
     setHarvestSweep(null);
     setFieldMenu({ plotId, x: point.x, y: point.y });
@@ -180,18 +209,29 @@ export function App() {
   const openStructureMenu = useCallback((target: StructureSelection, point: { x: number; y: number }) => {
     setSelection(target);
     setFieldMenu(null);
-    setBuildMenu(null);
+    setBuildPlacement(null);
     setMovingStructure(null);
     setHarvestSweep(null);
     setStructureMenu({ target, x: point.x, y: point.y });
   }, []);
 
-  const openBuildMenu = useCallback((kind: StructureKind, point: { x: number; y: number }) => {
+  const selectBuildKind = useCallback((kind: StructureKind, canPlace: boolean) => {
+    setSelectedBuildKind(kind);
     setFieldMenu(null);
     setStructureMenu(null);
     setMovingStructure(null);
     setHarvestSweep(null);
-    setBuildMenu({ kind, x: point.x, y: point.y });
+    if (canPlace) {
+      setBuildPlacement({ kind });
+      setSelection(null);
+      setMessage(`Place ${structureLabel(kind)}`);
+      return;
+    }
+    setBuildPlacement(null);
+  }, []);
+
+  const inspectBuildKind = useCallback((kind: StructureKind) => {
+    setSelectedBuildKind(kind);
   }, []);
 
   const send = useCallback(
@@ -217,7 +257,7 @@ export function App() {
     setSelection(null);
     setFieldMenu(null);
     setStructureMenu(null);
-    setBuildMenu(null);
+    setBuildPlacement(null);
     setMovingStructure(null);
     setHarvestSweep(null);
     setMessage("Farm reset");
@@ -227,7 +267,7 @@ export function App() {
     setSelection({ type: "delivery_board" });
     setFieldMenu(null);
     setStructureMenu(null);
-    setBuildMenu(null);
+    setBuildPlacement(null);
     setMovingStructure(null);
     setHarvestSweep(null);
     window.setTimeout(() => {
@@ -244,7 +284,7 @@ export function App() {
       setSelection(target);
       setFieldMenu(null);
       setStructureMenu(null);
-      setBuildMenu(null);
+      setBuildPlacement(null);
       setMovingStructure(target);
       setHarvestSweep(null);
       setMessage(`Moving ${selectedStructureLabel(view, target)}`);
@@ -269,6 +309,27 @@ export function App() {
     [movingStructure, send, view],
   );
 
+  const placeNewStructure = useCallback(
+    async (tile: { x: number; y: number }) => {
+      if (!view || !buildPlacement) {
+        return;
+      }
+      if (!isTileAvailableForNewStructure(view, tile, buildPlacement.kind)) {
+        setMessage("Tile is occupied");
+        return;
+      }
+      const accepted = await send({
+        type: "buy_structure",
+        structure_kind: buildPlacement.kind,
+        tile,
+      });
+      if (accepted) {
+        setBuildPlacement(null);
+      }
+    },
+    [buildPlacement, send, view],
+  );
+
   const startHarvestSweep = useCallback(
     (plotId: string, pointerId: number) => {
       if (!view) {
@@ -281,7 +342,7 @@ export function App() {
       setSelection({ type: "plot", id: plotId });
       setFieldMenu(null);
       setStructureMenu(null);
-      setBuildMenu(null);
+      setBuildPlacement(null);
       setMovingStructure(null);
       setHarvestSweep({
         cropId: plot.crop.item_id,
@@ -322,7 +383,7 @@ export function App() {
       setSelection({ type: "plot", id: plotIds[0] });
       setFieldMenu(null);
       setStructureMenu(null);
-      setBuildMenu(null);
+      setBuildPlacement(null);
     }
   }, [harvestSweep, send]);
 
@@ -360,21 +421,21 @@ export function App() {
       )
     : structureMenu
       ? buildStructureMenuModel(catalog, view, structureMenu.target, nowMs)
-      : buildMenu
-        ? buildStructureBuildMenuModel(catalog, view, buildMenu.kind)
-        : null;
-  const menuPoint = fieldMenu ?? structureMenu ?? buildMenu;
+      : null;
+  const menuPoint = fieldMenu ?? structureMenu;
 
   return (
     <main className="app">
       <FarmScene
         view={view}
         selection={selection}
+        buildPlacement={buildPlacement}
         movingStructure={movingStructure}
         harvestSweep={harvestSweep}
         onSelect={select}
         onOpenFieldMenu={openFieldMenu}
         onOpenStructureMenu={openStructureMenu}
+        onPlaceNewStructure={placeNewStructure}
         onPlaceStructure={placeMovingStructure}
         onStartHarvestSweep={startHarvestSweep}
         onEnterHarvestSweepPlot={enterHarvestSweepPlot}
@@ -392,7 +453,14 @@ export function App() {
         />
         <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
       </aside>
-      <BuildTray catalog={catalog} view={view} send={send} onOpenBuildMenu={openBuildMenu} />
+      <BuildTray
+        catalog={catalog}
+        view={view}
+        selectedKind={selectedBuildKind}
+        buildPlacement={buildPlacement}
+        onInspectKind={inspectBuildKind}
+        onSelectKind={selectBuildKind}
+      />
       {menuPoint && menuModel ? (
         <StructureContextMenu
           model={menuModel}
@@ -401,14 +469,12 @@ export function App() {
           onClose={() => {
             setFieldMenu(null);
             setStructureMenu(null);
-            setBuildMenu(null);
           }}
           onCommand={async (command) => {
             const accepted = await send(command);
             if (accepted) {
               setFieldMenu(null);
               setStructureMenu(null);
-              setBuildMenu(null);
             }
           }}
           onStartMove={() => {
@@ -789,121 +855,139 @@ function Orders({
 function BuildTray({
   catalog,
   view,
-  send,
-  onOpenBuildMenu,
+  selectedKind,
+  buildPlacement,
+  onInspectKind,
+  onSelectKind,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
-  send: SendCommand;
-  onOpenBuildMenu: (kind: StructureKind, point: { x: number; y: number }) => void;
+  selectedKind: StructureKind | null;
+  buildPlacement: BuildPlacementState;
+  onInspectKind: (kind: StructureKind) => void;
+  onSelectKind: (kind: StructureKind, canPlace: boolean) => void;
 }) {
   const built = useMemo(() => builtStructureKinds(view), [view]);
+  const cardStates = buildKinds.map((kind) =>
+    buildStructureCardState(catalog, view, kind, built, selectedKind, buildPlacement),
+  );
+  const detail = cardStates.find((state) => state.kind === (selectedKind ?? buildKinds[0])) ?? cardStates[0];
+
   return (
-    <nav className="build-tray">
-      {buildKinds.map((kind) => {
-        const unlockLevel = unlockLevelForStructure(catalog, kind);
-        const unavailable = built.has(kind) || view.level < unlockLevel;
-        return (
-          <BuildTrayButton
-            key={kind}
-            kind={kind}
-            unavailable={unavailable}
-            onOpenBuildMenu={onOpenBuildMenu}
-            onBuild={() =>
-              send({
-                type: "buy_structure",
-                structure_kind: kind,
-                tile: structureTile(kind),
-              })
-            }
+    <section className="build-dock" aria-label="Structure build menu">
+      <div
+        className={`build-detail-strip build-detail-strip--${detail.accentClass}`}
+        data-testid="build-detail-strip"
+      >
+        <div className="build-detail-strip__copy">
+          <strong>{detail.label}</strong>
+          <span>{detail.role}</span>
+        </div>
+        <div className="build-detail-strip__facts">
+          <span>{detail.cost} coins</span>
+          <span>{detail.placing ? "Choose a tile" : detail.reason ?? "Click to place"}</span>
+        </div>
+      </div>
+      <nav className="build-tray" aria-label="Structures">
+        {cardStates.map((state) => (
+          <StructureBuildCard
+            key={state.kind}
+            state={state}
+            onInspect={() => onInspectKind(state.kind)}
+            onSelect={() => onSelectKind(state.kind, state.canPlace)}
           />
-        );
-      })}
-    </nav>
+        ))}
+      </nav>
+    </section>
   );
 }
 
-function BuildTrayButton({
-  kind,
-  unavailable,
-  onBuild,
-  onOpenBuildMenu,
+type StructureBuildCardState = StructureBuildCardMeta & {
+  label: string;
+  cost: number;
+  status: string;
+  reason?: string;
+  canPlace: boolean;
+  selected: boolean;
+  placing: boolean;
+};
+
+function StructureBuildCard({
+  state,
+  onInspect,
+  onSelect,
 }: {
-  kind: StructureKind;
-  unavailable: boolean;
-  onBuild: () => void;
-  onOpenBuildMenu: (kind: StructureKind, point: { x: number; y: number }) => void;
+  state: StructureBuildCardState;
+  onInspect: () => void;
+  onSelect: () => void;
 }) {
-  const longPressTimer = useRef<number | null>(null);
-  const longPressStart = useRef<{ x: number; y: number } | null>(null);
-
-  useEffect(() => clearLongPress, []);
-
-  function clearLongPress() {
-    if (longPressTimer.current !== null) {
-      window.clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-    longPressStart.current = null;
-    window.removeEventListener("pointermove", handleWindowPointerMove);
-    window.removeEventListener("pointerup", clearLongPress);
-    window.removeEventListener("pointercancel", clearLongPress);
-  }
-
-  function handleWindowPointerMove(event: PointerEvent) {
-    if (!longPressStart.current) {
-      return;
-    }
-    const moved = Math.hypot(
-      event.clientX - longPressStart.current.x,
-      event.clientY - longPressStart.current.y,
-    );
-    if (moved > 8) {
-      clearLongPress();
-    }
-  }
-
-  const openMenu = (event: ReactMouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onOpenBuildMenu(kind, { x: event.clientX, y: event.clientY });
-  };
-
-  const startLongPress = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (event.pointerType !== "touch" && event.pointerType !== "pen") {
-      return;
-    }
-    longPressStart.current = { x: event.clientX, y: event.clientY };
-    window.addEventListener("pointermove", handleWindowPointerMove);
-    window.addEventListener("pointerup", clearLongPress);
-    window.addEventListener("pointercancel", clearLongPress);
-    longPressTimer.current = window.setTimeout(() => {
-      if (!longPressStart.current) {
-        return;
-      }
-      onOpenBuildMenu(kind, longPressStart.current);
-      clearLongPress();
-    }, 500);
-  };
-
   return (
     <button
+      className={`structure-build-card structure-build-card--${state.accentClass}${
+        state.selected ? " structure-build-card--selected" : ""
+      }${state.placing ? " structure-build-card--placing" : ""}`}
       type="button"
-      aria-disabled={unavailable}
-      onClick={() => {
-        clearLongPress();
-        if (!unavailable) {
-          onBuild();
-        }
-      }}
-      onContextMenu={openMenu}
-      onPointerDown={startLongPress}
-      onPointerUp={clearLongPress}
-      onPointerCancel={clearLongPress}
+      aria-pressed={state.placing}
+      data-status={state.status}
+      onFocus={onInspect}
+      onClick={onSelect}
     >
-      {structureLabel(kind)}
+      <span className="structure-build-card__art" aria-hidden="true">
+        {structureInitials(state.label)}
+      </span>
+      <span className="structure-build-card__body">
+        <strong>{state.label}</strong>
+        <span>{state.role}</span>
+      </span>
+      <span className="structure-build-card__footer">
+        <span>{state.cost} coins</span>
+        <span>{state.placing ? "Placing" : state.status}</span>
+      </span>
     </button>
   );
+}
+
+function buildStructureCardState(
+  catalog: CatalogDocument,
+  view: FarmView,
+  kind: StructureKind,
+  built: Set<StructureKind>,
+  selectedKind: StructureKind | null,
+  buildPlacement: BuildPlacementState,
+): StructureBuildCardState {
+  const unlockLevel = unlockLevelForStructure(catalog, kind);
+  const cost = buildCostForStructure(catalog, kind);
+  const isBuilt = built.has(kind);
+  const locked = view.level < unlockLevel;
+  const unaffordable = view.coins < cost;
+  const placing = buildPlacement?.kind === kind;
+  const reason = isBuilt
+    ? "Already built"
+    : locked
+      ? `Unlocks at level ${unlockLevel}`
+      : unaffordable
+        ? `Need ${cost - view.coins} coins`
+        : undefined;
+  const meta = structureBuildCardMetas[kind];
+
+  return {
+    ...meta,
+    label: structureLabel(kind),
+    cost,
+    status: isBuilt ? "Built" : locked ? `Level ${unlockLevel}` : unaffordable ? "Need coins" : "Ready",
+    reason,
+    canPlace: !isBuilt && !locked && !unaffordable,
+    selected: selectedKind === kind,
+    placing,
+  };
+}
+
+function structureInitials(label: string): string {
+  return label
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2);
 }
 
 function unlockLevelForStructure(catalog: CatalogDocument, kind: StructureKind): number {
@@ -915,40 +999,6 @@ function unlockLevelForStructure(catalog: CatalogDocument, kind: StructureKind):
   }
   const shelterKind = kind === "chicken_coop" ? "chicken_coop" : "cow_pasture";
   return catalog.shelters.find((shelter) => shelter.kind === shelterKind)?.unlock_level ?? 1;
-}
-
-function buildStructureBuildMenuModel(
-  catalog: CatalogDocument,
-  view: FarmView,
-  kind: StructureKind,
-): StructureMenuModel {
-  const built = builtStructureKinds(view).has(kind);
-  const unlockLevel = unlockLevelForStructure(catalog, kind);
-  const buildCost = buildCostForStructure(catalog, kind);
-  const label = structureLabel(kind);
-  const reason = built
-    ? "Already built"
-    : view.level < unlockLevel
-      ? `Unlocks at level ${unlockLevel}`
-      : view.coins < buildCost
-        ? `Need ${buildCost - view.coins} coins`
-        : undefined;
-
-  return {
-    title: label,
-    subtitle: built ? "Built structure" : `${buildCost} coins`,
-    items: [
-      {
-        id: `build-${kind}`,
-        label: "Build",
-        disabled: Boolean(reason),
-        reason,
-        command: reason
-          ? undefined
-          : { type: "buy_structure", structure_kind: kind, tile: structureTile(kind) },
-      },
-    ],
-  };
 }
 
 function buildCostForStructure(catalog: CatalogDocument, kind: StructureKind): number {

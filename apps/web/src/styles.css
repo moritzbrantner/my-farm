@@ -70,9 +70,28 @@ button[aria-disabled="true"] {
   pointer-events: none !important;
 }
 
+.field-hit-wrapper {
+  pointer-events: none !important;
+}
+
 .structure-hit-target {
   width: 78px;
   height: 58px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.field-hit-target {
+  width: 56px;
+  height: 44px;
   min-height: 0;
   padding: 0;
   border: 0;
@@ -118,7 +137,7 @@ button[aria-disabled="true"] {
   position: absolute;
   top: 12px;
   right: 12px;
-  bottom: 86px;
+  bottom: 128px;
   width: 352px;
   display: flex;
   flex-direction: column;
@@ -294,23 +313,186 @@ h2 {
   gap: 10px;
 }
 
-.build-tray {
+.build-dock {
   position: absolute;
   left: 12px;
   right: 12px;
   bottom: 12px;
-  display: flex;
-  gap: 10px;
-  padding: 10px;
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.build-detail-strip,
+.build-tray {
+  pointer-events: auto;
   border: 1px solid rgba(32, 49, 43, 0.24);
   border-radius: 8px;
   background: rgba(247, 239, 221, 0.94);
   box-shadow: 0 10px 24px rgba(32, 49, 43, 0.14);
+}
+
+.build-detail-strip {
+  min-height: 112px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 14px;
+  padding: 8px 10px;
+  overflow: hidden;
+}
+
+.build-detail-strip--bakery {
+  border-left: 8px solid #c97a48;
+}
+
+.build-detail-strip--feed-mill {
+  border-left: 8px solid #79955b;
+}
+
+.build-detail-strip--chicken-coop {
+  border-left: 8px solid #d8a64e;
+}
+
+.build-detail-strip--delivery-board {
+  border-left: 8px solid #8c7e55;
+}
+
+.build-detail-strip--cow-pasture {
+  border-left: 8px solid #b98762;
+}
+
+.build-detail-strip__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.build-detail-strip__copy strong,
+.build-detail-strip__copy span,
+.build-detail-strip__facts span {
+  overflow-wrap: anywhere;
+}
+
+.build-detail-strip__facts {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.build-detail-strip__facts span {
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: #e5edd4;
+}
+
+.build-tray {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
   overflow-x: auto;
 }
 
-.build-tray button {
-  min-width: 138px;
+.structure-build-card {
+  position: relative;
+  width: 176px;
+  min-width: 176px;
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 7px 9px;
+  align-items: center;
+  padding: 9px;
+  text-align: left;
+  background: #fbf6e8;
+}
+
+.structure-build-card--selected,
+.structure-build-card--placing,
+.structure-build-card:focus-visible {
+  outline: 2px solid rgba(32, 49, 43, 0.45);
+  outline-offset: 2px;
+}
+
+.structure-build-card--placing {
+  background: #fff7d0;
+}
+
+.structure-build-card__art {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(32, 49, 43, 0.28);
+  border-radius: 7px;
+  color: #20312b;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.structure-build-card--bakery .structure-build-card__art {
+  background: #d99668;
+}
+
+.structure-build-card--feed-mill .structure-build-card__art {
+  background: #a9bd7d;
+}
+
+.structure-build-card--chicken-coop .structure-build-card__art {
+  background: #e0ba66;
+}
+
+.structure-build-card--delivery-board .structure-build-card__art {
+  background: #d7c48a;
+}
+
+.structure-build-card--cow-pasture .structure-build-card__art {
+  background: #c89672;
+}
+
+.structure-build-card__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.structure-build-card__body strong {
+  font-size: 14px;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+.structure-build-card__body span {
+  color: #536a5e;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.structure-build-card__footer {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 6px;
+  border-top: 1px solid rgba(32, 49, 43, 0.14);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.structure-build-card__footer span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .structure-context-menu {
@@ -402,9 +584,9 @@ h2 {
     top: auto;
     left: 0;
     right: 0;
-    bottom: 74px;
+    bottom: 148px;
     width: auto;
-    max-height: 44vh;
+    max-height: 36vh;
     padding: 0 10px;
   }
 
@@ -412,11 +594,53 @@ h2 {
     padding: 10px;
   }
 
-  .build-tray {
+  .build-dock {
     bottom: 0;
     left: 0;
     right: 0;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .build-detail-strip,
+  .build-tray {
     border-radius: 8px 8px 0 0;
+  }
+
+  .build-detail-strip {
+    min-height: 48px;
+    max-width: none;
+    margin: 0 8px;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    font-size: 13px;
+  }
+
+  .build-detail-strip__facts {
+    font-size: 12px;
+  }
+
+  .build-tray {
+    padding: 8px;
+  }
+
+  .structure-build-card {
+    width: 154px;
+    min-width: 154px;
+    min-height: 88px;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 6px 8px;
+    padding: 8px;
+  }
+
+  .structure-build-card__art {
+    width: 36px;
+    height: 36px;
+  }
+
+  .structure-build-card__body span {
+    font-size: 10px;
   }
 
   .structure-context-menu__item {
