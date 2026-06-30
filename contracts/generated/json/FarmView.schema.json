@@ -4,6 +4,7 @@
   "type": "object",
   "required": [
     "barn_capacity",
+    "barn_tile",
     "barn_used",
     "coins",
     "delivery_board_built",
@@ -16,6 +17,7 @@
     "machines",
     "shelters",
     "silo_capacity",
+    "silo_tile",
     "silo_used",
     "unlocks",
     "xp"
@@ -25,6 +27,9 @@
       "type": "integer",
       "format": "uint32",
       "minimum": 0.0
+    },
+    "barn_tile": {
+      "$ref": "#/definitions/Tile"
     },
     "barn_used": {
       "type": "integer",
@@ -85,6 +90,9 @@
       "type": "integer",
       "format": "uint32",
       "minimum": 0.0
+    },
+    "silo_tile": {
+      "$ref": "#/definitions/Tile"
     },
     "silo_used": {
       "type": "integer",

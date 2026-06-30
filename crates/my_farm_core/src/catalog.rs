@@ -60,6 +60,8 @@ pub enum ShelterKind {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum StructureKind {
+    Silo,
+    Barn,
     Bakery,
     FeedMill,
     ChickenCoop,

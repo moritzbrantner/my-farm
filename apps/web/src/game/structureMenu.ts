@@ -36,6 +36,20 @@ export function buildStructureMenuModel(
   target: StructureSelection,
   nowMs: number,
 ): StructureMenuModel | null {
+  if (target.type === "silo") {
+    return {
+      title: "Silo",
+      subtitle: `${view.silo_used}/${view.silo_capacity} crops`,
+      items: [{ id: "move-structure", label: "Move", action: "move_structure" }],
+    };
+  }
+  if (target.type === "barn") {
+    return {
+      title: "Barn",
+      subtitle: `${view.barn_used}/${view.barn_capacity} goods`,
+      items: [{ id: "move-structure", label: "Move", action: "move_structure" }],
+    };
+  }
   if (target.type === "machine") {
     const machine = view.machines.find((entry) => entry.id === target.id);
     return machine ? buildMachineMenu(catalog, view, machine, nowMs) : null;
@@ -119,6 +133,9 @@ export function buildFieldMenuModel(
 }
 
 export function isStructureTargetPresent(view: FarmView, target: StructureSelection): boolean {
+  if (target.type === "silo" || target.type === "barn") {
+    return true;
+  }
   if (target.type === "machine") {
     return view.machines.some((machine) => machine.id === target.id);
   }

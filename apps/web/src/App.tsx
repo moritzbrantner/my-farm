@@ -46,8 +46,10 @@ import type {
   StructureKind,
 } from "./types";
 
+type BuildableStructureKind = Exclude<StructureKind, "silo" | "barn">;
+
 const client = createFarmClient();
-const buildKinds: StructureKind[] = [
+const buildKinds: BuildableStructureKind[] = [
   "bakery",
   "feed_mill",
   "chicken_coop",
@@ -57,10 +59,10 @@ const buildKinds: StructureKind[] = [
 
 type SendCommand = (command: FarmCommand) => Promise<boolean>;
 type BuildPlacementState = {
-  kind: StructureKind;
+  kind: BuildableStructureKind;
 } | null;
 type StructureBuildCardMeta = {
-  kind: StructureKind;
+  kind: BuildableStructureKind;
   role: string;
   accentClass: string;
 };
@@ -70,7 +72,7 @@ type HarvestSweepState = {
   pointerId: number;
 } | null;
 
-const structureBuildCardMetas: Record<StructureKind, StructureBuildCardMeta> = {
+const structureBuildCardMetas: Record<BuildableStructureKind, StructureBuildCardMeta> = {
   bakery: {
     kind: "bakery",
     role: "Turns wheat into bread for delivery orders.",
@@ -106,7 +108,7 @@ export function App() {
   const [fieldMenu, setFieldMenu] = useState<FieldContextMenuState>(null);
   const [structureMenu, setStructureMenu] = useState<StructureContextMenuState>(null);
   const [buildPlacement, setBuildPlacement] = useState<BuildPlacementState>(null);
-  const [selectedBuildKind, setSelectedBuildKind] = useState<StructureKind | null>(null);
+  const [selectedBuildKind, setSelectedBuildKind] = useState<BuildableStructureKind | null>(null);
   const [movingStructure, setMovingStructure] = useState<StructureSelection | null>(null);
   const [harvestSweep, setHarvestSweep] = useState<HarvestSweepState>(null);
   const [message, setMessage] = useState("Connecting to local server...");
@@ -215,7 +217,7 @@ export function App() {
     setStructureMenu({ target, x: point.x, y: point.y });
   }, []);
 
-  const selectBuildKind = useCallback((kind: StructureKind, canPlace: boolean) => {
+  const selectBuildKind = useCallback((kind: BuildableStructureKind, canPlace: boolean) => {
     setSelectedBuildKind(kind);
     setFieldMenu(null);
     setStructureMenu(null);
@@ -230,7 +232,7 @@ export function App() {
     setBuildPlacement(null);
   }, []);
 
-  const inspectBuildKind = useCallback((kind: StructureKind) => {
+  const inspectBuildKind = useCallback((kind: BuildableStructureKind) => {
     setSelectedBuildKind(kind);
   }, []);
 
@@ -621,6 +623,14 @@ function relevantItemIdsForSelection(
     return shelterDef ? new Set([shelterDef.feed_item_id, shelterDef.product_item_id]) : new Set();
   }
 
+  if (selection?.type === "silo") {
+    return new Set(catalog.items.filter((item) => item.kind === "crop").map((item) => item.id));
+  }
+
+  if (selection?.type === "barn") {
+    return new Set(catalog.items.filter((item) => item.kind !== "crop").map((item) => item.id));
+  }
+
   if (selection?.type === "delivery_board") {
     return new Set(
       view.delivery_orders.flatMap((order) => order.requirements.map((stack) => stack.item_id)),
@@ -646,9 +656,13 @@ function SelectionPanel({
   const plot = selectedPlot(view, selection);
   const machine = selectedMachine(view, selection);
   const shelter = selectedShelter(view, selection);
+  const isSilo = selection?.type === "silo";
+  const isBarn = selection?.type === "barn";
   return (
     <section className="panel-section">
       <h2>Selection</h2>
+      {isSilo ? <p>Silo storage - {view.silo_used}/{view.silo_capacity} crops</p> : null}
+      {isBarn ? <p>Barn storage - {view.barn_used}/{view.barn_capacity} goods</p> : null}
       {plot ? <PlotActions catalog={catalog} view={view} plot={plot} nowMs={nowMs} send={send} /> : null}
       {machine ? (
         <MachineActions catalog={catalog} view={view} machine={machine} nowMs={nowMs} send={send} />
@@ -657,8 +671,8 @@ function SelectionPanel({
         <ShelterActions catalog={catalog} shelter={shelter} nowMs={nowMs} send={send} />
       ) : null}
       {selection?.type === "delivery_board" ? <p>Use delivery orders below.</p> : null}
-      {!plot && !machine && !shelter && selection?.type !== "delivery_board" ? (
-        <p>Select a field, machine, shelter, or order board.</p>
+      {!plot && !machine && !shelter && !isSilo && !isBarn && selection?.type !== "delivery_board" ? (
+        <p>Select a field, machine, shelter, storage, or order board.</p>
       ) : null}
     </section>
   );
@@ -862,10 +876,10 @@ function BuildTray({
 }: {
   catalog: CatalogDocument;
   view: FarmView;
-  selectedKind: StructureKind | null;
+  selectedKind: BuildableStructureKind | null;
   buildPlacement: BuildPlacementState;
-  onInspectKind: (kind: StructureKind) => void;
-  onSelectKind: (kind: StructureKind, canPlace: boolean) => void;
+  onInspectKind: (kind: BuildableStructureKind) => void;
+  onSelectKind: (kind: BuildableStructureKind, canPlace: boolean) => void;
 }) {
   const built = useMemo(() => builtStructureKinds(view), [view]);
   const cardStates = buildKinds.map((kind) =>
@@ -950,9 +964,9 @@ function StructureBuildCard({
 function buildStructureCardState(
   catalog: CatalogDocument,
   view: FarmView,
-  kind: StructureKind,
+  kind: BuildableStructureKind,
   built: Set<StructureKind>,
-  selectedKind: StructureKind | null,
+  selectedKind: BuildableStructureKind | null,
   buildPlacement: BuildPlacementState,
 ): StructureBuildCardState {
   const unlockLevel = unlockLevelForStructure(catalog, kind);
@@ -990,7 +1004,7 @@ function structureInitials(label: string): string {
     .slice(0, 2);
 }
 
-function unlockLevelForStructure(catalog: CatalogDocument, kind: StructureKind): number {
+function unlockLevelForStructure(catalog: CatalogDocument, kind: BuildableStructureKind): number {
   if (kind === "bakery" || kind === "feed_mill") {
     return catalog.machines.find((machine) => machine.kind === kind)?.unlock_level ?? 1;
   }
@@ -1001,7 +1015,7 @@ function unlockLevelForStructure(catalog: CatalogDocument, kind: StructureKind):
   return catalog.shelters.find((shelter) => shelter.kind === shelterKind)?.unlock_level ?? 1;
 }
 
-function buildCostForStructure(catalog: CatalogDocument, kind: StructureKind): number {
+function buildCostForStructure(catalog: CatalogDocument, kind: BuildableStructureKind): number {
   if (kind === "bakery" || kind === "feed_mill") {
     return catalog.machines.find((machine) => machine.kind === kind)?.build_cost ?? 0;
   }

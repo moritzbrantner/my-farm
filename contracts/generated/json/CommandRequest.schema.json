@@ -249,6 +249,8 @@
     "StructureKind": {
       "type": "string",
       "enum": [
+        "silo",
+        "barn",
         "bakery",
         "feed_mill",
         "chicken_coop",
@@ -258,6 +260,34 @@
     },
     "StructureTarget": {
       "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "silo"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "barn"
+              ]
+            }
+          }
+        },
         {
           "type": "object",
           "required": [

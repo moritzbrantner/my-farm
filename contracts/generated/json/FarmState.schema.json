@@ -23,6 +23,17 @@
       "format": "uint32",
       "minimum": 0.0
     },
+    "barn_tile": {
+      "default": {
+        "x": 16,
+        "y": 2
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/Tile"
+        }
+      ]
+    },
     "coins": {
       "type": "integer",
       "format": "uint32",
@@ -92,6 +103,17 @@
       "type": "integer",
       "format": "uint32",
       "minimum": 0.0
+    },
+    "silo_tile": {
+      "default": {
+        "x": 14,
+        "y": 2
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/Tile"
+        }
+      ]
     },
     "xp": {
       "type": "integer",

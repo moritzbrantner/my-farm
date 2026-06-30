@@ -11,12 +11,16 @@ import type {
 
 export type Selection =
   | { type: "plot"; id: string }
+  | { type: "silo" }
+  | { type: "barn" }
   | { type: "machine"; id: string }
   | { type: "shelter"; id: string }
   | { type: "delivery_board" }
   | null;
 
 export type StructureSelection =
+  | { type: "silo" }
+  | { type: "barn" }
   | { type: "machine"; id: string }
   | { type: "shelter"; id: string }
   | { type: "delivery_board" };
@@ -68,6 +72,10 @@ export function recipeName(catalog: CatalogDocument | null, recipeId: string): s
 
 export function structureLabel(kind: StructureKind): string {
   switch (kind) {
+    case "silo":
+      return "Silo";
+    case "barn":
+      return "Barn";
     case "bakery":
       return "Bakery";
     case "feed_mill":
@@ -83,6 +91,10 @@ export function structureLabel(kind: StructureKind): string {
 
 export function structureTile(kind: StructureKind): Tile {
   switch (kind) {
+    case "silo":
+      return { x: 14, y: 2 };
+    case "barn":
+      return { x: 16, y: 2 };
     case "bakery":
       return { x: 8, y: 2 };
     case "feed_mill":
@@ -98,6 +110,9 @@ export function structureTile(kind: StructureKind): Tile {
 
 export function structureFootprint(kind: StructureKind): StructureFootprint {
   switch (kind) {
+    case "silo":
+    case "barn":
+      return { width: 1, height: 1 };
     case "bakery":
       return { width: 2, height: 2 };
     case "chicken_coop":
@@ -111,6 +126,12 @@ export function structureFootprint(kind: StructureKind): StructureFootprint {
 }
 
 export function selectedStructureLabel(view: FarmView, selection: StructureSelection): string {
+  if (selection.type === "silo") {
+    return "Silo";
+  }
+  if (selection.type === "barn") {
+    return "Barn";
+  }
   if (selection.type === "machine") {
     const machine = view.machines.find((entry) => entry.id === selection.id);
     return machine ? structureLabel(machine.kind) : "Structure";
@@ -123,6 +144,12 @@ export function selectedStructureLabel(view: FarmView, selection: StructureSelec
 }
 
 export function selectedStructureKind(view: FarmView, selection: StructureSelection): StructureKind | null {
+  if (selection.type === "silo") {
+    return "silo";
+  }
+  if (selection.type === "barn") {
+    return "barn";
+  }
   if (selection.type === "machine") {
     return view.machines.find((entry) => entry.id === selection.id)?.kind ?? null;
   }
@@ -141,6 +168,12 @@ export function structureFootprintForSelection(
 }
 
 export function selectedStructureTile(view: FarmView, selection: StructureSelection): Tile | null {
+  if (selection.type === "silo") {
+    return view.silo_tile;
+  }
+  if (selection.type === "barn") {
+    return view.barn_tile;
+  }
   if (selection.type === "machine") {
     return view.machines.find((entry) => entry.id === selection.id)?.tile ?? null;
   }
@@ -173,6 +206,12 @@ export function isTileOccupiedForPlacement(
   moving: StructureSelection | null,
 ): boolean {
   if (view.field_plots.some((plot) => sameTile(plot.tile, tile))) {
+    return true;
+  }
+  if (!isSameStructure(moving, { type: "silo" }) && sameTile(view.silo_tile, tile)) {
+    return true;
+  }
+  if (!isSameStructure(moving, { type: "barn" }) && sameTile(view.barn_tile, tile)) {
     return true;
   }
   if (
@@ -213,6 +252,18 @@ function isTileAvailableForFootprint(
     return false;
   }
   if (
+    !isSameStructure(moving, { type: "silo" }) &&
+    footprintsOverlap(tile, footprint, view.silo_tile, structureFootprint("silo"))
+  ) {
+    return false;
+  }
+  if (
+    !isSameStructure(moving, { type: "barn" }) &&
+    footprintsOverlap(tile, footprint, view.barn_tile, structureFootprint("barn"))
+  ) {
+    return false;
+  }
+  if (
     view.machines.some(
       (machine) =>
         !isSameStructure(moving, { type: "machine", id: machine.id }) &&
@@ -239,6 +290,8 @@ function isTileAvailableForFootprint(
 
 export function builtStructureKinds(view: FarmView): Set<StructureKind> {
   const built = new Set<StructureKind>();
+  built.add("silo");
+  built.add("barn");
   for (const machine of view.machines) {
     built.add(machine.kind === "bakery" ? "bakery" : "feed_mill");
   }
@@ -308,6 +361,10 @@ function isSameStructure(left: StructureSelection | null, right: StructureSelect
     return false;
   }
   switch (left.type) {
+    case "silo":
+      return true;
+    case "barn":
+      return true;
     case "delivery_board":
       return true;
     case "machine":

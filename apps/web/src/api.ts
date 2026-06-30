@@ -1,6 +1,23 @@
-import type { CatalogDocument, CommandRequest, CommandResponse, FarmResponse } from "./types";
+import type { CatalogDocument, CommandRequest, CommandResponse, FarmResponse, FarmView, Tile } from "./types";
 
 const defaultBaseUrl = "http://127.0.0.1:8081";
+const defaultSiloTile: Tile = { x: 14, y: 2 };
+const defaultBarnTile: Tile = { x: 16, y: 2 };
+const defaultDeliveryBoardTile: Tile = { x: 2, y: 7 };
+
+type LegacyFarmView = Omit<FarmView, "silo_tile" | "barn_tile" | "delivery_board_tile"> & {
+  silo_tile?: Tile | null;
+  barn_tile?: Tile | null;
+  delivery_board_tile?: Tile | null;
+};
+
+type LegacyFarmResponse = Omit<FarmResponse, "view"> & {
+  view: LegacyFarmView;
+};
+
+type LegacyCommandResponse = Omit<CommandResponse, "view"> & {
+  view: LegacyFarmView;
+};
 
 export function createFarmClient(baseUrl = import.meta.env.VITE_API_BASE_URL ?? defaultBaseUrl) {
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -23,18 +40,50 @@ export function createFarmClient(baseUrl = import.meta.env.VITE_API_BASE_URL ?? 
       const payload = await request<{ catalog: CatalogDocument }>("/api/catalog");
       return payload.catalog;
     },
-    farm(): Promise<FarmResponse> {
-      return request<FarmResponse>("/api/farm");
+    async farm(): Promise<FarmResponse> {
+      return normalizeFarmResponse(await request<LegacyFarmResponse>("/api/farm"));
     },
-    reset(): Promise<FarmResponse> {
-      return request<FarmResponse>("/api/farm/reset", { method: "POST" });
+    async reset(): Promise<FarmResponse> {
+      return normalizeFarmResponse(
+        await request<LegacyFarmResponse>("/api/farm/reset", { method: "POST" }),
+      );
     },
-    command(command: CommandRequest): Promise<CommandResponse> {
-      return request<CommandResponse>("/api/commands", {
-        method: "POST",
-        body: JSON.stringify(command),
-      });
+    async command(command: CommandRequest): Promise<CommandResponse> {
+      return normalizeCommandResponse(
+        await request<LegacyCommandResponse>("/api/commands", {
+          method: "POST",
+          body: JSON.stringify(command),
+        }),
+      );
     },
   };
 }
 
+function normalizeFarmResponse(response: LegacyFarmResponse): FarmResponse {
+  return {
+    ...response,
+    view: normalizeFarmView(response.view),
+  };
+}
+
+function normalizeCommandResponse(response: LegacyCommandResponse): CommandResponse {
+  return {
+    ...response,
+    view: normalizeFarmView(response.view),
+  };
+}
+
+function normalizeFarmView(view: LegacyFarmView): FarmView {
+  return {
+    ...view,
+    silo_tile: validTile(view.silo_tile) ? view.silo_tile : defaultSiloTile,
+    barn_tile: validTile(view.barn_tile) ? view.barn_tile : defaultBarnTile,
+    delivery_board_tile: validTile(view.delivery_board_tile)
+      ? view.delivery_board_tile
+      : defaultDeliveryBoardTile,
+  };
+}
+
+function validTile(tile: Tile | null | undefined): tile is Tile {
+  return tile !== undefined && tile !== null && Number.isFinite(tile.x) && Number.isFinite(tile.y);
+}

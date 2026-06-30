@@ -15,6 +15,34 @@ test("renders the playable farm shell", async ({ page }) => {
   expect(box?.height).toBeGreaterThan(250);
 });
 
+test("barn and silo are preplaced storage structures", async ({ page }) => {
+  await mockFarmApi(page);
+  await page.goto("/");
+
+  await expect(page.getByLabel("Silo structure")).toBeVisible();
+  await expect(page.getByLabel("Barn structure")).toBeVisible();
+
+  await page.getByLabel("Silo structure").click();
+  await expect(page.getByText("Silo storage - 2/40 crops")).toBeVisible();
+
+  await page.getByLabel("Barn structure").click({ button: "right" });
+  const menu = page.getByTestId("structure-context-menu");
+  await expect(menu).toContainText("Barn");
+  await expect(menu.getByRole("menuitem", { name: "Move" })).toBeEnabled();
+});
+
+test("legacy farm responses without storage tiles still render preplaced storage", async ({ page }) => {
+  const legacyView = { ...farmView };
+  delete (legacyView as Partial<FarmView>).silo_tile;
+  delete (legacyView as Partial<FarmView>).barn_tile;
+
+  await mockFarmApi(page, legacyView);
+  await page.goto("/");
+
+  await expect(page.getByLabel("Silo structure")).toBeVisible();
+  await expect(page.getByLabel("Barn structure")).toBeVisible();
+});
+
 test("build tray shows disabled structure details without opening a context menu", async ({ page }) => {
   await page.goto("/");
 
@@ -502,8 +530,10 @@ const farmView: FarmView = {
   coins: 120,
   silo_used: 2,
   silo_capacity: 40,
+  silo_tile: { x: 14, y: 2 },
   barn_used: 0,
   barn_capacity: 30,
+  barn_tile: { x: 16, y: 2 },
   inventory: [{ item_id: "wheat", name: "Wheat", quantity: 2, kind: "crop" }],
   field_plots: [
     { id: "plot-1", tile: { x: 0, y: 0 }, crop: null },
@@ -628,7 +658,7 @@ async function fieldTargetPoint(page: Page, plotId: string) {
 
 async function findFreeCanvasPoint(page: Page) {
   const canvas = page.locator("canvas").first();
-  const emptySelection = page.getByText("Select a field, machine, shelter, or order board.");
+  const emptySelection = page.getByText("Select a field, machine, shelter, storage, or order board.");
   await expect(canvas).toBeVisible();
   const box = await canvas.boundingBox();
   if (!box) {

@@ -615,3 +615,77 @@ fn delivery_board_uses_and_moves_its_tile() {
     assert!(moved.accepted);
     assert_eq!(farm.delivery_board_tile, Tile::new(4, 8));
 }
+
+#[test]
+fn barn_and_silo_are_preplaced_and_movable() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    assert_eq!(farm.silo_tile, Tile::new(14, 2));
+    assert_eq!(farm.barn_tile, Tile::new(16, 2));
+
+    let moved_silo = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::Silo,
+            tile: Tile::new(14, 3),
+        },
+        0,
+    );
+    assert!(moved_silo.accepted);
+    assert_eq!(farm.silo_tile, Tile::new(14, 3));
+
+    let moved_barn = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::Barn,
+            tile: Tile::new(15, 3),
+        },
+        0,
+    );
+    assert!(moved_barn.accepted);
+    assert_eq!(farm.barn_tile, Tile::new(15, 3));
+}
+
+#[test]
+fn barn_and_silo_block_structure_placement() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+    let silo_tile = farm.silo_tile.clone();
+
+    let built_on_silo = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::Bakery,
+            tile: silo_tile,
+        },
+        0,
+    );
+
+    assert!(!built_on_silo.accepted);
+    assert_eq!(
+        built_on_silo.error.unwrap().message,
+        "tile is occupied".to_owned()
+    );
+
+    let bought_silo = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::Silo,
+            tile: Tile::new(13, 2),
+        },
+        0,
+    );
+
+    assert!(!bought_silo.accepted);
+    assert_eq!(
+        bought_silo.error.unwrap().message,
+        "structure already built".to_owned()
+    );
+}

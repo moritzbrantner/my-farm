@@ -63,6 +63,8 @@ pub enum FarmCommand {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StructureTarget {
+    Silo,
+    Barn,
     Machine { id: String },
     Shelter { id: String },
     DeliveryBoard,
@@ -334,6 +336,9 @@ fn buy_structure(
     tile: Tile,
 ) -> Result<Vec<FarmEvent>, CommandError> {
     match &structure_kind {
+        StructureKind::Silo | StructureKind::Barn => {
+            return Err(CommandError::new("structure already built"));
+        }
         StructureKind::Bakery => {
             let def = catalog.machine(&MachineKind::Bakery).unwrap();
             buy_machine(
@@ -388,6 +393,8 @@ fn move_structure(
     tile: Tile,
 ) -> Result<Vec<FarmEvent>, CommandError> {
     let structure_kind = match &target {
+        StructureTarget::Silo => StructureKind::Silo,
+        StructureTarget::Barn => StructureKind::Barn,
         StructureTarget::Machine { id } => {
             let machine = farm
                 .machines
@@ -420,6 +427,12 @@ fn move_structure(
     )?;
 
     match &target {
+        StructureTarget::Silo => {
+            farm.silo_tile = tile.clone();
+        }
+        StructureTarget::Barn => {
+            farm.barn_tile = tile.clone();
+        }
         StructureTarget::Machine { id } => {
             let machine = farm
                 .machines
@@ -742,6 +755,26 @@ fn ensure_tile_can_hold_structure(
     {
         return Err(CommandError::new("tile is occupied"));
     }
+    if !matches!(ignore_target, Some(StructureTarget::Silo))
+        && footprints_overlap(
+            tile,
+            footprint,
+            &farm.silo_tile,
+            structure_footprint(&StructureKind::Silo),
+        )
+    {
+        return Err(CommandError::new("tile is occupied"));
+    }
+    if !matches!(ignore_target, Some(StructureTarget::Barn))
+        && footprints_overlap(
+            tile,
+            footprint,
+            &farm.barn_tile,
+            structure_footprint(&StructureKind::Barn),
+        )
+    {
+        return Err(CommandError::new("tile is occupied"));
+    }
     if farm.machines.iter().any(|machine| {
         !ignores_machine(ignore_target, &machine.id)
             && footprints_overlap(
@@ -780,6 +813,10 @@ fn ensure_tile_can_hold_structure(
 
 fn structure_footprint(kind: &StructureKind) -> StructureFootprint {
     match kind {
+        StructureKind::Silo | StructureKind::Barn => StructureFootprint {
+            width: 1,
+            height: 1,
+        },
         StructureKind::Bakery | StructureKind::ChickenCoop => StructureFootprint {
             width: 2,
             height: 2,

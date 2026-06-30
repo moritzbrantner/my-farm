@@ -99,6 +99,42 @@ export function FarmScene({
             onEnterHarvestSweepPlot={onEnterHarvestSweepPlot}
           />
         ))}
+        <StructureSprite
+          target={{ type: "silo" }}
+          label="Silo"
+          hitLabel="Silo"
+          tile={view.silo_tile}
+          color="#d8b65a"
+          footprint={structureFootprint("silo")}
+          selected={selection?.type === "silo"}
+          buildPlacement={buildPlacement}
+          movingStructure={movingStructure}
+          onHoverTile={setHoverTile}
+          onOpenStructureMenu={onOpenStructureMenu}
+          onPlaceNewStructure={onPlaceNewStructure}
+          onPlaceStructure={onPlaceStructure}
+          onSelect={() => {
+            onSelect({ type: "silo" });
+          }}
+        />
+        <StructureSprite
+          target={{ type: "barn" }}
+          label="Barn"
+          hitLabel="Barn"
+          tile={view.barn_tile}
+          color="#b95346"
+          footprint={structureFootprint("barn")}
+          selected={selection?.type === "barn"}
+          buildPlacement={buildPlacement}
+          movingStructure={movingStructure}
+          onHoverTile={setHoverTile}
+          onOpenStructureMenu={onOpenStructureMenu}
+          onPlaceNewStructure={onPlaceNewStructure}
+          onPlaceStructure={onPlaceStructure}
+          onSelect={() => {
+            onSelect({ type: "barn" });
+          }}
+        />
         {view.machines.map((machine) => (
           <MachineMesh
             key={machine.id}
@@ -1003,6 +1039,10 @@ function isSameStructure(left: StructureSelection | null, right: StructureSelect
     return false;
   }
   switch (left.type) {
+    case "silo":
+      return true;
+    case "barn":
+      return true;
     case "delivery_board":
       return true;
     case "machine":

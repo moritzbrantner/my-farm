@@ -24,7 +24,11 @@ pub struct FarmState {
     pub level: u32,
     pub coins: u32,
     pub silo_capacity: u32,
+    #[serde(default = "default_silo_tile")]
+    pub silo_tile: Tile,
     pub barn_capacity: u32,
+    #[serde(default = "default_barn_tile")]
+    pub barn_tile: Tile,
     pub inventory: BTreeMap<String, u32>,
     pub field_plots: Vec<FieldPlot>,
     pub machines: Vec<MachineState>,
@@ -116,7 +120,9 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         level: 1,
         coins: 180,
         silo_capacity: 40,
+        silo_tile: default_silo_tile(),
         barn_capacity: 30,
+        barn_tile: default_barn_tile(),
         inventory,
         field_plots: starting_plots(),
         machines: Vec::new(),
@@ -247,4 +253,12 @@ fn starting_plots() -> Vec<FieldPlot> {
 
 pub fn default_delivery_board_tile() -> Tile {
     Tile::new(2, 7)
+}
+
+pub fn default_silo_tile() -> Tile {
+    Tile::new(14, 2)
+}
+
+pub fn default_barn_tile() -> Tile {
+    Tile::new(16, 2)
 }
