@@ -1,8 +1,8 @@
 use crate::{
+    AnimalShelterState, AnimalState, CatalogDocument, DeliveryOrder, FarmState, ItemKind,
+    ItemStack, MachineJob, MachineKind, MachineState, ShelterKind, StructureKind, Tile,
     add_inventory, add_shelter_animals, gain_xp, has_storage_room, next_id, remove_inventory,
-    scaled_duration_ms, update_level, AnimalShelterState, AnimalState, CatalogDocument,
-    DeliveryOrder, FarmState, ItemKind, ItemStack, MachineJob, MachineKind, MachineState,
-    ShelterKind, StructureKind, Tile,
+    scaled_duration_ms, update_level,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,9 @@ pub enum FarmCommand {
     },
     HarvestCrop {
         plot_id: String,
+    },
+    SweepHarvest {
+        plot_ids: Vec<String>,
     },
     BuyStructure {
         structure_kind: StructureKind,
@@ -131,6 +134,7 @@ pub fn apply_command(
             plant_crop(farm, catalog, now_ms, &plot_id, &crop_id)
         }
         FarmCommand::HarvestCrop { plot_id } => harvest_crop(farm, catalog, now_ms, &plot_id),
+        FarmCommand::SweepHarvest { plot_ids } => sweep_harvest(farm, catalog, now_ms, &plot_ids),
         FarmCommand::BuyStructure {
             structure_kind,
             tile,
@@ -242,6 +246,85 @@ fn harvest_crop(
         crop_id: planted.item_id,
         quantity: crop.harvest_quantity,
     }])
+}
+
+fn sweep_harvest(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    now_ms: i64,
+    plot_ids: &[String],
+) -> Result<Vec<FarmEvent>, CommandError> {
+    let plot_ids = dedupe_plot_ids(plot_ids);
+    let first_plot_id = plot_ids
+        .first()
+        .ok_or_else(|| CommandError::new("no field plots selected"))?;
+    let first_plot_index = find_field_plot_index(farm, first_plot_id)?;
+    let first_planted = farm.field_plots[first_plot_index]
+        .crop
+        .clone()
+        .ok_or_else(|| CommandError::new("field plot is empty"))?;
+    if first_planted.ready_at_ms > now_ms {
+        return Err(CommandError::new("crop is not ready"));
+    }
+
+    let crop = catalog
+        .crop(&first_planted.item_id)
+        .ok_or_else(|| CommandError::new("unknown crop"))?;
+    let crop_id = first_planted.item_id;
+    let harvest_quantity = crop.harvest_quantity;
+    let xp = crop.xp;
+    let mut events = Vec::new();
+    let mut stopped_for_storage = false;
+
+    for plot_id in plot_ids {
+        let plot_index = find_field_plot_index(farm, plot_id)?;
+        let Some(planted) = farm.field_plots[plot_index].crop.clone() else {
+            continue;
+        };
+        if planted.item_id != crop_id || planted.ready_at_ms > now_ms {
+            continue;
+        }
+        let output = ItemStack::new(&crop_id, harvest_quantity);
+        if !has_storage_room(farm, catalog, std::slice::from_ref(&output)) {
+            stopped_for_storage = true;
+            break;
+        }
+
+        farm.field_plots[plot_index].crop = None;
+        add_inventory(farm, &crop_id, harvest_quantity);
+        gain_xp(farm, catalog, xp);
+        events.push(FarmEvent::CropHarvested {
+            crop_id: crop_id.clone(),
+            quantity: harvest_quantity,
+        });
+    }
+
+    if events.is_empty() {
+        return Err(CommandError::new(if stopped_for_storage {
+            "storage is full"
+        } else {
+            "no ready matching crops"
+        }));
+    }
+
+    Ok(events)
+}
+
+fn find_field_plot_index(farm: &FarmState, plot_id: &str) -> Result<usize, CommandError> {
+    farm.field_plots
+        .iter()
+        .position(|plot| plot.id == plot_id)
+        .ok_or_else(|| CommandError::new("field plot not found"))
+}
+
+fn dedupe_plot_ids(plot_ids: &[String]) -> Vec<&str> {
+    let mut ordered = Vec::new();
+    for plot_id in plot_ids {
+        if !ordered.contains(&plot_id.as_str()) {
+            ordered.push(plot_id.as_str());
+        }
+    }
+    ordered
 }
 
 fn buy_structure(

@@ -121,6 +121,51 @@ test("right click on ready field opens harvest menu", async ({ page }, testInfo)
   await expect(menu.getByRole("menuitem", { name: "Harvest" })).toBeEnabled();
 });
 
+test("dragging across ready matching crops sends one sweep harvest command", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  let currentView = oneReadyOneEmptyFieldView();
+  await mockMutableFarmApi(page, () => currentView, catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  const secondFieldPoint = await findCanvasSelectionPoint(page, "Plant Wheat");
+
+  currentView = twoReadyWheatFieldView();
+  await page.reload();
+  await expect(page.getByText("Local farm synced")).toBeVisible();
+  const readyStartPoint = await findCanvasSelectionPoint(page, "Wheat - ready");
+
+  await dragHarvestSweep(page, readyStartPoint, secondFieldPoint);
+
+  await expect
+    .poll(() => commands.find((request) => request.command.type === "sweep_harvest")?.command)
+    .toMatchObject({ type: "sweep_harvest", plot_ids: ["plot-1", "plot-2"] });
+});
+
+test("dragging across a different ready crop keeps sweep harvest crop-specific", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, readyWheatAndCornFieldView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  const wheatPoint = await findCanvasSelectionPoint(page, "Wheat - ready");
+  const cornPoint = await findCanvasSelectionPoint(page, "Corn - ready");
+
+  await dragHarvestSweep(page, wheatPoint, cornPoint);
+
+  await expect
+    .poll(() => commands.find((request) => request.command.type === "sweep_harvest")?.command)
+    .toMatchObject({ type: "sweep_harvest", plot_ids: ["plot-1"] });
+});
+
 test("right mouse drag on a field opens menu instead of panning canvas", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page, readyFieldView());
@@ -398,15 +443,24 @@ async function mockFarmApi(
   customCatalog: CatalogDocument = catalog,
   onCommand?: (request: CommandRequest) => void,
 ) {
+  await mockMutableFarmApi(page, () => view, customCatalog, onCommand);
+}
+
+async function mockMutableFarmApi(
+  page: Page,
+  getView: () => FarmView,
+  customCatalog: CatalogDocument = catalog,
+  onCommand?: (request: CommandRequest) => void,
+) {
   await page.route("**/api/catalog", async (route) => {
     await route.fulfill({ json: { catalog: customCatalog } });
   });
   await page.route("**/api/farm", async (route) => {
-    await route.fulfill({ json: { version: 1, view } });
+    await route.fulfill({ json: { version: 1, view: getView() } });
   });
   await page.route("**/api/commands", async (route) => {
     onCommand?.(route.request().postDataJSON() as CommandRequest);
-    await route.fulfill({ json: { accepted: true, version: 2, events: [], view, error: null } });
+    await route.fulfill({ json: { accepted: true, version: 2, events: [], view: getView(), error: null } });
   });
 }
 
@@ -517,6 +571,18 @@ async function touchDragCanvas(page: Page, from: { x: number; y: number }, to: {
   await canvas.dispatchEvent("pointerup", touchEvent(to));
 }
 
+async function dragHarvestSweep(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+) {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 12, from.y + 12);
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+}
+
 async function canvasSnapshot(page: Page) {
   return page.locator("canvas").first().evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL());
 }
@@ -570,6 +636,56 @@ function readyFieldView(): FarmView {
         crop: { item_id: "wheat", planted_at_ms: Date.now() - 20_000, ready_at_ms: Date.now() - 1_000 },
       },
       farmView.field_plots[1],
+    ],
+  };
+}
+
+function oneReadyOneEmptyFieldView(): FarmView {
+  return {
+    ...farmView,
+    field_plots: [
+      {
+        id: "plot-1",
+        tile: { x: 0, y: 0 },
+        crop: { item_id: "wheat", planted_at_ms: Date.now() - 20_000, ready_at_ms: Date.now() - 1_000 },
+      },
+      farmView.field_plots[1],
+    ],
+  };
+}
+
+function twoReadyWheatFieldView(): FarmView {
+  return {
+    ...farmView,
+    field_plots: [
+      {
+        id: "plot-1",
+        tile: { x: 0, y: 0 },
+        crop: { item_id: "wheat", planted_at_ms: Date.now() - 20_000, ready_at_ms: Date.now() - 1_000 },
+      },
+      {
+        id: "plot-2",
+        tile: { x: 1, y: 0 },
+        crop: { item_id: "wheat", planted_at_ms: Date.now() - 20_000, ready_at_ms: Date.now() - 1_000 },
+      },
+    ],
+  };
+}
+
+function readyWheatAndCornFieldView(): FarmView {
+  return {
+    ...farmView,
+    field_plots: [
+      {
+        id: "plot-1",
+        tile: { x: 0, y: 0 },
+        crop: { item_id: "wheat", planted_at_ms: Date.now() - 20_000, ready_at_ms: Date.now() - 1_000 },
+      },
+      {
+        id: "plot-2",
+        tile: { x: 1, y: 0 },
+        crop: { item_id: "corn", planted_at_ms: Date.now() - 40_000, ready_at_ms: Date.now() - 1_000 },
+      },
     ],
   };
 }

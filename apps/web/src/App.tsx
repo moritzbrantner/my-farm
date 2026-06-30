@@ -63,6 +63,11 @@ type BuildContextMenuState = {
   x: number;
   y: number;
 } | null;
+type HarvestSweepState = {
+  cropId: string;
+  plotIds: string[];
+  pointerId: number;
+} | null;
 
 export function App() {
   const [catalog, setCatalog] = useState<CatalogDocument | null>(null);
@@ -73,6 +78,7 @@ export function App() {
   const [structureMenu, setStructureMenu] = useState<StructureContextMenuState>(null);
   const [buildMenu, setBuildMenu] = useState<BuildContextMenuState>(null);
   const [movingStructure, setMovingStructure] = useState<StructureSelection | null>(null);
+  const [harvestSweep, setHarvestSweep] = useState<HarvestSweepState>(null);
   const [message, setMessage] = useState("Connecting to local server...");
   const [nowMs, setNowMs] = useState(Date.now());
   const ordersRef = useRef<HTMLElement | null>(null);
@@ -125,7 +131,7 @@ export function App() {
   }, [fieldMenu, view]);
 
   useEffect(() => {
-    if (!fieldMenu && !structureMenu && !buildMenu && !movingStructure) {
+    if (!fieldMenu && !structureMenu && !buildMenu && !movingStructure && !harvestSweep) {
       return;
     }
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -142,6 +148,7 @@ export function App() {
         setStructureMenu(null);
         setBuildMenu(null);
         setMovingStructure(null);
+        setHarvestSweep(null);
       }
     };
     document.addEventListener("pointerdown", closeOnOutsidePointer, true);
@@ -150,7 +157,7 @@ export function App() {
       document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [buildMenu, fieldMenu, movingStructure, structureMenu]);
+  }, [buildMenu, fieldMenu, harvestSweep, movingStructure, structureMenu]);
 
   const select = useCallback((nextSelection: Selection) => {
     setSelection(nextSelection);
@@ -158,6 +165,7 @@ export function App() {
     setStructureMenu(null);
     setBuildMenu(null);
     setMovingStructure(null);
+    setHarvestSweep(null);
   }, []);
 
   const openFieldMenu = useCallback((plotId: string, point: { x: number; y: number }) => {
@@ -165,6 +173,7 @@ export function App() {
     setStructureMenu(null);
     setBuildMenu(null);
     setMovingStructure(null);
+    setHarvestSweep(null);
     setFieldMenu({ plotId, x: point.x, y: point.y });
   }, []);
 
@@ -173,6 +182,7 @@ export function App() {
     setFieldMenu(null);
     setBuildMenu(null);
     setMovingStructure(null);
+    setHarvestSweep(null);
     setStructureMenu({ target, x: point.x, y: point.y });
   }, []);
 
@@ -180,6 +190,7 @@ export function App() {
     setFieldMenu(null);
     setStructureMenu(null);
     setMovingStructure(null);
+    setHarvestSweep(null);
     setBuildMenu({ kind, x: point.x, y: point.y });
   }, []);
 
@@ -208,6 +219,7 @@ export function App() {
     setStructureMenu(null);
     setBuildMenu(null);
     setMovingStructure(null);
+    setHarvestSweep(null);
     setMessage("Farm reset");
   }, []);
 
@@ -217,6 +229,7 @@ export function App() {
     setStructureMenu(null);
     setBuildMenu(null);
     setMovingStructure(null);
+    setHarvestSweep(null);
     window.setTimeout(() => {
       ordersRef.current?.scrollIntoView({ block: "nearest" });
       ordersRef.current?.focus({ preventScroll: true });
@@ -233,6 +246,7 @@ export function App() {
       setStructureMenu(null);
       setBuildMenu(null);
       setMovingStructure(target);
+      setHarvestSweep(null);
       setMessage(`Moving ${selectedStructureLabel(view, target)}`);
     },
     [view],
@@ -254,6 +268,80 @@ export function App() {
     },
     [movingStructure, send, view],
   );
+
+  const startHarvestSweep = useCallback(
+    (plotId: string, pointerId: number) => {
+      if (!view) {
+        return;
+      }
+      const plot = view.field_plots.find((entry) => entry.id === plotId);
+      if (!plot?.crop || plot.crop.ready_at_ms > nowMs) {
+        return;
+      }
+      setSelection({ type: "plot", id: plotId });
+      setFieldMenu(null);
+      setStructureMenu(null);
+      setBuildMenu(null);
+      setMovingStructure(null);
+      setHarvestSweep({
+        cropId: plot.crop.item_id,
+        plotIds: [plotId],
+        pointerId,
+      });
+    },
+    [nowMs, view],
+  );
+
+  const enterHarvestSweepPlot = useCallback(
+    (plotId: string) => {
+      if (!view) {
+        return;
+      }
+      setHarvestSweep((current) => {
+        if (!current || current.plotIds.includes(plotId)) {
+          return current;
+        }
+        const plot = view.field_plots.find((entry) => entry.id === plotId);
+        if (!plot?.crop || plot.crop.item_id !== current.cropId || plot.crop.ready_at_ms > nowMs) {
+          return current;
+        }
+        return { ...current, plotIds: [...current.plotIds, plotId] };
+      });
+    },
+    [nowMs, view],
+  );
+
+  const finishHarvestSweep = useCallback(async () => {
+    if (!harvestSweep) {
+      return;
+    }
+    const plotIds = harvestSweep.plotIds;
+    setHarvestSweep(null);
+    const accepted = await send({ type: "sweep_harvest", plot_ids: plotIds });
+    if (accepted) {
+      setSelection({ type: "plot", id: plotIds[0] });
+      setFieldMenu(null);
+      setStructureMenu(null);
+      setBuildMenu(null);
+    }
+  }, [harvestSweep, send]);
+
+  useEffect(() => {
+    if (!harvestSweep) {
+      return;
+    }
+    const finish = (event: PointerEvent) => {
+      if (event.pointerId === harvestSweep.pointerId) {
+        void finishHarvestSweep();
+      }
+    };
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    return () => {
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+  }, [finishHarvestSweep, harvestSweep]);
 
   if (!view || !catalog) {
     return (
@@ -283,10 +371,13 @@ export function App() {
         view={view}
         selection={selection}
         movingStructure={movingStructure}
+        harvestSweep={harvestSweep}
         onSelect={select}
         onOpenFieldMenu={openFieldMenu}
         onOpenStructureMenu={openStructureMenu}
         onPlaceStructure={placeMovingStructure}
+        onStartHarvestSweep={startHarvestSweep}
+        onEnterHarvestSweepPlot={enterHarvestSweepPlot}
       />
       <TopBar view={view} message={message} />
       <aside className="side-panel">

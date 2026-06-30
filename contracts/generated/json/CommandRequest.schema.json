@@ -62,6 +62,27 @@
         {
           "type": "object",
           "required": [
+            "plot_ids",
+            "type"
+          ],
+          "properties": {
+            "plot_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "sweep_harvest"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "structure_kind",
             "tile",
             "type"

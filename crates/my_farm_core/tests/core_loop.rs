@@ -1,7 +1,7 @@
 use my_farm_core::{
-    add_inventory, apply_command, apply_elapsed, inventory_quantity, new_farm, scaled_duration_ms,
     AnimalState, CatalogDocument, FarmCommand, FarmEvent, ItemStack, MachineKind, ShelterKind,
-    StructureKind, StructureTarget, Tile,
+    StructureKind, StructureTarget, Tile, add_inventory, apply_command, apply_elapsed,
+    inventory_quantity, new_farm, scaled_duration_ms,
 };
 
 #[test]
@@ -67,6 +67,204 @@ fn storage_capacity_blocks_harvest() {
     assert_eq!(
         harvested.error.unwrap().message,
         "storage is full".to_owned()
+    );
+}
+
+#[test]
+fn player_can_sweep_harvest_ready_wheat() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    for plot_id in ["plot-1", "plot-2", "plot-3"] {
+        let planted = apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::PlantCrop {
+                plot_id: plot_id.to_owned(),
+                crop_id: "wheat".to_owned(),
+            },
+            0,
+        );
+        assert!(planted.accepted);
+    }
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepHarvest {
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+            ],
+        },
+        scaled_duration_ms(120, catalog.balance.time_scale),
+    );
+
+    assert!(harvested.accepted);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 9);
+    assert!(farm.field_plots[0].crop.is_none());
+    assert!(farm.field_plots[1].crop.is_none());
+    assert!(farm.field_plots[2].crop.is_none());
+    assert_eq!(
+        harvested.events,
+        vec![
+            FarmEvent::CropHarvested {
+                crop_id: "wheat".to_owned(),
+                quantity: 2,
+            },
+            FarmEvent::CropHarvested {
+                crop_id: "wheat".to_owned(),
+                quantity: 2,
+            },
+            FarmEvent::CropHarvested {
+                crop_id: "wheat".to_owned(),
+                quantity: 2,
+            },
+        ]
+    );
+}
+
+#[test]
+fn sweep_harvest_only_harvests_matching_ready_crop() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+
+    for (plot_id, crop_id) in [
+        ("plot-1", "wheat"),
+        ("plot-2", "corn"),
+        ("plot-3", "wheat"),
+        ("plot-4", "wheat"),
+    ] {
+        let planted = apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::PlantCrop {
+                plot_id: plot_id.to_owned(),
+                crop_id: crop_id.to_owned(),
+            },
+            0,
+        );
+        assert!(planted.accepted);
+    }
+    farm.field_plots[3].crop.as_mut().unwrap().ready_at_ms =
+        scaled_duration_ms(120, catalog.balance.time_scale) + 1;
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepHarvest {
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+                "plot-4".to_owned(),
+            ],
+        },
+        scaled_duration_ms(120, catalog.balance.time_scale),
+    );
+
+    assert!(harvested.accepted);
+    assert!(farm.field_plots[0].crop.is_none());
+    assert!(farm.field_plots[1].crop.is_some());
+    assert!(farm.field_plots[2].crop.is_none());
+    assert!(farm.field_plots[3].crop.is_some());
+    assert_eq!(inventory_quantity(&farm, "wheat"), 7);
+    assert_eq!(inventory_quantity(&farm, "corn"), 2);
+}
+
+#[test]
+fn sweep_harvest_harvests_until_silo_full() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    for plot_id in ["plot-1", "plot-2", "plot-3"] {
+        let planted = apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::PlantCrop {
+                plot_id: plot_id.to_owned(),
+                crop_id: "wheat".to_owned(),
+            },
+            0,
+        );
+        assert!(planted.accepted);
+    }
+    farm.silo_capacity = 9;
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepHarvest {
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+            ],
+        },
+        scaled_duration_ms(120, catalog.balance.time_scale),
+    );
+
+    assert!(harvested.accepted);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 5);
+    assert!(farm.field_plots[0].crop.is_none());
+    assert!(farm.field_plots[1].crop.is_some());
+    assert!(farm.field_plots[2].crop.is_some());
+    assert_eq!(harvested.events.len(), 1);
+}
+
+#[test]
+fn sweep_harvest_rejects_when_no_swept_plot_fits() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.silo_capacity = 6;
+
+    let planted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(planted.accepted);
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepHarvest {
+            plot_ids: vec!["plot-1".to_owned()],
+        },
+        scaled_duration_ms(120, catalog.balance.time_scale),
+    );
+
+    assert!(!harvested.accepted);
+    assert_eq!(
+        harvested.error.unwrap().message,
+        "storage is full".to_owned()
+    );
+    assert!(farm.field_plots[0].crop.is_some());
+}
+
+#[test]
+fn sweep_harvest_rejects_empty_selection() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepHarvest { plot_ids: vec![] },
+        0,
+    );
+
+    assert!(!harvested.accepted);
+    assert_eq!(
+        harvested.error.unwrap().message,
+        "no field plots selected".to_owned()
     );
 }
 

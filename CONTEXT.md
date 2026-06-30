@@ -51,3 +51,7 @@ _Avoid_: Warehouse
 **Command**:
 A player intent submitted to the server and applied deterministically.
 _Avoid_: Action, mutation
+
+**Sweep Harvest**:
+A player gesture that harvests multiple ready Field Plots of the same Crop in the order the player sweeps over them.
+_Avoid_: Multi-harvest, mass harvest, grain harvest
