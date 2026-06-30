@@ -20,6 +20,10 @@ _Avoid_: Seed, plant item
 A placed structure that holds animals of one type.
 _Avoid_: Pen, habitat, stable
 
+**Structure**:
+A built, tile-placed farm object that is not a Field Plot. Machines, Animal Shelters, and the Delivery Board are Structures.
+_Avoid_: Building, placed object
+
 **Animal Product**:
 A good collected from a fed animal and stored in the barn.
 _Avoid_: Animal output
@@ -47,4 +51,3 @@ _Avoid_: Warehouse
 **Command**:
 A player intent submitted to the server and applied deterministically.
 _Avoid_: Action, mutation
-

@@ -16,6 +16,23 @@ export type Selection =
   | { type: "delivery_board" }
   | null;
 
+export type StructureSelection =
+  | { type: "machine"; id: string }
+  | { type: "shelter"; id: string }
+  | { type: "delivery_board" };
+
+export type StructureContextMenuState = {
+  target: StructureSelection;
+  x: number;
+  y: number;
+} | null;
+
+export type FieldContextMenuState = {
+  plotId: string;
+  x: number;
+  y: number;
+} | null;
+
 export function selectedPlot(view: FarmView, selection: Selection): FieldPlot | null {
   return selection?.type === "plot"
     ? view.field_plots.find((plot) => plot.id === selection.id) ?? null
@@ -101,4 +118,3 @@ export function availableRecipes(
 export function secondsRemaining(readyAtMs: number, nowMs: number): number {
   return Math.max(0, Math.ceil((readyAtMs - nowMs) / 1000));
 }
-

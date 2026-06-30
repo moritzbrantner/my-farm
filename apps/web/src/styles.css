@@ -34,7 +34,8 @@ button {
   cursor: pointer;
 }
 
-button:disabled {
+button:disabled,
+button[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -63,6 +64,25 @@ button:disabled {
 .farm-canvas canvas {
   width: 100% !important;
   height: 100% !important;
+}
+
+.structure-hit-wrapper {
+  pointer-events: none !important;
+}
+
+.structure-hit-target {
+  width: 78px;
+  height: 58px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: auto;
+  touch-action: none;
 }
 
 .top-bar {
@@ -190,6 +210,72 @@ h2 {
   min-width: 138px;
 }
 
+.structure-context-menu {
+  position: fixed;
+  z-index: 1000;
+  width: min(280px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(32, 49, 43, 0.28);
+  border-radius: 8px;
+  background: rgba(251, 246, 232, 0.98);
+  box-shadow: 0 16px 36px rgba(32, 49, 43, 0.22);
+  overflow-y: auto;
+}
+
+.structure-context-menu__header {
+  display: grid;
+  gap: 2px;
+  padding: 2px 2px 6px;
+  border-bottom: 1px solid rgba(32, 49, 43, 0.14);
+}
+
+.structure-context-menu__header strong {
+  font-size: 15px;
+}
+
+.structure-context-menu small {
+  color: #536a5e;
+  font-size: 12px;
+}
+
+.structure-context-menu__items {
+  display: grid;
+  gap: 6px;
+}
+
+.structure-context-menu__item {
+  min-height: 42px;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 7px 9px;
+  text-align: left;
+}
+
+.structure-context-menu__item span,
+.structure-context-menu__item small {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.structure-context-menu__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.structure-context-menu__close {
+  min-height: 32px;
+  background: #e5edd4;
+}
+
+.panel-section:focus {
+  outline: 2px solid rgba(68, 109, 56, 0.55);
+  outline-offset: 2px;
+}
+
 @media (max-width: 760px) {
   .top-bar {
     right: 12px;
@@ -216,5 +302,9 @@ h2 {
     left: 0;
     right: 0;
     border-radius: 8px 8px 0 0;
+  }
+
+  .structure-context-menu__item {
+    min-height: 46px;
   }
 }

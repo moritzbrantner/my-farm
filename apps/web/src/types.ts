@@ -10,6 +10,7 @@ export type {
   FarmView,
   FieldPlot,
   InventoryItemView,
+  ItemStack,
   MachineKind,
   MachineState,
   RecipeDef,
@@ -17,4 +18,3 @@ export type {
   StructureKind,
   Tile,
 } from "../../../contracts/generated/ts/my-farm";
-
