@@ -30,6 +30,8 @@ pub struct FarmState {
     pub machines: Vec<MachineState>,
     pub shelters: Vec<AnimalShelterState>,
     pub delivery_board_built: bool,
+    #[serde(default = "default_delivery_board_tile")]
+    pub delivery_board_tile: Tile,
     pub delivery_orders: Vec<DeliveryOrder>,
     #[ts(type = "number")]
     pub next_id: u64,
@@ -120,6 +122,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         machines: Vec::new(),
         shelters: Vec::new(),
         delivery_board_built: false,
+        delivery_board_tile: default_delivery_board_tile(),
         delivery_orders: Vec::new(),
         next_id: 1,
     };
@@ -240,4 +243,8 @@ fn starting_plots() -> Vec<FieldPlot> {
             crop: None,
         })
         .collect()
+}
+
+pub fn default_delivery_board_tile() -> Tile {
+    Tile::new(2, 7)
 }

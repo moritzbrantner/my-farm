@@ -16,5 +16,6 @@ export type {
   RecipeDef,
   ShelterKind,
   StructureKind,
+  StructureTarget,
   Tile,
 } from "../../../contracts/generated/ts/my-farm";

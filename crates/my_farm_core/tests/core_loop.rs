@@ -1,7 +1,7 @@
 use my_farm_core::{
+    add_inventory, apply_command, apply_elapsed, inventory_quantity, new_farm, scaled_duration_ms,
     AnimalState, CatalogDocument, FarmCommand, FarmEvent, ItemStack, MachineKind, ShelterKind,
-    StructureKind, Tile, add_inventory, apply_command, apply_elapsed, inventory_quantity, new_farm,
-    scaled_duration_ms,
+    StructureKind, StructureTarget, Tile,
 };
 
 #[test]
@@ -221,4 +221,199 @@ fn delivery_orders_pay_rewards_and_regenerate_without_feed_requirements() {
     assert!(fulfilled.accepted);
     assert!(farm.coins > coins_before);
     assert_eq!(farm.delivery_orders.len(), 3);
+}
+
+#[test]
+fn player_can_move_built_structures_to_open_tiles() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::Bakery,
+            tile: Tile::new(8, 2),
+        },
+        0,
+    );
+    assert!(built.accepted);
+    let bakery_id = farm.machines[0].id.clone();
+
+    let moved = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::Machine {
+                id: bakery_id.clone(),
+            },
+            tile: Tile::new(12, 4),
+        },
+        0,
+    );
+    assert!(moved.accepted);
+    assert_eq!(farm.machines[0].tile, Tile::new(12, 4));
+    assert!(moved.events.contains(&FarmEvent::StructureMoved {
+        target: StructureTarget::Machine { id: bakery_id },
+        tile: Tile::new(12, 4),
+    }));
+}
+
+#[test]
+fn moving_structure_rejects_occupied_tiles() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    farm.level = 3;
+
+    let built_bakery = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::Bakery,
+            tile: Tile::new(8, 2),
+        },
+        0,
+    );
+    assert!(built_bakery.accepted);
+    let built_coop = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ChickenCoop,
+            tile: Tile::new(5, 7),
+        },
+        0,
+    );
+    assert!(built_coop.accepted);
+    let bakery_id = farm.machines[0].id.clone();
+    let shelter_tile = farm.shelters[0].tile.clone();
+
+    let moved_to_field = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::Machine {
+                id: bakery_id.clone(),
+            },
+            tile: Tile::new(0, 0),
+        },
+        0,
+    );
+    assert!(!moved_to_field.accepted);
+    assert_eq!(moved_to_field.error.unwrap().message, "tile is occupied");
+
+    let moved_to_structure = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::Machine { id: bakery_id },
+            tile: shelter_tile,
+        },
+        0,
+    );
+    assert!(!moved_to_structure.accepted);
+    assert_eq!(
+        moved_to_structure.error.unwrap().message,
+        "tile is occupied"
+    );
+}
+
+#[test]
+fn larger_structure_footprints_block_overlap_and_farm_edges() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 55;
+    farm.level = 5;
+
+    let built_bakery = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::Bakery,
+            tile: Tile::new(8, 2),
+        },
+        0,
+    );
+    assert!(built_bakery.accepted);
+    let bakery_id = farm.machines[0].id.clone();
+
+    let overlapping_feed_mill = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::FeedMill,
+            tile: Tile::new(9, 3),
+        },
+        0,
+    );
+    assert!(!overlapping_feed_mill.accepted);
+    assert_eq!(
+        overlapping_feed_mill.error.unwrap().message,
+        "tile is occupied"
+    );
+
+    let cow_pasture_over_edge = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::CowPasture,
+            tile: Tile::new(16, 8),
+        },
+        0,
+    );
+    assert!(!cow_pasture_over_edge.accepted);
+    assert_eq!(
+        cow_pasture_over_edge.error.unwrap().message,
+        "tile is outside the farm"
+    );
+
+    let moved_over_edge = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::Machine { id: bakery_id },
+            tile: Tile::new(17, 4),
+        },
+        0,
+    );
+    assert!(!moved_over_edge.accepted);
+    assert_eq!(
+        moved_over_edge.error.unwrap().message,
+        "tile is outside the farm"
+    );
+}
+
+#[test]
+fn delivery_board_uses_and_moves_its_tile() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 30;
+    farm.level = 4;
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::DeliveryBoard,
+            tile: Tile::new(3, 8),
+        },
+        0,
+    );
+    assert!(built.accepted);
+    assert_eq!(farm.delivery_board_tile, Tile::new(3, 8));
+
+    let moved = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::DeliveryBoard,
+            tile: Tile::new(4, 8),
+        },
+        0,
+    );
+    assert!(moved.accepted);
+    assert_eq!(farm.delivery_board_tile, Tile::new(4, 8));
 }

@@ -31,6 +31,17 @@
     "delivery_board_built": {
       "type": "boolean"
     },
+    "delivery_board_tile": {
+      "default": {
+        "x": 2,
+        "y": 7
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/Tile"
+        }
+      ]
+    },
     "delivery_orders": {
       "type": "array",
       "items": {

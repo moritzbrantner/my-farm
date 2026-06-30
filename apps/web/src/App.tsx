@@ -14,12 +14,14 @@ import { FarmScene } from "./components/FarmScene";
 import {
   availableRecipes,
   builtStructureKinds,
+  isTileAvailableForStructure,
   itemName,
   recipeName,
   secondsRemaining,
   selectedMachine,
   selectedPlot,
   selectedShelter,
+  selectedStructureLabel,
   structureLabel,
   structureTile,
   type FieldContextMenuState,
@@ -68,6 +70,7 @@ export function App() {
   const [fieldMenu, setFieldMenu] = useState<FieldContextMenuState>(null);
   const [structureMenu, setStructureMenu] = useState<StructureContextMenuState>(null);
   const [buildMenu, setBuildMenu] = useState<BuildContextMenuState>(null);
+  const [movingStructure, setMovingStructure] = useState<StructureSelection | null>(null);
   const [message, setMessage] = useState("Connecting to local server...");
   const [nowMs, setNowMs] = useState(Date.now());
   const ordersRef = useRef<HTMLElement | null>(null);
@@ -106,6 +109,13 @@ export function App() {
   }, [structureMenu, view]);
 
   useEffect(() => {
+    if (!view || !movingStructure || isStructureTargetPresent(view, movingStructure)) {
+      return;
+    }
+    setMovingStructure(null);
+  }, [movingStructure, view]);
+
+  useEffect(() => {
     if (!view || !fieldMenu || view.field_plots.some((plot) => plot.id === fieldMenu.plotId)) {
       return;
     }
@@ -113,7 +123,7 @@ export function App() {
   }, [fieldMenu, view]);
 
   useEffect(() => {
-    if (!fieldMenu && !structureMenu && !buildMenu) {
+    if (!fieldMenu && !structureMenu && !buildMenu && !movingStructure) {
       return;
     }
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -129,6 +139,7 @@ export function App() {
         setFieldMenu(null);
         setStructureMenu(null);
         setBuildMenu(null);
+        setMovingStructure(null);
       }
     };
     document.addEventListener("pointerdown", closeOnOutsidePointer, true);
@@ -137,19 +148,21 @@ export function App() {
       document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [buildMenu, fieldMenu, structureMenu]);
+  }, [buildMenu, fieldMenu, movingStructure, structureMenu]);
 
   const select = useCallback((nextSelection: Selection) => {
     setSelection(nextSelection);
     setFieldMenu(null);
     setStructureMenu(null);
     setBuildMenu(null);
+    setMovingStructure(null);
   }, []);
 
   const openFieldMenu = useCallback((plotId: string, point: { x: number; y: number }) => {
     setSelection({ type: "plot", id: plotId });
     setStructureMenu(null);
     setBuildMenu(null);
+    setMovingStructure(null);
     setFieldMenu({ plotId, x: point.x, y: point.y });
   }, []);
 
@@ -157,12 +170,14 @@ export function App() {
     setSelection(target);
     setFieldMenu(null);
     setBuildMenu(null);
+    setMovingStructure(null);
     setStructureMenu({ target, x: point.x, y: point.y });
   }, []);
 
   const openBuildMenu = useCallback((kind: StructureKind, point: { x: number; y: number }) => {
     setFieldMenu(null);
     setStructureMenu(null);
+    setMovingStructure(null);
     setBuildMenu({ kind, x: point.x, y: point.y });
   }, []);
 
@@ -190,6 +205,7 @@ export function App() {
     setFieldMenu(null);
     setStructureMenu(null);
     setBuildMenu(null);
+    setMovingStructure(null);
     setMessage("Farm reset");
   }, []);
 
@@ -198,11 +214,44 @@ export function App() {
     setFieldMenu(null);
     setStructureMenu(null);
     setBuildMenu(null);
+    setMovingStructure(null);
     window.setTimeout(() => {
       ordersRef.current?.scrollIntoView({ block: "nearest" });
       ordersRef.current?.focus({ preventScroll: true });
     }, 0);
   }, []);
+
+  const startMovingStructure = useCallback(
+    (target: StructureSelection) => {
+      if (!view) {
+        return;
+      }
+      setSelection(target);
+      setFieldMenu(null);
+      setStructureMenu(null);
+      setBuildMenu(null);
+      setMovingStructure(target);
+      setMessage(`Moving ${selectedStructureLabel(view, target)}`);
+    },
+    [view],
+  );
+
+  const placeMovingStructure = useCallback(
+    async (tile: { x: number; y: number }) => {
+      if (!view || !movingStructure) {
+        return;
+      }
+      if (!isTileAvailableForStructure(view, tile, movingStructure)) {
+        setMessage("Tile is occupied");
+        return;
+      }
+      const accepted = await send({ type: "move_structure", target: movingStructure, tile });
+      if (accepted) {
+        setMovingStructure(null);
+      }
+    },
+    [movingStructure, send, view],
+  );
 
   if (!view || !catalog) {
     return (
@@ -231,14 +280,16 @@ export function App() {
       <FarmScene
         view={view}
         selection={selection}
+        movingStructure={movingStructure}
         onSelect={select}
         onOpenFieldMenu={openFieldMenu}
         onOpenStructureMenu={openStructureMenu}
+        onPlaceStructure={placeMovingStructure}
       />
       <TopBar view={view} message={message} />
       <aside className="side-panel">
         <PanelHeader view={view} version={version} onReset={reset} />
-        <Inventory view={view} />
+        <Inventory catalog={catalog} view={view} selection={selection} />
         <SelectionPanel
           catalog={catalog}
           view={view}
@@ -265,6 +316,11 @@ export function App() {
               setFieldMenu(null);
               setStructureMenu(null);
               setBuildMenu(null);
+            }
+          }}
+          onStartMove={() => {
+            if (structureMenu) {
+              startMovingStructure(structureMenu.target);
             }
           }}
           onViewOrders={viewDeliveryOrders}
@@ -310,12 +366,21 @@ function PanelHeader({
   );
 }
 
-function Inventory({ view }: { view: FarmView }) {
+function Inventory({
+  catalog,
+  view,
+  selection,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  selection: Selection;
+}) {
+  const items = relevantInventoryItems(catalog, view, selection);
   return (
     <section className="panel-section">
       <h2>Inventory</h2>
       <div className="inventory-grid">
-        {view.inventory.map((item) => (
+        {items.map((item) => (
           <span key={item.item_id}>
             {item.name} <strong>{item.quantity}</strong>
           </span>
@@ -323,6 +388,54 @@ function Inventory({ view }: { view: FarmView }) {
       </div>
     </section>
   );
+}
+
+function relevantInventoryItems(catalog: CatalogDocument, view: FarmView, selection: Selection) {
+  const relevantItemIds = relevantItemIdsForSelection(catalog, view, selection);
+  if (!relevantItemIds) {
+    return view.inventory;
+  }
+
+  const quantities = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  return catalog.items
+    .filter((item) => relevantItemIds.has(item.id))
+    .map((item) => ({
+      item_id: item.id,
+      name: item.name,
+      quantity: quantities.get(item.id) ?? 0,
+      kind: item.kind,
+    }));
+}
+
+function relevantItemIdsForSelection(
+  catalog: CatalogDocument,
+  view: FarmView,
+  selection: Selection,
+): Set<string> | null {
+  const machine = selectedMachine(view, selection);
+  if (machine) {
+    const itemIds = new Set<string>();
+    for (const recipe of catalog.recipes.filter((entry) => entry.machine_kind === machine.kind)) {
+      for (const stack of [...recipe.inputs, ...recipe.outputs]) {
+        itemIds.add(stack.item_id);
+      }
+    }
+    return itemIds;
+  }
+
+  const shelter = selectedShelter(view, selection);
+  if (shelter) {
+    const shelterDef = catalog.shelters.find((entry) => entry.kind === shelter.kind);
+    return shelterDef ? new Set([shelterDef.feed_item_id, shelterDef.product_item_id]) : new Set();
+  }
+
+  if (selection?.type === "delivery_board") {
+    return new Set(
+      view.delivery_orders.flatMap((order) => order.requirements.map((stack) => stack.item_id)),
+    );
+  }
+
+  return null;
 }
 
 function SelectionPanel({
@@ -725,6 +838,7 @@ function StructureContextMenu({
   y,
   onClose,
   onCommand,
+  onStartMove,
   onViewOrders,
 }: {
   model: StructureMenuModel;
@@ -732,6 +846,7 @@ function StructureContextMenu({
   y: number;
   onClose: () => void;
   onCommand: (command: FarmCommand) => Promise<void>;
+  onStartMove: () => void;
   onViewOrders: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -768,6 +883,7 @@ function StructureContextMenu({
             key={item.id}
             item={item}
             onCommand={onCommand}
+            onStartMove={onStartMove}
             onViewOrders={onViewOrders}
           />
         ))}
@@ -787,14 +903,17 @@ function StructureContextMenu({
 function StructureContextMenuItem({
   item,
   onCommand,
+  onStartMove,
   onViewOrders,
 }: {
   item: StructureMenuItem;
   onCommand: (command: FarmCommand) => Promise<void>;
+  onStartMove: () => void;
   onViewOrders: () => void;
 }) {
   const isViewOrders = item.id === "view-orders";
-  const canRun = Boolean(item.command) || isViewOrders;
+  const isMoveStructure = item.action === "move_structure";
+  const canRun = Boolean(item.command) || isViewOrders || isMoveStructure;
   return (
     <button
       className="structure-context-menu__item"
@@ -808,6 +927,10 @@ function StructureContextMenuItem({
         }
         if (isViewOrders) {
           onViewOrders();
+          return;
+        }
+        if (isMoveStructure) {
+          onStartMove();
         }
       }}
     >

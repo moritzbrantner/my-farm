@@ -226,6 +226,28 @@
         {
           "type": "object",
           "required": [
+            "target",
+            "tile",
+            "type"
+          ],
+          "properties": {
+            "target": {
+              "$ref": "#/definitions/StructureTarget"
+            },
+            "tile": {
+              "$ref": "#/definitions/Tile"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "structure_moved"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "recipe_id",
             "type"
           ],
@@ -360,6 +382,7 @@
         "barn_used",
         "coins",
         "delivery_board_built",
+        "delivery_board_tile",
         "delivery_orders",
         "field_plots",
         "inventory",
@@ -390,6 +413,9 @@
         },
         "delivery_board_built": {
           "type": "boolean"
+        },
+        "delivery_board_tile": {
+          "$ref": "#/definitions/Tile"
         },
         "delivery_orders": {
           "type": "array",
@@ -623,6 +649,60 @@
         "chicken_coop",
         "cow_pasture",
         "delivery_board"
+      ]
+    },
+    "StructureTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "machine"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "shelter"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "delivery_board"
+              ]
+            }
+          }
+        }
       ]
     },
     "Tile": {

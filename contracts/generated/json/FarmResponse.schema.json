@@ -151,6 +151,7 @@
         "barn_used",
         "coins",
         "delivery_board_built",
+        "delivery_board_tile",
         "delivery_orders",
         "field_plots",
         "inventory",
@@ -181,6 +182,9 @@
         },
         "delivery_board_built": {
           "type": "boolean"
+        },
+        "delivery_board_tile": {
+          "$ref": "#/definitions/Tile"
         },
         "delivery_orders": {
           "type": "array",

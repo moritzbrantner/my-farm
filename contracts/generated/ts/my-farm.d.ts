@@ -19,6 +19,8 @@ export type ShelterKind = "chicken_coop" | "cow_pasture";
 
 export type StructureKind = "bakery" | "feed_mill" | "chicken_coop" | "cow_pasture" | "delivery_board";
 
+export type StructureTarget = { "type": "machine", id: string, } | { "type": "shelter", id: string, } | { "type": "delivery_board" };
+
 export type RecipeDef = { id: string, name: string, machine_kind: MachineKind, inputs: Array<ItemStack>, outputs: Array<ItemStack>, reference_seconds: number, xp: number, unlock_level: number, };
 
 export type MachineDef = { kind: MachineKind, name: string, build_cost: number, unlock_level: number, queue_limit: number, };
@@ -39,7 +41,7 @@ export type AnimalState = { "type": "idle" } | { "type": "producing", fed_at_ms:
 
 export type AnimalSlot = { id: string, state: AnimalState, };
 
-export type FarmState = { last_update_ms: number, xp: number, level: number, coins: number, silo_capacity: number, barn_capacity: number, inventory: { [key in string]?: number }, field_plots: Array<FieldPlot>, machines: Array<MachineState>, shelters: Array<AnimalShelterState>, delivery_board_built: boolean, delivery_orders: Array<DeliveryOrder>, next_id: number, };
+export type FarmState = { last_update_ms: number, xp: number, level: number, coins: number, silo_capacity: number, barn_capacity: number, inventory: { [key in string]?: number }, field_plots: Array<FieldPlot>, machines: Array<MachineState>, shelters: Array<AnimalShelterState>, delivery_board_built: boolean, delivery_board_tile: Tile, delivery_orders: Array<DeliveryOrder>, next_id: number, };
 
 export type FieldPlot = { id: string, tile: Tile, crop: PlantedCrop | null, };
 
@@ -53,11 +55,11 @@ export type InventoryItemView = { item_id: string, name: string, quantity: numbe
 
 export type UnlockView = { level: number, label: string, unlocked: boolean, };
 
-export type FarmView = { last_update_ms: number, xp: number, level: number, coins: number, silo_used: number, silo_capacity: number, barn_used: number, barn_capacity: number, inventory: Array<InventoryItemView>, field_plots: Array<FieldPlot>, machines: Array<MachineState>, shelters: Array<AnimalShelterState>, delivery_board_built: boolean, delivery_orders: Array<DeliveryOrder>, unlocks: Array<UnlockView>, };
+export type FarmView = { last_update_ms: number, xp: number, level: number, coins: number, silo_used: number, silo_capacity: number, barn_used: number, barn_capacity: number, inventory: Array<InventoryItemView>, field_plots: Array<FieldPlot>, machines: Array<MachineState>, shelters: Array<AnimalShelterState>, delivery_board_built: boolean, delivery_board_tile: Tile, delivery_orders: Array<DeliveryOrder>, unlocks: Array<UnlockView>, };
 
-export type FarmCommand = { "type": "plant_crop", plot_id: string, crop_id: string, } | { "type": "harvest_crop", plot_id: string, } | { "type": "buy_structure", structure_kind: StructureKind, tile: Tile, } | { "type": "queue_recipe", machine_id: string, recipe_id: string, } | { "type": "collect_machine_job", machine_id: string, } | { "type": "feed_animal", shelter_id: string, animal_slot: string, } | { "type": "collect_animal_product", shelter_id: string, animal_slot: string, } | { "type": "fulfill_delivery_order", order_id: string, } | { "type": "discard_delivery_order", order_id: string, };
+export type FarmCommand = { "type": "plant_crop", plot_id: string, crop_id: string, } | { "type": "harvest_crop", plot_id: string, } | { "type": "buy_structure", structure_kind: StructureKind, tile: Tile, } | { "type": "move_structure", target: StructureTarget, tile: Tile, } | { "type": "queue_recipe", machine_id: string, recipe_id: string, } | { "type": "collect_machine_job", machine_id: string, } | { "type": "feed_animal", shelter_id: string, animal_slot: string, } | { "type": "collect_animal_product", shelter_id: string, animal_slot: string, } | { "type": "fulfill_delivery_order", order_id: string, } | { "type": "discard_delivery_order", order_id: string, };
 
-export type FarmEvent = { "type": "crop_planted", crop_id: string, } | { "type": "crop_harvested", crop_id: string, quantity: number, } | { "type": "structure_built", structure_kind: StructureKind, } | { "type": "recipe_queued", recipe_id: string, } | { "type": "machine_job_collected", recipe_id: string, } | { "type": "animal_fed", shelter_id: string, } | { "type": "animal_product_collected", item_id: string, } | { "type": "delivery_order_fulfilled", order_id: string, } | { "type": "delivery_order_discarded", order_id: string, } | { "type": "level_changed", level: number, };
+export type FarmEvent = { "type": "crop_planted", crop_id: string, } | { "type": "crop_harvested", crop_id: string, quantity: number, } | { "type": "structure_built", structure_kind: StructureKind, } | { "type": "structure_moved", target: StructureTarget, tile: Tile, } | { "type": "recipe_queued", recipe_id: string, } | { "type": "machine_job_collected", recipe_id: string, } | { "type": "animal_fed", shelter_id: string, } | { "type": "animal_product_collected", item_id: string, } | { "type": "delivery_order_fulfilled", order_id: string, } | { "type": "delivery_order_discarded", order_id: string, } | { "type": "level_changed", level: number, };
 
 export type CommandRequest = { expected_version: number, command: FarmCommand, };
 

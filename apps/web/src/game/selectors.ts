@@ -33,6 +33,13 @@ export type FieldContextMenuState = {
   y: number;
 } | null;
 
+export type StructureFootprint = {
+  width: number;
+  height: number;
+};
+
+const FARM_GRID_SIZE = 18;
+
 export function selectedPlot(view: FarmView, selection: Selection): FieldPlot | null {
   return selection?.type === "plot"
     ? view.field_plots.find((plot) => plot.id === selection.id) ?? null
@@ -89,6 +96,97 @@ export function structureTile(kind: StructureKind): Tile {
   }
 }
 
+export function structureFootprint(kind: StructureKind): StructureFootprint {
+  switch (kind) {
+    case "bakery":
+      return { width: 2, height: 2 };
+    case "chicken_coop":
+      return { width: 2, height: 2 };
+    case "cow_pasture":
+      return { width: 3, height: 2 };
+    case "feed_mill":
+    case "delivery_board":
+      return { width: 1, height: 1 };
+  }
+}
+
+export function selectedStructureLabel(view: FarmView, selection: StructureSelection): string {
+  if (selection.type === "machine") {
+    const machine = view.machines.find((entry) => entry.id === selection.id);
+    return machine ? structureLabel(machine.kind) : "Structure";
+  }
+  if (selection.type === "shelter") {
+    const shelter = view.shelters.find((entry) => entry.id === selection.id);
+    return shelter ? structureLabel(shelter.kind) : "Structure";
+  }
+  return "Delivery Board";
+}
+
+export function selectedStructureKind(view: FarmView, selection: StructureSelection): StructureKind | null {
+  if (selection.type === "machine") {
+    return view.machines.find((entry) => entry.id === selection.id)?.kind ?? null;
+  }
+  if (selection.type === "shelter") {
+    return view.shelters.find((entry) => entry.id === selection.id)?.kind ?? null;
+  }
+  return view.delivery_board_built ? "delivery_board" : null;
+}
+
+export function structureFootprintForSelection(
+  view: FarmView,
+  selection: StructureSelection,
+): StructureFootprint {
+  const kind = selectedStructureKind(view, selection);
+  return kind ? structureFootprint(kind) : { width: 1, height: 1 };
+}
+
+export function selectedStructureTile(view: FarmView, selection: StructureSelection): Tile | null {
+  if (selection.type === "machine") {
+    return view.machines.find((entry) => entry.id === selection.id)?.tile ?? null;
+  }
+  if (selection.type === "shelter") {
+    return view.shelters.find((entry) => entry.id === selection.id)?.tile ?? null;
+  }
+  return view.delivery_board_built ? view.delivery_board_tile : null;
+}
+
+export function isTileAvailableForStructure(
+  view: FarmView,
+  tile: Tile,
+  moving: StructureSelection | null,
+): boolean {
+  const footprint = moving ? structureFootprintForSelection(view, moving) : { width: 1, height: 1 };
+  if (!isFootprintInsideFarm(tile, footprint)) {
+    return false;
+  }
+  if (view.field_plots.some((plot) => footprintContains(tile, footprint, plot.tile))) {
+    return false;
+  }
+  if (
+    view.machines.some(
+      (machine) =>
+        !isSameStructure(moving, { type: "machine", id: machine.id }) &&
+        footprintsOverlap(tile, footprint, machine.tile, structureFootprint(machine.kind)),
+    )
+  ) {
+    return false;
+  }
+  if (
+    view.shelters.some(
+      (shelter) =>
+        !isSameStructure(moving, { type: "shelter", id: shelter.id }) &&
+        footprintsOverlap(tile, footprint, shelter.tile, structureFootprint(shelter.kind)),
+    )
+  ) {
+    return false;
+  }
+  return !(
+    view.delivery_board_built &&
+    !isSameStructure(moving, { type: "delivery_board" }) &&
+    footprintsOverlap(tile, footprint, view.delivery_board_tile, structureFootprint("delivery_board"))
+  );
+}
+
 export function builtStructureKinds(view: FarmView): Set<StructureKind> {
   const built = new Set<StructureKind>();
   for (const machine of view.machines) {
@@ -117,4 +215,50 @@ export function availableRecipes(
 
 export function secondsRemaining(readyAtMs: number, nowMs: number): number {
   return Math.max(0, Math.ceil((readyAtMs - nowMs) / 1000));
+}
+
+function isFootprintInsideFarm(tile: Tile, footprint: StructureFootprint): boolean {
+  return (
+    tile.x >= 0 &&
+    tile.y >= 0 &&
+    tile.x + footprint.width <= FARM_GRID_SIZE &&
+    tile.y + footprint.height <= FARM_GRID_SIZE
+  );
+}
+
+function footprintContains(origin: Tile, footprint: StructureFootprint, tile: Tile): boolean {
+  return (
+    tile.x >= origin.x &&
+    tile.x < origin.x + footprint.width &&
+    tile.y >= origin.y &&
+    tile.y < origin.y + footprint.height
+  );
+}
+
+function footprintsOverlap(
+  leftOrigin: Tile,
+  leftFootprint: StructureFootprint,
+  rightOrigin: Tile,
+  rightFootprint: StructureFootprint,
+): boolean {
+  return (
+    leftOrigin.x < rightOrigin.x + rightFootprint.width &&
+    leftOrigin.x + leftFootprint.width > rightOrigin.x &&
+    leftOrigin.y < rightOrigin.y + rightFootprint.height &&
+    leftOrigin.y + leftFootprint.height > rightOrigin.y
+  );
+}
+
+function isSameStructure(left: StructureSelection | null, right: StructureSelection): boolean {
+  if (!left || left.type !== right.type) {
+    return false;
+  }
+  switch (left.type) {
+    case "delivery_board":
+      return true;
+    case "machine":
+      return right.type === "machine" && left.id === right.id;
+    case "shelter":
+      return right.type === "shelter" && left.id === right.id;
+  }
 }

@@ -84,6 +84,28 @@
         {
           "type": "object",
           "required": [
+            "target",
+            "tile",
+            "type"
+          ],
+          "properties": {
+            "target": {
+              "$ref": "#/definitions/StructureTarget"
+            },
+            "tile": {
+              "$ref": "#/definitions/Tile"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "move_structure"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "machine_id",
             "recipe_id",
             "type"
@@ -211,6 +233,60 @@
         "chicken_coop",
         "cow_pasture",
         "delivery_board"
+      ]
+    },
+    "StructureTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "machine"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "shelter"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "delivery_board"
+              ]
+            }
+          }
+        }
       ]
     },
     "Tile": {

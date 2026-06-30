@@ -16,6 +16,7 @@ export type StructureMenuItem = {
   disabled?: boolean;
   reason?: string;
   command?: FarmCommand;
+  action?: "move_structure";
 };
 
 export type StructureMenuModel = {
@@ -41,7 +42,10 @@ export function buildStructureMenuModel(
   return view.delivery_board_built
     ? {
         title: "Delivery Board",
-        items: [{ id: "view-orders", label: "View delivery orders" }],
+        items: [
+          { id: "view-orders", label: "View delivery orders" },
+          { id: "move-structure", label: "Move Delivery Board", action: "move_structure" },
+        ],
       }
     : null;
 }
@@ -195,7 +199,14 @@ function buildMachineMenu(
   return {
     title: structureLabel(machine.kind),
     subtitle: `Queue ${machine.queue.length}/${queueLimit}`,
-    items,
+    items: [
+      ...items,
+      {
+        id: "move-structure",
+        label: `Move ${structureLabel(machine.kind)}`,
+        action: "move_structure",
+      },
+    ],
   };
 }
 
@@ -210,44 +221,52 @@ function buildShelterMenu(
   const feedName = shelterDef ? itemName(catalog, shelterDef.feed_item_id) : "Feed";
   const productName = shelterDef ? itemName(catalog, shelterDef.product_item_id) : "Product";
   const productStack = shelterDef ? [{ item_id: shelterDef.product_item_id, quantity: 1 }] : [];
+  const animalItems: StructureMenuItem[] = shelter.animals.map((animal, index) => {
+    const labelIndex = index + 1;
+    if (animal.state.type === "idle") {
+      const feedStack = shelterDef ? [{ item_id: shelterDef.feed_item_id, quantity: 1 }] : [];
+      const missing = shelterDef ? missingItems(catalog, view, feedStack) : ["feed"];
+      const reason = missing.length > 0 ? `Need ${missing.join(", ")}` : undefined;
+      return {
+        id: `feed-${animal.id}`,
+        label: `Feed ${animalName} ${labelIndex}`,
+        disabled: Boolean(reason),
+        reason,
+        command: reason
+          ? undefined
+          : { type: "feed_animal", shelter_id: shelter.id, animal_slot: animal.id },
+      };
+    }
+    if (animal.state.type === "ready") {
+      const storageFull = !hasStorageRoom(catalog, view, productStack);
+      return {
+        id: `collect-${animal.id}`,
+        label: `Collect ${productName} from ${animalName} ${labelIndex}`,
+        disabled: storageFull,
+        reason: storageFull ? "Storage full" : undefined,
+        command: storageFull
+          ? undefined
+          : { type: "collect_animal_product", shelter_id: shelter.id, animal_slot: animal.id },
+      };
+    }
+    return {
+      id: `producing-${animal.id}`,
+      label: `${animalName} ${labelIndex}: Ready in ${secondsRemaining(animal.state.ready_at_ms, nowMs)}s`,
+      disabled: true,
+    };
+  });
 
   return {
     title: shelterDef?.name ?? structureLabel(shelter.kind),
     subtitle: `${animalName}s - feed ${feedName}`,
-    items: shelter.animals.map((animal, index) => {
-      const labelIndex = index + 1;
-      if (animal.state.type === "idle") {
-        const feedStack = shelterDef ? [{ item_id: shelterDef.feed_item_id, quantity: 1 }] : [];
-        const missing = shelterDef ? missingItems(catalog, view, feedStack) : ["feed"];
-        const reason = missing.length > 0 ? `Need ${missing.join(", ")}` : undefined;
-        return {
-          id: `feed-${animal.id}`,
-          label: `Feed ${animalName} ${labelIndex}`,
-          disabled: Boolean(reason),
-          reason,
-          command: reason
-            ? undefined
-            : { type: "feed_animal", shelter_id: shelter.id, animal_slot: animal.id },
-        };
-      }
-      if (animal.state.type === "ready") {
-        const storageFull = !hasStorageRoom(catalog, view, productStack);
-        return {
-          id: `collect-${animal.id}`,
-          label: `Collect ${productName} from ${animalName} ${labelIndex}`,
-          disabled: storageFull,
-          reason: storageFull ? "Storage full" : undefined,
-          command: storageFull
-            ? undefined
-            : { type: "collect_animal_product", shelter_id: shelter.id, animal_slot: animal.id },
-        };
-      }
-      return {
-        id: `producing-${animal.id}`,
-        label: `${animalName} ${labelIndex}: Ready in ${secondsRemaining(animal.state.ready_at_ms, nowMs)}s`,
-        disabled: true,
-      };
-    }),
+    items: [
+      ...animalItems,
+      {
+        id: "move-structure",
+        label: `Move ${shelterDef?.name ?? structureLabel(shelter.kind)}`,
+        action: "move_structure",
+      },
+    ],
   };
 }
 

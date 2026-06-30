@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import type { CatalogDocument, FarmView } from "../src/types";
+import type { CatalogDocument, CommandRequest, FarmView } from "../src/types";
 
 test("renders the playable farm shell", async ({ page }) => {
   await page.goto("/");
@@ -220,6 +220,60 @@ test("delivery board menu focuses delivery orders", async ({ page }, testInfo) =
   await expect(page.getByText("Wheat x1")).toBeVisible();
 });
 
+test("filters inventory to the selected structure materials", async ({ page }) => {
+  await mockFarmApi(page);
+  await page.goto("/");
+
+  const inventory = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Inventory" }),
+  });
+
+  await page.getByLabel("Bakery structure").click();
+  await expect(inventory.getByText("Wheat 2", { exact: true })).toBeVisible();
+  await expect(inventory.getByText("Bread 0", { exact: true })).toBeVisible();
+  await expect(inventory.getByText("Corn Bread 0", { exact: true })).toBeVisible();
+  await expect(inventory).not.toContainText("Chicken Feed");
+
+  await page.getByLabel("Chicken Coop structure").click();
+  await expect(inventory.getByText("Chicken Feed 0", { exact: true })).toBeVisible();
+  await expect(inventory.getByText("Egg 0", { exact: true })).toBeVisible();
+  await expect(inventory).not.toContainText("Wheat");
+  await expect(inventory).not.toContainText("Bread");
+});
+
+test("moves a structure by choosing move and clicking a destination tile", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, farmView, catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move Bakery" }).click();
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  await expect(page.getByText("Moving Bakery")).toBeVisible();
+
+  const command = await clickUntilCommand(page, commands);
+  expect(command.command).toMatchObject({
+    type: "move_structure",
+    target: { type: "machine", id: "machine-1" },
+  });
+  expect(command.command).toHaveProperty("tile");
+});
+
+test("shows a footprint preview while moving a structure", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop hover behavior is covered in desktop.");
+  await mockFarmApi(page);
+  await page.goto("/");
+
+  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move Bakery" }).click();
+  await expect(page.getByText("Moving Bakery")).toBeVisible();
+
+  await expectCanvasToChangeAfterHover(page);
+});
+
 const catalog: CatalogDocument = {
   balance: { time_scale: 10, max_orders: 3 },
   items: [
@@ -323,6 +377,7 @@ const farmView: FarmView = {
     },
   ],
   delivery_board_built: true,
+  delivery_board_tile: { x: 2, y: 7 },
   delivery_orders: [
     {
       id: "order-1",
@@ -334,7 +389,12 @@ const farmView: FarmView = {
   unlocks: [],
 };
 
-async function mockFarmApi(page: Page, view: FarmView = farmView, customCatalog: CatalogDocument = catalog) {
+async function mockFarmApi(
+  page: Page,
+  view: FarmView = farmView,
+  customCatalog: CatalogDocument = catalog,
+  onCommand?: (request: CommandRequest) => void,
+) {
   await page.route("**/api/catalog", async (route) => {
     await route.fulfill({ json: { catalog: customCatalog } });
   });
@@ -342,8 +402,30 @@ async function mockFarmApi(page: Page, view: FarmView = farmView, customCatalog:
     await route.fulfill({ json: { version: 1, view } });
   });
   await page.route("**/api/commands", async (route) => {
+    onCommand?.(route.request().postDataJSON() as CommandRequest);
     await route.fulfill({ json: { accepted: true, version: 2, events: [], view, error: null } });
   });
+}
+
+async function clickUntilCommand(page: Page, commands: CommandRequest[]) {
+  const canvas = page.locator("canvas").first();
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  if (!box) {
+    throw new Error("Canvas has no bounding box");
+  }
+  const maxX = Math.min(box.x + box.width - 24, box.x + Math.max(320, box.width * 0.72));
+  const maxY = box.y + box.height - 96;
+  for (let y = box.y + 96; y < maxY; y += 28) {
+    for (let x = box.x + 24; x < maxX; x += 28) {
+      await page.mouse.click(x, y);
+      const command = commands.at(-1);
+      if (command) {
+        return command;
+      }
+    }
+  }
+  throw new Error("Could not click a destination tile");
 }
 
 async function touchPress(
@@ -434,6 +516,28 @@ async function touchDragCanvas(page: Page, from: { x: number; y: number }, to: {
 
 async function canvasSnapshot(page: Page) {
   return page.locator("canvas").first().evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL());
+}
+
+async function expectCanvasToChangeAfterHover(page: Page) {
+  const canvas = page.locator("canvas").first();
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  if (!box) {
+    throw new Error("Canvas has no bounding box");
+  }
+  const before = await canvasSnapshot(page);
+  const maxX = Math.min(box.x + box.width - 24, box.x + Math.max(320, box.width * 0.72));
+  const maxY = box.y + box.height - 96;
+  for (let y = box.y + 96; y < maxY; y += 32) {
+    for (let x = box.x + 24; x < maxX; x += 32) {
+      await page.mouse.move(x, y);
+      await page.waitForTimeout(40);
+      if ((await canvasSnapshot(page)) !== before) {
+        return;
+      }
+    }
+  }
+  throw new Error("Moving over the canvas did not draw a placement preview");
 }
 
 function readyFieldView(): FarmView {

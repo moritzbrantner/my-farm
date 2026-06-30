@@ -1,12 +1,20 @@
 use crate::{
-    AnimalShelterState, AnimalState, CatalogDocument, DeliveryOrder, FarmState, ItemKind,
-    ItemStack, MachineJob, MachineKind, MachineState, ShelterKind, StructureKind, Tile,
     add_inventory, add_shelter_animals, gain_xp, has_storage_room, next_id, remove_inventory,
-    scaled_duration_ms, update_level,
+    scaled_duration_ms, update_level, AnimalShelterState, AnimalState, CatalogDocument,
+    DeliveryOrder, FarmState, ItemKind, ItemStack, MachineJob, MachineKind, MachineState,
+    ShelterKind, StructureKind, Tile,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+
+const FARM_GRID_SIZE: i32 = 18;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StructureFootprint {
+    width: i32,
+    height: i32,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -20,6 +28,10 @@ pub enum FarmCommand {
     },
     BuyStructure {
         structure_kind: StructureKind,
+        tile: Tile,
+    },
+    MoveStructure {
+        target: StructureTarget,
         tile: Tile,
     },
     QueueRecipe {
@@ -47,10 +59,19 @@ pub enum FarmCommand {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
+pub enum StructureTarget {
+    Machine { id: String },
+    Shelter { id: String },
+    DeliveryBoard,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum FarmEvent {
     CropPlanted { crop_id: String },
     CropHarvested { crop_id: String, quantity: u32 },
     StructureBuilt { structure_kind: StructureKind },
+    StructureMoved { target: StructureTarget, tile: Tile },
     RecipeQueued { recipe_id: String },
     MachineJobCollected { recipe_id: String },
     AnimalFed { shelter_id: String },
@@ -114,6 +135,7 @@ pub fn apply_command(
             structure_kind,
             tile,
         } => buy_structure(farm, catalog, structure_kind, tile),
+        FarmCommand::MoveStructure { target, tile } => move_structure(farm, target, tile),
         FarmCommand::QueueRecipe {
             machine_id,
             recipe_id,
@@ -259,12 +281,84 @@ fn buy_structure(
         }
         StructureKind::DeliveryBoard => {
             require_level(farm, 4)?;
+            if farm.delivery_board_built {
+                return Err(CommandError::new("structure already built"));
+            }
+            ensure_tile_can_hold_structure(
+                farm,
+                &tile,
+                structure_footprint(&StructureKind::DeliveryBoard),
+                None,
+            )?;
             spend_coins(farm, 20)?;
             farm.delivery_board_built = true;
+            farm.delivery_board_tile = tile;
             ensure_delivery_orders(farm, catalog);
         }
     }
     Ok(vec![FarmEvent::StructureBuilt { structure_kind }])
+}
+
+fn move_structure(
+    farm: &mut FarmState,
+    target: StructureTarget,
+    tile: Tile,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    let structure_kind = match &target {
+        StructureTarget::Machine { id } => {
+            let machine = farm
+                .machines
+                .iter()
+                .find(|machine| machine.id == *id)
+                .ok_or_else(|| CommandError::new("machine not found"))?;
+            machine_structure_kind(&machine.kind)
+        }
+        StructureTarget::Shelter { id } => {
+            let shelter = farm
+                .shelters
+                .iter()
+                .find(|shelter| shelter.id == *id)
+                .ok_or_else(|| CommandError::new("animal shelter not found"))?;
+            shelter_structure_kind(&shelter.kind)
+        }
+        StructureTarget::DeliveryBoard => {
+            if !farm.delivery_board_built {
+                return Err(CommandError::new("delivery board not found"));
+            }
+            StructureKind::DeliveryBoard
+        }
+    };
+
+    ensure_tile_can_hold_structure(
+        farm,
+        &tile,
+        structure_footprint(&structure_kind),
+        Some(&target),
+    )?;
+
+    match &target {
+        StructureTarget::Machine { id } => {
+            let machine = farm
+                .machines
+                .iter_mut()
+                .find(|machine| machine.id == *id)
+                .unwrap();
+            machine.tile = tile.clone();
+        }
+        StructureTarget::Shelter { id } => {
+            let shelter = farm
+                .shelters
+                .iter_mut()
+                .find(|shelter| shelter.id == *id)
+                .unwrap();
+            shelter.tile = tile.clone();
+        }
+        StructureTarget::DeliveryBoard => {
+            farm.delivery_board_tile = tile.clone();
+        }
+    }
+
+    Ok(vec![FarmEvent::StructureMoved { target, tile }])
 }
 
 fn queue_recipe(
@@ -484,6 +578,8 @@ fn buy_machine(
     if farm.machines.iter().any(|machine| machine.kind == kind) {
         return Err(CommandError::new("structure already built"));
     }
+    let structure_kind = machine_structure_kind(&kind);
+    ensure_tile_can_hold_structure(farm, &tile, structure_footprint(&structure_kind), None)?;
     spend_coins(farm, cost)?;
     let id = next_id(farm, "machine");
     farm.machines.push(MachineState {
@@ -504,6 +600,8 @@ fn buy_shelter(
     if farm.shelters.iter().any(|shelter| shelter.kind == def.kind) {
         return Err(CommandError::new("structure already built"));
     }
+    let structure_kind = shelter_structure_kind(&def.kind);
+    ensure_tile_can_hold_structure(farm, &tile, structure_footprint(&structure_kind), None)?;
     spend_coins(farm, def.build_cost)?;
     let id = next_id(farm, "shelter");
     let animals = add_shelter_animals(farm, def);
@@ -539,4 +637,118 @@ fn find_shelter_index(farm: &FarmState, shelter_id: &str) -> Result<usize, Comma
         .iter()
         .position(|shelter| shelter.id == shelter_id)
         .ok_or_else(|| CommandError::new("animal shelter not found"))
+}
+
+fn ensure_tile_can_hold_structure(
+    farm: &FarmState,
+    tile: &Tile,
+    footprint: StructureFootprint,
+    ignore_target: Option<&StructureTarget>,
+) -> Result<(), CommandError> {
+    if tile.x < 0
+        || tile.y < 0
+        || tile.x + footprint.width > FARM_GRID_SIZE
+        || tile.y + footprint.height > FARM_GRID_SIZE
+    {
+        return Err(CommandError::new("tile is outside the farm"));
+    }
+    if farm
+        .field_plots
+        .iter()
+        .any(|plot| footprint_contains(tile, footprint, &plot.tile))
+    {
+        return Err(CommandError::new("tile is occupied"));
+    }
+    if farm.machines.iter().any(|machine| {
+        !ignores_machine(ignore_target, &machine.id)
+            && footprints_overlap(
+                tile,
+                footprint,
+                &machine.tile,
+                structure_footprint(&machine_structure_kind(&machine.kind)),
+            )
+    }) {
+        return Err(CommandError::new("tile is occupied"));
+    }
+    if farm.shelters.iter().any(|shelter| {
+        !ignores_shelter(ignore_target, &shelter.id)
+            && footprints_overlap(
+                tile,
+                footprint,
+                &shelter.tile,
+                structure_footprint(&shelter_structure_kind(&shelter.kind)),
+            )
+    }) {
+        return Err(CommandError::new("tile is occupied"));
+    }
+    if farm.delivery_board_built
+        && !matches!(ignore_target, Some(StructureTarget::DeliveryBoard))
+        && footprints_overlap(
+            tile,
+            footprint,
+            &farm.delivery_board_tile,
+            structure_footprint(&StructureKind::DeliveryBoard),
+        )
+    {
+        return Err(CommandError::new("tile is occupied"));
+    }
+    Ok(())
+}
+
+fn structure_footprint(kind: &StructureKind) -> StructureFootprint {
+    match kind {
+        StructureKind::Bakery | StructureKind::ChickenCoop => StructureFootprint {
+            width: 2,
+            height: 2,
+        },
+        StructureKind::CowPasture => StructureFootprint {
+            width: 3,
+            height: 2,
+        },
+        StructureKind::FeedMill | StructureKind::DeliveryBoard => StructureFootprint {
+            width: 1,
+            height: 1,
+        },
+    }
+}
+
+fn machine_structure_kind(kind: &MachineKind) -> StructureKind {
+    match kind {
+        MachineKind::Bakery => StructureKind::Bakery,
+        MachineKind::FeedMill => StructureKind::FeedMill,
+    }
+}
+
+fn shelter_structure_kind(kind: &ShelterKind) -> StructureKind {
+    match kind {
+        ShelterKind::ChickenCoop => StructureKind::ChickenCoop,
+        ShelterKind::CowPasture => StructureKind::CowPasture,
+    }
+}
+
+fn footprint_contains(origin: &Tile, footprint: StructureFootprint, tile: &Tile) -> bool {
+    tile.x >= origin.x
+        && tile.x < origin.x + footprint.width
+        && tile.y >= origin.y
+        && tile.y < origin.y + footprint.height
+}
+
+fn footprints_overlap(
+    left_origin: &Tile,
+    left_footprint: StructureFootprint,
+    right_origin: &Tile,
+    right_footprint: StructureFootprint,
+) -> bool {
+    left_origin.x < right_origin.x + right_footprint.width
+        && left_origin.x + left_footprint.width > right_origin.x
+        && left_origin.y < right_origin.y + right_footprint.height
+        && left_origin.y + left_footprint.height > right_origin.y
+}
+
+fn ignores_machine(ignore_target: Option<&StructureTarget>, machine_id: &str) -> bool {
+    matches!(ignore_target, Some(StructureTarget::Machine { id }) if id == machine_id)
+}
+
+fn ignores_shelter(ignore_target: Option<&StructureTarget>, shelter_id: &str) -> bool {
+    matches!(ignore_target, Some(StructureTarget::Shelter { id }) if id == shelter_id)
 }

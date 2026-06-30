@@ -19,6 +19,7 @@ pub struct FarmView {
     pub machines: Vec<crate::MachineState>,
     pub shelters: Vec<crate::AnimalShelterState>,
     pub delivery_board_built: bool,
+    pub delivery_board_tile: crate::Tile,
     pub delivery_orders: Vec<crate::DeliveryOrder>,
     pub unlocks: Vec<UnlockView>,
 }
@@ -67,6 +68,7 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
         machines: farm.machines.clone(),
         shelters: farm.shelters.clone(),
         delivery_board_built: farm.delivery_board_built,
+        delivery_board_tile: farm.delivery_board_tile.clone(),
         delivery_orders: farm.delivery_orders.clone(),
         unlocks: vec![
             unlock(1, "Fields and wheat", farm.level),
