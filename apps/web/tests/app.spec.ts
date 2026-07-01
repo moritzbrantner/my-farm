@@ -386,6 +386,32 @@ test("blocked structure placement explains the occupied tile without sending a c
   expect(commands).toHaveLength(0);
 });
 
+test("farm house blocks new field plots and structures without sending a command", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  const farmHouse = page.getByLabel("Farm House structure");
+  await expect(farmHouse).toBeVisible();
+
+  const tray = await openBuildMenu(page);
+  await tray.getByRole("button", { name: /Field Plot/ }).click();
+  await expect(page.getByText("Place Field Plot")).toBeVisible();
+  await farmHouse.click({ force: true });
+
+  await expect(page.getByText("Tile is occupied")).toBeVisible();
+  expect(commands).toHaveLength(0);
+
+  await tray.getByRole("button", { name: /Bakery/ }).click();
+  await expect(page.getByText("Place Bakery")).toBeVisible();
+  await farmHouse.click({ force: true });
+
+  await expect(page.getByText("Tile is occupied")).toBeVisible();
+  expect(commands).toHaveLength(0);
+});
+
 test("escape cancels structure placement", async ({ page }) => {
   const commands: CommandRequest[] = [];
   await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
@@ -1358,6 +1384,33 @@ test("moves a structure by choosing move and clicking a destination tile", async
     target: { type: "machine", id: "machine-1" },
   });
   expect(command.command).toHaveProperty("tile");
+});
+
+test("farm house does not expose move and blocks moved structures", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, farmView, catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  const farmHouse = page.getByLabel("Farm House structure");
+  await farmHouse.click({ button: "right" });
+
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  await expect(page.getByRole("menuitem", { name: "Move" })).toHaveCount(0);
+
+  await touchPress(farmHouse, 560);
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  await expect(page.getByText(/Moving Farm House/)).toHaveCount(0);
+
+  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move" }).click();
+  await expect(page.getByText("Moving Bakery")).toBeVisible();
+  await farmHouse.click({ force: true });
+
+  await expect(page.getByText("Tile is occupied")).toBeVisible();
+  expect(commands).toHaveLength(0);
 });
 
 test("shows a footprint preview while moving a structure", async ({ page }, testInfo) => {
