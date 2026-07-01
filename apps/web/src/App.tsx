@@ -713,6 +713,15 @@ export function App() {
     );
   }
 
+  const appToolClass = buildPlacement
+    ? "app--tool-place"
+    : movingStructure
+      ? "app--tool-move"
+      : activeFieldTool.type === "plant"
+        ? "app--tool-seed"
+        : activeFieldTool.type === "harvest"
+          ? "app--tool-harvest"
+          : "app--tool-default";
   const menuModel = fieldMenu
     ? buildFieldMenuModel(
         catalog,
@@ -726,7 +735,7 @@ export function App() {
   const menuPoint = fieldMenu ?? structureMenu;
 
   return (
-    <main className="app">
+    <main className={`app ${appToolClass}`}>
       <FarmScene
         view={view}
         selection={selection}
@@ -1066,8 +1075,25 @@ function FieldTools({
   onPlant: (cropId: string) => void;
   onHarvest: () => void;
 }) {
+  const [seedMenuOpen, setSeedMenuOpen] = useState(false);
   const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  const unlockedCrops = catalog.crops.filter((crop) => crop.unlock_level <= view.level);
+  const hasPlantableSeed = unlockedCrops.some((crop) => (inventory.get(crop.item_id) ?? 0) > 0);
   const selectedSeedFieldCount = plantSweep?.plotIds.length ?? 0;
+  const selectedSeedCropId = activeFieldTool.type === "plant" ? activeFieldTool.cropId : null;
+  const selectedSeedName = selectedSeedCropId ? itemName(catalog, selectedSeedCropId) : null;
+
+  useEffect(() => {
+    if (activeFieldTool.type !== "plant") {
+      setSeedMenuOpen(false);
+    }
+  }, [activeFieldTool.type]);
+
+  const selectSeed = (cropId: string) => {
+    onPlant(cropId);
+    setSeedMenuOpen(false);
+  };
+
   return (
     <section className="panel-section field-tools">
       <h2>Field Tools</h2>
@@ -1076,7 +1102,10 @@ function FieldTools({
           type="button"
           className={activeFieldTool.type === "default" ? "field-tool field-tool--active" : "field-tool"}
           aria-pressed={activeFieldTool.type === "default"}
-          onClick={onDefault}
+          onClick={() => {
+            setSeedMenuOpen(false);
+            onDefault();
+          }}
         >
           Default
         </button>
@@ -1084,30 +1113,50 @@ function FieldTools({
           type="button"
           className={activeFieldTool.type === "harvest" ? "field-tool field-tool--active" : "field-tool"}
           aria-pressed={activeFieldTool.type === "harvest"}
-          onClick={onHarvest}
+          onClick={() => {
+            setSeedMenuOpen(false);
+            onHarvest();
+          }}
         >
           Harvest
         </button>
-        {catalog.crops
-          .filter((crop) => crop.unlock_level <= view.level)
-          .map((crop) => {
-            const quantity = inventory.get(crop.item_id) ?? 0;
-            const active = activeFieldTool.type === "plant" && activeFieldTool.cropId === crop.item_id;
-            return (
-              <button
-                type="button"
-                key={crop.item_id}
-                className={active ? "field-tool field-tool--active field-tool--seed" : "field-tool field-tool--seed"}
-                aria-pressed={active}
-                disabled={quantity < 1}
-                onClick={() => onPlant(crop.item_id)}
-              >
-                <ResourceIcon type="item" itemId={crop.item_id} itemKind="crop" />
-                <span>{itemName(catalog, crop.item_id)}</span>
-                <strong>{quantity}</strong>
-              </button>
-            );
-          })}
+        <button
+          type="button"
+          className={activeFieldTool.type === "plant" ? "field-tool field-tool--active field-tool--seed" : "field-tool field-tool--seed"}
+          aria-pressed={activeFieldTool.type === "plant"}
+          aria-haspopup="menu"
+          aria-expanded={seedMenuOpen}
+          aria-label="Seed"
+          disabled={!hasPlantableSeed}
+          onClick={() => setSeedMenuOpen((open) => !open)}
+        >
+          <ResourceIcon type="item" itemId={selectedSeedCropId ?? "wheat"} itemKind="crop" />
+          <span>Seed</span>
+          {selectedSeedName ? <strong>{selectedSeedName}</strong> : null}
+        </button>
+        {seedMenuOpen ? (
+          <div className="seed-menu" role="menu" aria-label="Seed type">
+            {unlockedCrops.map((crop) => {
+              const quantity = inventory.get(crop.item_id) ?? 0;
+              const active = selectedSeedCropId === crop.item_id;
+              return (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={active}
+                  key={crop.item_id}
+                  className={active ? "seed-menu__item seed-menu__item--active" : "seed-menu__item"}
+                  disabled={quantity < 1}
+                  onClick={() => selectSeed(crop.item_id)}
+                >
+                  <ResourceIcon type="item" itemId={crop.item_id} itemKind="crop" />
+                  <span>{itemName(catalog, crop.item_id)}</span>
+                  <strong>{quantity}</strong>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
       {activeFieldTool.type === "plant" ? (
         <p className="field-tool-status" role="status" aria-live="polite">

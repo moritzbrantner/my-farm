@@ -14,6 +14,7 @@ test("renders the playable farm shell", async ({ page }) => {
   await expect(page.getByText("My Farm")).toBeVisible();
   await expect(page.getByText(/Level 1/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
+  await expect(page.locator(".field-tools").getByRole("button", { name: "Seed" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toBeVisible();
 
   const canvas = page.locator("canvas").first();
@@ -21,6 +22,26 @@ test("renders the playable farm shell", async ({ page }) => {
   const box = await canvas.boundingBox();
   expect(box?.width).toBeGreaterThan(250);
   expect(box?.height).toBeGreaterThan(250);
+});
+
+test("field tools expose one seed picker and change the cursor", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Cursor behavior is desktop-specific.");
+  await mockFarmApi(page);
+  await openFarm(page);
+
+  const tools = page.locator(".field-tools");
+  await expect(tools.getByRole("button", { name: "Seed" })).toHaveCount(1);
+  await expect(tools.getByRole("button", { name: /Corn/ })).toHaveCount(0);
+
+  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", "pointer");
+
+  await tools.getByRole("button", { name: "Seed" }).click();
+  await expect(tools.getByRole("menu", { name: "Seed type" })).toBeVisible();
+  await tools.getByRole("menuitemradio", { name: /Wheat/ }).click();
+  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", "copy");
+
+  await tools.getByRole("button", { name: "Harvest" }).click();
+  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", "cell");
 });
 
 test("main menu opens settings wiki and account panels", async ({ page }) => {
@@ -359,7 +380,7 @@ test("dragging the seed tool across empty fields sends one sweep plant command",
   const firstFieldPoint = await fieldTargetPoint(page, "plot-1");
   const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
 
-  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await selectSeedTool(page, "Wheat");
   await dragHarvestSweep(page, firstFieldPoint, secondFieldPoint);
 
   await expect.poll(() => {
@@ -382,7 +403,7 @@ test("seed tool plants when pressed before moving over a field", async ({ page }
   const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
   const groundPoint = { x: firstFieldPoint.x + 180, y: firstFieldPoint.y + 120 };
 
-  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await selectSeedTool(page, "Wheat");
   await page.mouse.move(groundPoint.x, groundPoint.y);
   await page.mouse.down();
   await page.mouse.move(firstFieldPoint.x, firstFieldPoint.y, { steps: 8 });
@@ -411,7 +432,7 @@ test("seed tool finishes a lower row sweep on release and shows selected count",
   const plot5 = await fieldTargetPoint(page, "plot-5");
   const plot6 = await fieldTargetPoint(page, "plot-6");
 
-  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await selectSeedTool(page, "Wheat");
   await page.mouse.move(plot4.x, plot4.y);
   await page.mouse.down();
   await expect(page.getByText("1 field selected for seeding")).toBeVisible();
@@ -440,7 +461,7 @@ test("right click cancels a pending seed sweep", async ({ page }, testInfo) => {
   const plot4 = await fieldTargetPoint(page, "plot-4");
   const plot5 = await fieldTargetPoint(page, "plot-5");
 
-  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await selectSeedTool(page, "Wheat");
   await page.mouse.move(plot4.x, plot4.y);
   await page.mouse.down();
   await page.mouse.move(plot5.x, plot5.y, { steps: 2 });
@@ -490,7 +511,7 @@ test("accepted seed sweep is not overwritten by an older farm poll", async ({
   const plot5 = await fieldTargetPoint(page, "plot-5");
   const plot6 = await fieldTargetPoint(page, "plot-6");
 
-  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await selectSeedTool(page, "Wheat");
   await page.mouse.move(plot4.x, plot4.y);
   await page.mouse.down();
   await page.mouse.move(plot5.x, plot5.y, { steps: 2 });
@@ -546,7 +567,7 @@ test("seed sweep retries once after a version mismatch", async ({ page }, testIn
   const plot5 = await fieldTargetPoint(page, "plot-5");
   const plot6 = await fieldTargetPoint(page, "plot-6");
 
-  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await selectSeedTool(page, "Wheat");
   await page.mouse.move(plot4.x, plot4.y);
   await page.mouse.down();
   await page.mouse.move(plot5.x, plot5.y, { steps: 2 });
@@ -1145,6 +1166,12 @@ async function dragHarvestSweep(
   await page.mouse.move(from.x + 12, from.y + 12);
   await page.mouse.move(to.x, to.y, { steps: 8 });
   await page.mouse.up();
+}
+
+async function selectSeedTool(page: Page, seedName: string) {
+  const tools = page.locator(".field-tools");
+  await tools.getByRole("button", { name: "Seed" }).click();
+  await tools.getByRole("menuitemradio", { name: new RegExp(seedName) }).click();
 }
 
 async function canvasSnapshot(page: Page) {

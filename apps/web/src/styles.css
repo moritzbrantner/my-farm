@@ -104,6 +104,36 @@ button[aria-disabled="true"] {
   touch-action: none;
 }
 
+.app--tool-default .farm-canvas canvas {
+  cursor: grab;
+}
+
+.app--tool-default .farm-canvas canvas:active {
+  cursor: grabbing;
+}
+
+.app--tool-seed .farm-canvas canvas,
+.app--tool-seed .field-hit-target {
+  cursor: copy;
+}
+
+.app--tool-harvest .farm-canvas canvas,
+.app--tool-harvest .field-hit-target {
+  cursor: cell;
+}
+
+.app--tool-place .farm-canvas canvas,
+.app--tool-place .field-hit-target,
+.app--tool-place .structure-hit-target {
+  cursor: crosshair;
+}
+
+.app--tool-move .farm-canvas canvas,
+.app--tool-move .field-hit-target,
+.app--tool-move .structure-hit-target {
+  cursor: move;
+}
+
 .top-bar {
   position: absolute;
   top: 12px;
@@ -480,11 +510,45 @@ h2 {
 }
 
 .field-tool--seed {
+  grid-column: 1 / -1;
   justify-content: flex-start;
 }
 
 .field-tool--seed strong {
   margin-left: auto;
+}
+
+.seed-menu {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(32, 49, 43, 0.2);
+  border-radius: 8px;
+  background: #fbf6e8;
+}
+
+.seed-menu__item {
+  min-width: 0;
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  padding: 6px 8px;
+  text-align: left;
+  background: #e5edd4;
+}
+
+.seed-menu__item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.seed-menu__item--active {
+  background: #fff7d0;
+  outline: 2px solid rgba(68, 109, 56, 0.42);
+  outline-offset: 1px;
 }
 
 .field-tool--active {
