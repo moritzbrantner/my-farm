@@ -6,6 +6,7 @@ import { colorForItem } from "../../assets/sprites";
 export type FarmAssetKind =
   | "ground_tile"
   | "field_plot"
+  | "farm_house"
   | "silo"
   | "barn"
   | "bakery"
@@ -156,16 +157,18 @@ function SelectionPlate({
 
 function renderStructure(kind: Exclude<FarmAssetKind, "ground_tile" | "field_plot">, footprint: StructureFootprint, state: FarmAssetState) {
   switch (kind) {
+    case "farm_house":
+      return <FarmHouse />;
     case "silo":
-      return <Silo />;
+      return <Silo footprint={footprint} />;
     case "barn":
-      return <Barn state={state} />;
+      return <Barn footprint={footprint} state={state} />;
     case "bakery":
       return <Bakery />;
     case "feed_mill":
       return <FeedMill />;
     case "chicken_coop":
-      return <ChickenCoop />;
+      return <ChickenCoop footprint={footprint} />;
     case "cow_pasture":
       return <CowPasture footprint={footprint} />;
     case "delivery_board":
@@ -173,15 +176,43 @@ function renderStructure(kind: Exclude<FarmAssetKind, "ground_tile" | "field_plo
   }
 }
 
-function Silo() {
+function FarmHouse() {
+  return (
+    <group position={[0, 0.08, 0]}>
+      <mesh castShadow receiveShadow position={[0, 0.34, 0]}>
+        <boxGeometry args={[1.25, 0.55, 1.05]} />
+        <meshStandardMaterial color="#f0d7a0" roughness={0.78} metalness={0} />
+      </mesh>
+      <mesh castShadow position={[0, 0.72, 0]} rotation={[0, 0, Math.PI / 4]}>
+        <boxGeometry args={[0.9, 0.9, 1.18]} />
+        <meshStandardMaterial color="#7d5642" roughness={0.82} metalness={0} />
+      </mesh>
+      <mesh castShadow position={[-0.36, 0.24, -0.54]}>
+        <boxGeometry args={[0.24, 0.32, 0.04]} />
+        <meshStandardMaterial color="#68412f" roughness={0.86} metalness={0} />
+      </mesh>
+      <mesh castShadow position={[0.18, 0.38, -0.55]}>
+        <boxGeometry args={[0.26, 0.22, 0.04]} />
+        <meshStandardMaterial color="#bfe2e0" roughness={0.35} metalness={0} />
+      </mesh>
+      <mesh castShadow position={[0.46, 0.86, 0.2]}>
+        <boxGeometry args={[0.16, 0.42, 0.16]} />
+        <meshStandardMaterial color="#624a35" roughness={0.82} metalness={0} />
+      </mesh>
+    </group>
+  );
+}
+
+function Silo({ footprint }: { footprint: StructureFootprint }) {
+  const radius = Math.min(0.44, footprint.width * 0.16);
   return (
     <group position={[0, 0.08, 0]}>
       <mesh castShadow receiveShadow position={[0, 0.38, 0]}>
-        <cylinderGeometry args={[0.26, 0.3, 0.68, 12]} />
+        <cylinderGeometry args={[radius * 0.9, radius, 0.68, 12]} />
         <meshStandardMaterial color="#d8b65a" roughness={0.7} metalness={0.05} />
       </mesh>
       <mesh castShadow position={[0, 0.79, 0]}>
-        <coneGeometry args={[0.34, 0.28, 12]} />
+        <coneGeometry args={[radius * 1.15, 0.28, 12]} />
         <meshStandardMaterial color="#8d6a36" roughness={0.78} metalness={0} />
       </mesh>
       <mesh castShadow position={[0.28, 0.32, -0.16]}>
@@ -192,16 +223,18 @@ function Silo() {
   );
 }
 
-function Barn({ state }: { state: FarmAssetState }) {
+function Barn({ footprint, state }: { footprint: StructureFootprint; state: FarmAssetState }) {
   const bodyColor = state.blockedByPlacement ? blockedColor : "#b95346";
+  const width = Math.min(1.28, footprint.width - 0.45);
+  const depth = Math.min(1.08, footprint.height - 0.55);
   return (
     <group position={[0, 0.08, 0]}>
       <mesh castShadow receiveShadow position={[0, 0.27, 0]}>
-        <boxGeometry args={[0.72, 0.46, 0.62]} />
+        <boxGeometry args={[width, 0.46, depth]} />
         <meshStandardMaterial color={bodyColor} roughness={0.76} metalness={0} />
       </mesh>
       <mesh castShadow position={[0, 0.58, 0]} rotation={[0, 0, Math.PI / 4]}>
-        <boxGeometry args={[0.58, 0.58, 0.68]} />
+        <boxGeometry args={[width * 0.78, width * 0.78, depth + 0.08]} />
         <meshStandardMaterial color="#6d3b35" roughness={0.8} metalness={0} />
       </mesh>
       <mesh castShadow position={[0, 0.22, -0.33]}>
@@ -254,19 +287,19 @@ function FeedMill() {
   );
 }
 
-function ChickenCoop() {
+function ChickenCoop({ footprint }: { footprint: StructureFootprint }) {
   return (
     <group position={[0, 0.08, 0]}>
-      <Fence width={1.55} depth={1.55} />
-      <mesh castShadow receiveShadow position={[-0.18, 0.28, 0]}>
+      <Fence width={footprint.width - 0.3} depth={footprint.height - 0.3} />
+      <mesh castShadow receiveShadow position={[-0.18, 0.28, -0.32]}>
         <boxGeometry args={[0.76, 0.42, 0.58]} />
         <meshStandardMaterial color="#d8a64e" roughness={0.82} metalness={0} />
       </mesh>
-      <mesh castShadow position={[-0.18, 0.58, 0]}>
+      <mesh castShadow position={[-0.18, 0.58, -0.32]}>
         <boxGeometry args={[0.86, 0.2, 0.68]} />
         <meshStandardMaterial color="#8d6a36" roughness={0.86} metalness={0} />
       </mesh>
-      <mesh castShadow position={[0.38, 0.2, -0.2]}>
+      <mesh castShadow position={[0.38, 0.2, 0.48]}>
         <sphereGeometry args={[0.12, 8, 6]} />
         <meshStandardMaterial color="#f4eee2" roughness={0.7} metalness={0} />
       </mesh>

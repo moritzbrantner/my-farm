@@ -28,11 +28,12 @@ export function createFarmClient(baseUrl = import.meta.env.VITE_API_BASE_URL ?? 
       },
       ...init,
     });
-    const payload = await response.json();
+    const payloadText = await response.text();
+    const payload = parseResponsePayload(payloadText);
     if (!response.ok) {
       throw new Error(payload.error ?? `Request failed: ${response.status}`);
     }
-    return payload;
+    return payload as T;
   }
 
   return {
@@ -57,6 +58,18 @@ export function createFarmClient(baseUrl = import.meta.env.VITE_API_BASE_URL ?? 
       );
     },
   };
+}
+
+function parseResponsePayload(payloadText: string): { error?: string } {
+  if (!payloadText) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(payloadText);
+  } catch {
+    return { error: payloadText };
+  }
 }
 
 function defaultBaseUrl(): string {

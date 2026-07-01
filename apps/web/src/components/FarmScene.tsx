@@ -6,6 +6,8 @@ import * as THREE from "three";
 import type { FarmView, FieldPlot, MachineState, StructureKind, Tile } from "../types";
 import {
   FARM_GRID_SIZE,
+  FARM_HOUSE_FOOTPRINT,
+  FARM_HOUSE_TILE,
   isTileOccupiedForPlacement,
   isTileAvailableForNewFieldPlot,
   isTileAvailableForNewStructure,
@@ -132,6 +134,7 @@ export function FarmScene({
             onCancelFieldToolAction={onCancelFieldToolAction}
           />
         ))}
+        <StaticFarmHouse />
         <StructureSprite
           target={{ type: "silo" }}
           label="Silo"
@@ -246,6 +249,24 @@ export function FarmScene({
         ) : null}
       </group>
     </Canvas>
+  );
+}
+
+function StaticFarmHouse() {
+  const center = footprintCenter(FARM_HOUSE_TILE, FARM_HOUSE_FOOTPRINT);
+  return (
+    <group position={[tileToWorld(center.x), 0.015, tileToWorld(center.y)]}>
+      <FarmAsset
+        kind="farm_house"
+        label="Farm House"
+        footprint={FARM_HOUSE_FOOTPRINT}
+        state={{
+          selected: false,
+          blockedByPlacement: false,
+          movingTarget: false,
+        }}
+      />
+    </group>
   );
 }
 

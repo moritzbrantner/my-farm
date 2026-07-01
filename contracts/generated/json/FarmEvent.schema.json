@@ -213,6 +213,30 @@
     {
       "type": "object",
       "required": [
+        "item_id",
+        "quantity",
+        "type"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "inventory_discarded"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "level",
         "type"
       ],

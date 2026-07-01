@@ -15,6 +15,9 @@ test("renders the playable farm shell", async ({ page }) => {
   await expect(page.getByText(/Level 1/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
   await expect(page.locator(".field-tools").getByRole("button", { name: "Seed" })).toBeVisible();
+  await expect(page.locator(".field-tools").getByRole("button", { name: "Build" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Structures" })).toBeHidden();
+  await page.locator(".field-tools").getByRole("button", { name: "Build" }).click();
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toBeVisible();
 
   const canvas = page.locator("canvas").first();
@@ -41,6 +44,11 @@ test("field tools expose one seed picker and change the cursor", async ({ page }
   await expect(tools.getByRole("button", { name: "Seed" })).toHaveCount(1);
   await expect(tools.getByRole("button", { name: /Corn/ })).toHaveCount(0);
 
+  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", "pointer");
+  await tools.getByRole("button", { name: "Build" }).click();
+  await expect(page.getByRole("navigation", { name: "Structures" })).toBeVisible();
+  await tools.getByRole("button", { name: "Default" }).click();
+  await expect(page.getByRole("navigation", { name: "Structures" })).toBeHidden();
   await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", "pointer");
 
   await tools.getByRole("button", { name: "Seed" }).click();
@@ -106,6 +114,65 @@ test("barn and silo are preplaced storage structures", async ({ page }) => {
   await expect(menu.getByRole("menuitem", { name: "Move" })).toBeEnabled();
 });
 
+test("storage selection can discard one item from the inventory list", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(
+    page,
+    {
+      ...farmView,
+      barn_used: 3,
+      inventory: [
+        { item_id: "wheat", name: "Wheat", quantity: 2, kind: "crop" },
+        { item_id: "bread", name: "Bread", quantity: 3, kind: "product" },
+      ],
+    },
+    catalog,
+    (request) => {
+      commands.push(request);
+    },
+  );
+  await openFarm(page);
+
+  await page.getByLabel("Barn structure").click();
+  const inventory = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Inventory" }),
+  });
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+  await expect(selection.getByText("Barn storage - 3/30 goods")).toBeVisible();
+  await expect(selection.getByRole("button", { name: /Throw away/ })).toHaveCount(0);
+  await expect(inventory.getByText("Bread", { exact: true })).toBeVisible();
+  await expect(inventory.getByText("3 stored")).toBeVisible();
+  await expect(inventory.getByRole("button", { name: "Throw away 1 Bread" })).toBeVisible();
+  await expect(selection.getByRole("button", { name: /Throw away Wheat/ })).toHaveCount(0);
+
+  await inventory.getByRole("button", { name: "Throw away 1 Bread" }).click();
+
+  expect(commands).toHaveLength(1);
+  expect(commands[0].command).toEqual({
+    type: "discard_inventory",
+    item_id: "bread",
+    quantity: 1,
+  });
+
+  commands.length = 0;
+  await page.getByLabel("Silo structure").click();
+  await expect(selection.getByText("Silo storage - 2/40 crops")).toBeVisible();
+  await expect(selection.getByRole("button", { name: /Throw away/ })).toHaveCount(0);
+  await expect(inventory.getByText("Wheat", { exact: true })).toBeVisible();
+  await expect(inventory.getByText("2 stored")).toBeVisible();
+
+  await inventory.getByRole("button", { name: "Throw away 1 Wheat" }).click();
+
+  expect(commands).toHaveLength(1);
+  expect(commands[0].command).toEqual({
+    type: "discard_inventory",
+    item_id: "wheat",
+    quantity: 1,
+  });
+});
+
 test("legacy farm responses without storage tiles still render preplaced storage", async ({ page }) => {
   const legacyView = { ...farmView };
   delete (legacyView as Partial<FarmView>).silo_tile;
@@ -121,7 +188,8 @@ test("legacy farm responses without storage tiles still render preplaced storage
 test("build tray shows disabled structure details without opening a context menu", async ({ page }) => {
   await openFarm(page);
 
-  const tray = page.getByRole("navigation", { name: "Structures" });
+  await expect(page.getByRole("navigation", { name: "Structures" })).toBeHidden();
+  const tray = await openBuildMenu(page);
   await tray.getByRole("button", { name: /Bakery/ }).click();
 
   await expect(page.getByTestId("structure-context-menu")).toBeHidden();
@@ -136,7 +204,8 @@ test("placing an available structure sends buy_structure with the chosen tile", 
   });
   await openFarm(page);
 
-  await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ }).click();
+  const tray = await openBuildMenu(page);
+  await tray.getByRole("button", { name: /Bakery/ }).click();
   await expect(page.getByText("Place Bakery")).toBeVisible();
   await expect(page.getByTestId("build-detail-strip")).toContainText("Choose a tile");
   await expectCanvasToChangeAfterHover(page);
@@ -156,7 +225,8 @@ test("placing a field plot sends buy_field_plot with the chosen tile", async ({ 
   });
   await openFarm(page);
 
-  await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Field Plot/ }).click();
+  const tray = await openBuildMenu(page);
+  await tray.getByRole("button", { name: /Field Plot/ }).click();
   await expect(page.getByText("Place Field Plot")).toBeVisible();
   await expect(page.getByTestId("build-detail-strip")).toContainText("Choose a tile");
 
@@ -174,7 +244,8 @@ test("blocked structure placement explains the occupied tile without sending a c
   });
   await openFarm(page);
 
-  await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ }).click();
+  const tray = await openBuildMenu(page);
+  await tray.getByRole("button", { name: /Bakery/ }).click();
   await expect(page.getByText("Place Bakery")).toBeVisible();
   await expect(page.getByTestId("build-detail-strip")).toContainText("Choose a tile");
   await page.getByLabel("Field Plot plot-1").click({ force: true });
@@ -191,7 +262,8 @@ test("escape cancels structure placement", async ({ page }) => {
   await openFarm(page);
 
   const groundPoint = await findFreeCanvasPoint(page);
-  await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ }).click();
+  const tray = await openBuildMenu(page);
+  await tray.getByRole("button", { name: /Bakery/ }).click();
   await expect(page.getByText("Place Bakery")).toBeVisible();
   await page.keyboard.press("Escape");
   await page.mouse.click(groundPoint.x, groundPoint.y);
@@ -206,7 +278,7 @@ test("built and locked structure cards show reasons without buying", async ({ pa
   });
   await openFarm(page);
 
-  const tray = page.getByRole("navigation", { name: "Structures" });
+  const tray = await openBuildMenu(page);
   const details = page.getByTestId("build-detail-strip");
 
   await tray.getByRole("button", { name: /Bakery/ }).click();
@@ -224,7 +296,7 @@ test("unaffordable structure card shows its coin shortfall without buying", asyn
   });
   await openFarm(page);
 
-  const tray = page.getByRole("navigation", { name: "Structures" });
+  const tray = await openBuildMenu(page);
   const details = page.getByTestId("build-detail-strip");
 
   await tray.getByRole("button", { name: /Bakery/ }).click();
@@ -761,6 +833,51 @@ test("filters inventory to the selected structure materials", async ({ page }) =
   await expect(inventory).not.toContainText("Bread");
 });
 
+test("machine recipes show required resources and disable missing ingredients", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(
+    page,
+    {
+      ...farmView,
+      level: 4,
+      inventory: [
+        { item_id: "wheat", name: "Wheat", quantity: 3, kind: "crop" },
+        { item_id: "corn", name: "Corn", quantity: 1, kind: "crop" },
+        { item_id: "egg", name: "Egg", quantity: 0, kind: "animal_product" },
+      ],
+    },
+    catalog,
+    (request) => {
+      commands.push(request);
+    },
+  );
+  await openFarm(page);
+
+  await page.getByLabel("Bakery structure").click();
+  const breadRecipe = page.getByTestId("recipe-card-bread");
+  const cornBreadRecipe = page.getByTestId("recipe-card-corn_bread");
+
+  await expect(breadRecipe).toContainText("Wheat");
+  await expect(breadRecipe).toContainText("3/3");
+  await expect(breadRecipe.getByRole("button", { name: "Make Bread" })).toBeEnabled();
+
+  await expect(cornBreadRecipe).toContainText("Corn");
+  await expect(cornBreadRecipe).toContainText("1/2");
+  await expect(cornBreadRecipe).toContainText("Need 1");
+  await expect(cornBreadRecipe).toContainText("Egg");
+  await expect(cornBreadRecipe).toContainText("0/1");
+  await expect(cornBreadRecipe.getByRole("button", { name: "Make Corn Bread" })).toBeDisabled();
+
+  await breadRecipe.getByRole("button", { name: "Make Bread" }).click();
+
+  expect(commands).toHaveLength(1);
+  expect(commands[0].command).toEqual({
+    type: "queue_recipe",
+    machine_id: "machine-1",
+    recipe_id: "bread",
+  });
+});
+
 test("moves a structure by choosing move and clicking a destination tile", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   const commands: CommandRequest[] = [];
@@ -1039,6 +1156,12 @@ async function openFarm(page: Page) {
 
 async function startFarm(page: Page) {
   await page.getByRole("button", { name: "Start Farm" }).click();
+}
+
+async function openBuildMenu(page: Page) {
+  const tools = page.locator(".field-tools");
+  await tools.getByRole("button", { name: "Build" }).click();
+  return page.getByRole("navigation", { name: "Structures" });
 }
 
 async function clickUntilCommand(page: Page, commands: CommandRequest[]) {

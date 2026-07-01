@@ -1,5 +1,5 @@
 use axum::body::{Body, to_bytes};
-use axum::http::{Request, StatusCode};
+use axum::http::{Request, StatusCode, header};
 use my_farm_core::{CommandRequest, CommandResponse, FarmCommand, FarmResponse};
 use my_farm_server::{AppState, app, connect_database};
 use tower::ServiceExt;
@@ -62,6 +62,39 @@ async fn post_command_persists_state_and_rejects_stale_versions() {
     assert!(!stale.accepted);
     assert_eq!(stale.version, 1);
     assert!(stale.error.unwrap().contains("version mismatch"));
+}
+
+#[tokio::test]
+async fn post_command_reports_invalid_command_json_as_json() {
+    let app = test_app().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/commands")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"expected_version":0,"command":{"type":"unknown_command"}}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(content_type.starts_with("application/json"));
+    let body: serde_json::Value = json_body(response).await;
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("unknown_command")
+    );
 }
 
 async fn test_app() -> axum::Router {

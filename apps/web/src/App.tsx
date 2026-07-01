@@ -44,6 +44,7 @@ import type {
   FarmView,
   FieldPlot,
   InventoryItemView,
+  ItemStack,
   MachineState,
   StructureKind,
 } from "./types";
@@ -126,6 +127,7 @@ export function App() {
   const [fieldMenu, setFieldMenu] = useState<FieldContextMenuState>(null);
   const [structureMenu, setStructureMenu] = useState<StructureContextMenuState>(null);
   const [activeFieldTool, setActiveFieldTool] = useState<ActiveFieldTool>({ type: "default" });
+  const [buildToolSelected, setBuildToolSelected] = useState(false);
   const [buildPlacement, setBuildPlacement] = useState<BuildPlacementState>(null);
   const [selectedBuildKind, setSelectedBuildKind] = useState<BuildableKind | null>(null);
   const [movingStructure, setMovingStructure] = useState<StructureSelection | null>(null);
@@ -213,6 +215,7 @@ export function App() {
     if (
       !fieldMenu &&
       !structureMenu &&
+      !buildToolSelected &&
       !buildPlacement &&
       !movingStructure &&
       !plantSweep &&
@@ -232,6 +235,7 @@ export function App() {
       if (event.key === "Escape") {
         setFieldMenu(null);
         setStructureMenu(null);
+        setBuildToolSelected(false);
         setBuildPlacement(null);
         setMovingStructure(null);
         plantSweepRef.current = null;
@@ -247,7 +251,16 @@ export function App() {
       document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [activeFieldTool.type, buildPlacement, fieldMenu, harvestSweep, movingStructure, plantSweep, structureMenu]);
+  }, [
+    activeFieldTool.type,
+    buildPlacement,
+    buildToolSelected,
+    fieldMenu,
+    harvestSweep,
+    movingStructure,
+    plantSweep,
+    structureMenu,
+  ]);
 
   const select = useCallback((nextSelection: Selection) => {
     setSelection(nextSelection);
@@ -288,6 +301,7 @@ export function App() {
   const selectBuildKind = useCallback((kind: BuildableKind, canPlace: boolean) => {
     setSelectedBuildKind(kind);
     setActiveFieldTool({ type: "default" });
+    setBuildToolSelected(true);
     setFieldMenu(null);
     setStructureMenu(null);
     setMovingStructure(null);
@@ -334,6 +348,7 @@ export function App() {
     setFieldMenu(null);
     setStructureMenu(null);
     setActiveFieldTool({ type: "default" });
+    setBuildToolSelected(false);
     setBuildPlacement(null);
     setMovingStructure(null);
     plantSweepRef.current = null;
@@ -352,6 +367,7 @@ export function App() {
     setFieldMenu(null);
     setStructureMenu(null);
     setBuildPlacement(null);
+    setBuildToolSelected(false);
     setMovingStructure(null);
     plantSweepRef.current = null;
     harvestSweepRef.current = null;
@@ -367,6 +383,7 @@ export function App() {
     setStructureMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    setBuildToolSelected(false);
     plantSweepRef.current = null;
     harvestSweepRef.current = null;
     setPlantSweep(null);
@@ -386,6 +403,7 @@ export function App() {
       setFieldMenu(null);
       setStructureMenu(null);
       setActiveFieldTool({ type: "default" });
+      setBuildToolSelected(false);
       setBuildPlacement(null);
       setMovingStructure(target);
       plantSweepRef.current = null;
@@ -448,6 +466,7 @@ export function App() {
 
   const selectDefaultFieldTool = useCallback(() => {
     setActiveFieldTool({ type: "default" });
+    setBuildToolSelected(false);
     setFieldMenu(null);
     setStructureMenu(null);
     setBuildPlacement(null);
@@ -462,6 +481,7 @@ export function App() {
   const selectPlantFieldTool = useCallback(
     (cropId: string) => {
       setActiveFieldTool({ type: "plant", cropId });
+      setBuildToolSelected(false);
       setFieldMenu(null);
       setStructureMenu(null);
       setBuildPlacement(null);
@@ -477,6 +497,7 @@ export function App() {
 
   const selectHarvestFieldTool = useCallback(() => {
     setActiveFieldTool({ type: "harvest" });
+    setBuildToolSelected(false);
     setFieldMenu(null);
     setStructureMenu(null);
     setBuildPlacement(null);
@@ -486,6 +507,19 @@ export function App() {
     setPlantSweep(null);
     setHarvestSweep(null);
     setMessage("Harvest tool");
+  }, []);
+
+  const selectBuildTool = useCallback(() => {
+    setActiveFieldTool({ type: "default" });
+    setBuildToolSelected(true);
+    setFieldMenu(null);
+    setStructureMenu(null);
+    setMovingStructure(null);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
+    setPlantSweep(null);
+    setHarvestSweep(null);
+    setMessage("Build tool");
   }, []);
 
   const cancelFieldToolAction = useCallback(() => {
@@ -578,6 +612,7 @@ export function App() {
       setFieldMenu(null);
       setStructureMenu(null);
       setBuildPlacement(null);
+      setBuildToolSelected(false);
     }
   }, [send]);
 
@@ -659,6 +694,7 @@ export function App() {
       setFieldMenu(null);
       setStructureMenu(null);
       setBuildPlacement(null);
+      setBuildToolSelected(false);
     }
   }, [send]);
 
@@ -760,15 +796,17 @@ export function App() {
           <TopBar view={view} message={message} onOpenMenu={openMainMenu} />
           <aside className="side-panel">
             <PanelHeader view={view} version={version} onReset={reset} />
-            <Inventory catalog={catalog} view={view} selection={selection} />
+            <Inventory catalog={catalog} view={view} selection={selection} send={send} />
             <FieldTools
               catalog={catalog}
               view={view}
               activeFieldTool={activeFieldTool}
+              buildToolSelected={buildToolSelected}
               plantSweep={plantSweep}
               onDefault={selectDefaultFieldTool}
               onPlant={selectPlantFieldTool}
               onHarvest={selectHarvestFieldTool}
+              onBuild={selectBuildTool}
             />
             <SelectionPanel
               catalog={catalog}
@@ -779,14 +817,16 @@ export function App() {
             />
             <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
           </aside>
-          <BuildTray
-            catalog={catalog}
-            view={view}
-            selectedKind={selectedBuildKind}
-            buildPlacement={buildPlacement}
-            onInspectKind={inspectBuildKind}
-            onSelectKind={selectBuildKind}
-          />
+          {buildToolSelected ? (
+            <BuildTray
+              catalog={catalog}
+              view={view}
+              selectedKind={selectedBuildKind}
+              buildPlacement={buildPlacement}
+              onInspectKind={inspectBuildKind}
+              onSelectKind={selectBuildKind}
+            />
+          ) : null}
         </>
       ) : (
         <MainMenu
@@ -1040,12 +1080,27 @@ function Inventory({
   catalog,
   view,
   selection,
+  send,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
   selection: Selection;
+  send: SendCommand;
 }) {
   const items = relevantInventoryItems(catalog, view, selection);
+  if (selection?.type === "silo" || selection?.type === "barn") {
+    return (
+      <section className="panel-section">
+        <h2>Inventory</h2>
+        <div className="storage-inventory-list">
+          {items.map((item) => (
+            <StorageInventoryItem key={item.item_id} item={item} send={send} />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="panel-section">
       <h2>Inventory</h2>
@@ -1058,22 +1113,50 @@ function Inventory({
   );
 }
 
+function StorageInventoryItem({ item, send }: { item: InventoryItemView; send: SendCommand }) {
+  const hasAny = item.quantity > 0;
+  return (
+    <div className="storage-inventory-item">
+      <ResourceIcon type="item" itemId={item.item_id} itemKind={item.kind} />
+      <div className="storage-inventory-item__body">
+        <span className="storage-inventory-item__name">{item.name}</span>
+        <span className="storage-inventory-item__meta">{item.quantity} stored</span>
+      </div>
+      <button
+        type="button"
+        className="storage-inventory-item__discard"
+        disabled={!hasAny}
+        aria-label={`Throw away 1 ${item.name}`}
+        title={`Throw away 1 ${item.name}`}
+        onClick={() => send({ type: "discard_inventory", item_id: item.item_id, quantity: 1 })}
+      >
+        <span>1</span>
+        <span aria-hidden="true">🗑</span>
+      </button>
+    </div>
+  );
+}
+
 function FieldTools({
   catalog,
   view,
   activeFieldTool,
+  buildToolSelected,
   plantSweep,
   onDefault,
   onPlant,
   onHarvest,
+  onBuild,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
   activeFieldTool: ActiveFieldTool;
+  buildToolSelected: boolean;
   plantSweep: PlantSweepState;
   onDefault: () => void;
   onPlant: (cropId: string) => void;
   onHarvest: () => void;
+  onBuild: () => void;
 }) {
   const [seedMenuOpen, setSeedMenuOpen] = useState(false);
   const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
@@ -1082,6 +1165,7 @@ function FieldTools({
   const selectedSeedFieldCount = plantSweep?.plotIds.length ?? 0;
   const selectedSeedCropId = activeFieldTool.type === "plant" ? activeFieldTool.cropId : null;
   const selectedSeedName = selectedSeedCropId ? itemName(catalog, selectedSeedCropId) : null;
+  const defaultToolSelected = !buildToolSelected && activeFieldTool.type === "default";
 
   useEffect(() => {
     if (activeFieldTool.type !== "plant") {
@@ -1100,8 +1184,8 @@ function FieldTools({
       <div className="field-tool-grid">
         <button
           type="button"
-          className={activeFieldTool.type === "default" ? "field-tool field-tool--active" : "field-tool"}
-          aria-pressed={activeFieldTool.type === "default"}
+          className={defaultToolSelected ? "field-tool field-tool--active" : "field-tool"}
+          aria-pressed={defaultToolSelected}
           onClick={() => {
             setSeedMenuOpen(false);
             onDefault();
@@ -1119,6 +1203,17 @@ function FieldTools({
           }}
         >
           Harvest
+        </button>
+        <button
+          type="button"
+          className={buildToolSelected ? "field-tool field-tool--active field-tool--build" : "field-tool field-tool--build"}
+          aria-pressed={buildToolSelected}
+          onClick={() => {
+            setSeedMenuOpen(false);
+            onBuild();
+          }}
+        >
+          Build
         </button>
         <button
           type="button"
@@ -1347,9 +1442,13 @@ function MachineActions({
 }) {
   const first = machine.queue[0];
   const remaining = first ? secondsRemaining(first.ready_at_ms, nowMs) : 0;
+  const queueLimit =
+    catalog.machines.find((entry) => entry.kind === machine.kind)?.queue_limit ?? 2;
+  const queueFull = machine.queue.length >= queueLimit;
+  const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
   return (
     <div className="action-stack">
-      <p>{machine.kind === "bakery" ? "Bakery" : "Feed Mill"} - queue {machine.queue.length}/2</p>
+      <p>{machine.kind === "bakery" ? "Bakery" : "Feed Mill"} - queue {machine.queue.length}/{queueLimit}</p>
       {first ? (
         <button
           type="button"
@@ -1359,19 +1458,79 @@ function MachineActions({
           Collect {recipeName(catalog, first.recipe_id)} {remaining > 0 ? `(${remaining}s)` : ""}
         </button>
       ) : null}
-      <div className="action-grid">
-        {availableRecipes(catalog, machine, view.level).map((recipe) => (
-          <button
-            type="button"
-            key={recipe.id}
-            onClick={() => send({ type: "queue_recipe", machine_id: machine.id, recipe_id: recipe.id })}
-          >
-            Make {recipe.name}
-          </button>
-        ))}
+      <div className="recipe-list">
+        {availableRecipes(catalog, machine, view.level).map((recipe) => {
+          const missingInputs = missingRecipeInputs(recipe.inputs, inventory);
+          const canQueue = !queueFull && missingInputs.length === 0;
+          const disabledReason = queueFull
+            ? "Queue full"
+            : missingInputs.map((stack) => `Need ${stack.quantity} ${itemName(catalog, stack.item_id)}`).join(", ");
+          return (
+            <div className="recipe-card" data-testid={`recipe-card-${recipe.id}`} key={recipe.id}>
+              <div className="recipe-card__header">
+                <strong>{recipe.name}</strong>
+                <button
+                  type="button"
+                  disabled={!canQueue}
+                  aria-label={`Make ${recipe.name}`}
+                  title={canQueue ? `Make ${recipe.name}` : disabledReason}
+                  onClick={() => send({ type: "queue_recipe", machine_id: machine.id, recipe_id: recipe.id })}
+                >
+                  Make
+                </button>
+              </div>
+              <div className="recipe-card__inputs" aria-label={`${recipe.name} required resources`}>
+                {recipe.inputs.map((stack) => {
+                  const available = inventory.get(stack.item_id) ?? 0;
+                  const missing = Math.max(0, stack.quantity - available);
+                  return (
+                    <RecipeInputAmount
+                      key={stack.item_id}
+                      catalog={catalog}
+                      stack={stack}
+                      available={available}
+                      missing={missing}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
+}
+
+function RecipeInputAmount({
+  catalog,
+  stack,
+  available,
+  missing,
+}: {
+  catalog: CatalogDocument;
+  stack: ItemStack;
+  available: number;
+  missing: number;
+}) {
+  const requiredItem = resourceItem(catalog, stack.item_id, stack.quantity);
+  return (
+    <span className={missing > 0 ? "recipe-input recipe-input--missing" : "recipe-input"}>
+      <ResourceIcon type="item" itemId={stack.item_id} itemKind={requiredItem.kind} />
+      <span className="recipe-input__name">{requiredItem.name}</span>
+      <strong>{available}/{stack.quantity}</strong>
+      {missing > 0 ? <em>Need {missing}</em> : null}
+    </span>
+  );
+}
+
+function missingRecipeInputs(inputs: ItemStack[], inventory: Map<string, number>): ItemStack[] {
+  return inputs
+    .map((stack) => ({
+      item_id: stack.item_id,
+      quantity: Math.max(0, stack.quantity - (inventory.get(stack.item_id) ?? 0)),
+    }))
+    .filter((stack) => stack.quantity > 0);
 }
 
 function ShelterActions({

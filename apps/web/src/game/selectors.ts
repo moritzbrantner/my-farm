@@ -43,6 +43,8 @@ export type StructureFootprint = {
 };
 
 export const FARM_GRID_SIZE = 18;
+export const FARM_HOUSE_TILE: Tile = { x: 8, y: 8 };
+export const FARM_HOUSE_FOOTPRINT: StructureFootprint = { width: 2, height: 2 };
 
 export function selectedPlot(view: FarmView, selection: Selection): FieldPlot | null {
   return selection?.type === "plot"
@@ -102,7 +104,7 @@ export function structureTile(kind: StructureKind): Tile {
     case "chicken_coop":
       return { x: 5, y: 7 };
     case "cow_pasture":
-      return { x: 9, y: 8 };
+      return { x: 11, y: 8 };
     case "delivery_board":
       return { x: 2, y: 7 };
   }
@@ -112,13 +114,13 @@ export function structureFootprint(kind: StructureKind): StructureFootprint {
   switch (kind) {
     case "silo":
     case "barn":
-      return { width: 1, height: 1 };
+      return { width: 2, height: 2 };
     case "bakery":
       return { width: 2, height: 2 };
     case "chicken_coop":
-      return { width: 2, height: 2 };
+      return { width: 2, height: 3 };
     case "cow_pasture":
-      return { width: 3, height: 2 };
+      return { width: 3, height: 3 };
     case "feed_mill":
     case "delivery_board":
       return { width: 1, height: 1 };
@@ -209,13 +211,22 @@ export function isTileOccupiedForPlacement(
   tile: Tile,
   moving: StructureSelection | null,
 ): boolean {
+  if (footprintContains(FARM_HOUSE_TILE, FARM_HOUSE_FOOTPRINT, tile)) {
+    return true;
+  }
   if (view.field_plots.some((plot) => sameTile(plot.tile, tile))) {
     return true;
   }
-  if (!isSameStructure(moving, { type: "silo" }) && sameTile(view.silo_tile, tile)) {
+  if (
+    !isSameStructure(moving, { type: "silo" }) &&
+    footprintContains(view.silo_tile, structureFootprint("silo"), tile)
+  ) {
     return true;
   }
-  if (!isSameStructure(moving, { type: "barn" }) && sameTile(view.barn_tile, tile)) {
+  if (
+    !isSameStructure(moving, { type: "barn" }) &&
+    footprintContains(view.barn_tile, structureFootprint("barn"), tile)
+  ) {
     return true;
   }
   if (
@@ -250,6 +261,9 @@ function isTileAvailableForFootprint(
   moving: StructureSelection | null,
 ): boolean {
   if (!isFootprintInsideFarm(tile, footprint)) {
+    return false;
+  }
+  if (footprintsOverlap(tile, footprint, FARM_HOUSE_TILE, FARM_HOUSE_FOOTPRINT)) {
     return false;
   }
   if (view.field_plots.some((plot) => footprintContains(tile, footprint, plot.tile))) {

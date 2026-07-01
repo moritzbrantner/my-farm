@@ -1,14 +1,20 @@
 use crate::{
     AnimalShelterState, AnimalState, CatalogDocument, DeliveryOrder, FarmState, FieldPlot,
-    ItemKind, ItemStack, MachineJob, MachineKind, MachineState, ShelterKind, StructureKind,
-    Tile, add_inventory, add_shelter_animals, gain_xp, has_storage_room, next_id,
-    remove_inventory, scaled_duration_ms, update_level,
+    ItemKind, ItemStack, MachineJob, MachineKind, MachineState, ShelterKind, StructureKind, Tile,
+    add_inventory, add_shelter_animals, gain_xp, has_storage_room, next_id, remove_inventory,
+    scaled_duration_ms, update_level,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 const FARM_GRID_SIZE: i32 = 18;
+const FARM_HOUSE_TILE_X: i32 = 8;
+const FARM_HOUSE_TILE_Y: i32 = 8;
+const FARM_HOUSE_FOOTPRINT: StructureFootprint = StructureFootprint {
+    width: 2,
+    height: 2,
+};
 const CROP_STARTER_STOCK: u32 = 2;
 const FIELD_PLOT_COST: u32 = 12;
 
@@ -67,6 +73,10 @@ pub enum FarmCommand {
     DiscardDeliveryOrder {
         order_id: String,
     },
+    DiscardInventory {
+        item_id: String,
+        quantity: u32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -93,6 +103,7 @@ pub enum FarmEvent {
     AnimalProductCollected { item_id: String },
     DeliveryOrderFulfilled { order_id: String },
     DeliveryOrderDiscarded { order_id: String },
+    InventoryDiscarded { item_id: String, quantity: u32 },
     LevelChanged { level: u32 },
 }
 
@@ -177,6 +188,9 @@ pub fn apply_command(
         }
         FarmCommand::DiscardDeliveryOrder { order_id } => {
             discard_delivery_order(farm, catalog, &order_id)
+        }
+        FarmCommand::DiscardInventory { item_id, quantity } => {
+            discard_inventory(farm, &item_id, quantity)
         }
     };
 
@@ -415,7 +429,15 @@ fn grant_unclaimed_crop_starter_stock(farm: &mut FarmState, catalog: &CatalogDoc
 }
 
 fn buy_field_plot(farm: &mut FarmState, tile: Tile) -> Result<Vec<FarmEvent>, CommandError> {
-    ensure_tile_can_hold_structure(farm, &tile, StructureFootprint { width: 1, height: 1 }, None)?;
+    ensure_tile_can_hold_structure(
+        farm,
+        &tile,
+        StructureFootprint {
+            width: 1,
+            height: 1,
+        },
+        None,
+    )?;
     spend_coins(farm, FIELD_PLOT_COST)?;
     let mut plot_id = next_id(farm, "plot");
     while farm.field_plots.iter().any(|plot| plot.id == plot_id) {
@@ -731,6 +753,22 @@ fn discard_delivery_order(
     }])
 }
 
+fn discard_inventory(
+    farm: &mut FarmState,
+    item_id: &str,
+    quantity: u32,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    if quantity == 0 {
+        return Err(CommandError::new("quantity must be greater than zero"));
+    }
+
+    remove_inventory(farm, &[ItemStack::new(item_id, quantity)])?;
+    Ok(vec![FarmEvent::InventoryDiscarded {
+        item_id: item_id.to_owned(),
+        quantity,
+    }])
+}
+
 pub fn ensure_delivery_orders(farm: &mut FarmState, catalog: &CatalogDocument) {
     if !farm.delivery_board_built || farm.level < 4 {
         return;
@@ -848,6 +886,10 @@ fn ensure_tile_can_hold_structure(
     {
         return Err(CommandError::new("tile is outside the farm"));
     }
+    let farm_house_tile = Tile::new(FARM_HOUSE_TILE_X, FARM_HOUSE_TILE_Y);
+    if footprints_overlap(tile, footprint, &farm_house_tile, FARM_HOUSE_FOOTPRINT) {
+        return Err(CommandError::new("tile is occupied"));
+    }
     if farm
         .field_plots
         .iter()
@@ -914,16 +956,20 @@ fn ensure_tile_can_hold_structure(
 fn structure_footprint(kind: &StructureKind) -> StructureFootprint {
     match kind {
         StructureKind::Silo | StructureKind::Barn => StructureFootprint {
-            width: 1,
-            height: 1,
-        },
-        StructureKind::Bakery | StructureKind::ChickenCoop => StructureFootprint {
             width: 2,
             height: 2,
         },
+        StructureKind::Bakery => StructureFootprint {
+            width: 2,
+            height: 2,
+        },
+        StructureKind::ChickenCoop => StructureFootprint {
+            width: 2,
+            height: 3,
+        },
         StructureKind::CowPasture => StructureFootprint {
             width: 3,
-            height: 2,
+            height: 3,
         },
         StructureKind::FeedMill | StructureKind::DeliveryBoard => StructureFootprint {
             width: 1,

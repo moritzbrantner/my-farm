@@ -1,4 +1,5 @@
 use anyhow::Context;
+use axum::extract::rejection::JsonRejection;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
@@ -102,8 +103,9 @@ async fn reset_farm(
 
 async fn post_command(
     State(state): State<AppState>,
-    Json(request): Json<CommandRequest>,
+    request: Result<Json<CommandRequest>, JsonRejection>,
 ) -> Result<Json<CommandResponse>, (StatusCode, Json<ApiError>)> {
+    let Json(request) = request.map_err(json_rejection)?;
     let now_ms = now_ms();
     let (version, mut farm) = load_or_create_farm(&state, now_ms).await?;
 
@@ -233,6 +235,15 @@ fn database_error(error: sqlx::Error) -> (StatusCode, Json<ApiError>) {
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(ApiError {
             error: format!("database error: {error}"),
+        }),
+    )
+}
+
+fn json_rejection(error: JsonRejection) -> (StatusCode, Json<ApiError>) {
+    (
+        error.status(),
+        Json(ApiError {
+            error: error.body_text(),
         }),
     )
 }

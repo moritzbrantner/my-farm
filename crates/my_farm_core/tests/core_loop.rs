@@ -181,6 +181,92 @@ fn buying_field_plot_rejects_occupied_tiles() {
     );
     assert!(!built_on_storage.accepted);
     assert_eq!(built_on_storage.error.unwrap().message, "tile is occupied");
+
+    let built_on_storage_footprint = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyFieldPlot {
+            tile: Tile::new(15, 3),
+        },
+        0,
+    );
+    assert!(!built_on_storage_footprint.accepted);
+    assert_eq!(
+        built_on_storage_footprint.error.unwrap().message,
+        "tile is occupied"
+    );
+
+    let built_on_farm_house = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyFieldPlot {
+            tile: Tile::new(8, 8),
+        },
+        0,
+    );
+    assert!(!built_on_farm_house.accepted);
+    assert_eq!(
+        built_on_farm_house.error.unwrap().message,
+        "tile is occupied"
+    );
+}
+
+#[test]
+fn animal_shelter_footprints_occupy_their_full_area() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 55;
+    update_level(&mut farm, &catalog);
+
+    let chicken_coop = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ChickenCoop,
+            tile: Tile::new(4, 4),
+        },
+        0,
+    );
+    assert!(chicken_coop.accepted);
+
+    let field_on_chicken_coop_footprint = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyFieldPlot {
+            tile: Tile::new(5, 6),
+        },
+        0,
+    );
+    assert!(!field_on_chicken_coop_footprint.accepted);
+    assert_eq!(
+        field_on_chicken_coop_footprint.error.unwrap().message,
+        "tile is occupied"
+    );
+
+    let cow_pasture = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::CowPasture,
+            tile: Tile::new(12, 12),
+        },
+        0,
+    );
+    assert!(cow_pasture.accepted);
+
+    let field_on_cow_pasture_footprint = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyFieldPlot {
+            tile: Tile::new(14, 14),
+        },
+        0,
+    );
+    assert!(!field_on_cow_pasture_footprint.accepted);
+    assert_eq!(
+        field_on_cow_pasture_footprint.error.unwrap().message,
+        "tile is occupied"
+    );
 }
 
 #[test]
@@ -706,6 +792,72 @@ fn delivery_orders_pay_rewards_and_regenerate_without_feed_requirements() {
 }
 
 #[test]
+fn player_can_discard_storage_inventory() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    add_inventory(&mut farm, "bread", 3);
+
+    let discarded = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::DiscardInventory {
+            item_id: "bread".to_owned(),
+            quantity: 2,
+        },
+        0,
+    );
+
+    assert!(discarded.accepted);
+    assert_eq!(inventory_quantity(&farm, "bread"), 1);
+    assert!(discarded.events.contains(&FarmEvent::InventoryDiscarded {
+        item_id: "bread".to_owned(),
+        quantity: 2,
+    }));
+
+    let discarded_crop = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::DiscardInventory {
+            item_id: "wheat".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+
+    assert!(discarded_crop.accepted);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 5);
+    assert!(
+        discarded_crop
+            .events
+            .contains(&FarmEvent::InventoryDiscarded {
+                item_id: "wheat".to_owned(),
+                quantity: 1,
+            })
+    );
+}
+
+#[test]
+fn storage_discard_rejects_zero_quantity() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let zero = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::DiscardInventory {
+            item_id: "bread".to_owned(),
+            quantity: 0,
+        },
+        0,
+    );
+    assert!(!zero.accepted);
+    assert_eq!(
+        zero.error.unwrap().message,
+        "quantity must be greater than zero"
+    );
+}
+
+#[test]
 fn player_can_move_built_structures_to_open_tiles() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
@@ -925,12 +1077,12 @@ fn barn_and_silo_are_preplaced_and_movable() {
         &catalog,
         FarmCommand::MoveStructure {
             target: StructureTarget::Barn,
-            tile: Tile::new(15, 3),
+            tile: Tile::new(16, 4),
         },
         0,
     );
     assert!(moved_barn.accepted);
-    assert_eq!(farm.barn_tile, Tile::new(15, 3));
+    assert_eq!(farm.barn_tile, Tile::new(16, 4));
 }
 
 #[test]
