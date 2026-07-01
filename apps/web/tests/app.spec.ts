@@ -459,6 +459,37 @@ test("seed tool finishes a lower row sweep on release and shows selected count",
     });
 });
 
+test("seed tool visually highlights every swept empty field", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
+  await mockFarmApi(page, sixEmptyFieldView());
+  await openFarm(page);
+
+  const plot4 = await fieldTargetPoint(page, "plot-4");
+  const plot5 = await fieldTargetPoint(page, "plot-5");
+  const plot6 = await fieldTargetPoint(page, "plot-6");
+
+  await selectSeedTool(page, "Wheat");
+  const plot5Before = await canvasRegionAtFieldTarget(page, "plot-5");
+  const plot6Before = await canvasRegionAtFieldTarget(page, "plot-6");
+
+  await page.mouse.move(plot4.x, plot4.y);
+  await page.mouse.down();
+  await page.mouse.move(plot5.x, plot5.y, { steps: 2 });
+  await page.mouse.move(plot6.x, plot6.y, { steps: 2 });
+  await expect(page.getByText("3 fields selected for seeding")).toBeVisible();
+
+  expect(
+    canvasRegionDifference(plot5Before, await canvasRegionAtFieldTarget(page, "plot-5")),
+  ).toBeGreaterThan(2_000);
+  expect(
+    canvasRegionDifference(plot6Before, await canvasRegionAtFieldTarget(page, "plot-6")),
+  ).toBeGreaterThan(2_000);
+
+  await page.mouse.up();
+});
+
 test("right click cancels a pending seed sweep", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   const commands: CommandRequest[] = [];
@@ -1198,6 +1229,54 @@ async function selectSeedTool(page: Page, seedName: string) {
 
 async function canvasSnapshot(page: Page) {
   return page.locator("canvas").first().evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL());
+}
+
+type CanvasRegion = {
+  width: number;
+  height: number;
+  data: number[];
+};
+
+async function canvasRegionAtFieldTarget(page: Page, plotId: string): Promise<CanvasRegion> {
+  const canvas = page.locator("canvas").first();
+  const canvasBox = await canvas.boundingBox();
+  const targetBox = await page.getByLabel(`Field Plot ${plotId}`).boundingBox();
+  if (!canvasBox || !targetBox) {
+    throw new Error(`Could not read canvas region for ${plotId}`);
+  }
+  return canvas.evaluate(
+    (element, box) => {
+      const canvasElement = element as HTMLCanvasElement;
+      const context = canvasElement.getContext("webgl2") ?? canvasElement.getContext("webgl");
+      if (!context) {
+        throw new Error("Could not read canvas pixels");
+      }
+      const scaleX = canvasElement.width / box.canvas.width;
+      const scaleY = canvasElement.height / box.canvas.height;
+      const x = Math.max(0, Math.floor((box.target.x - box.canvas.x) * scaleX));
+      const y = Math.max(0, Math.floor((box.target.y - box.canvas.y) * scaleY));
+      const width = Math.min(canvasElement.width - x, Math.ceil(box.target.width * scaleX));
+      const height = Math.min(canvasElement.height - y, Math.ceil(box.target.height * scaleY));
+      const data = new Uint8Array(width * height * 4);
+      context.readPixels(
+        x,
+        canvasElement.height - y - height,
+        width,
+        height,
+        context.RGBA,
+        context.UNSIGNED_BYTE,
+        data,
+      );
+      return { width, height, data: Array.from(data) };
+    },
+    { canvas: canvasBox, target: targetBox },
+  );
+}
+
+function canvasRegionDifference(left: CanvasRegion, right: CanvasRegion) {
+  expect(right.width).toBe(left.width);
+  expect(right.height).toBe(left.height);
+  return left.data.reduce((total, value, index) => total + Math.abs(value - right.data[index]), 0);
 }
 
 async function expectCanvasToChangeAfterHover(page: Page) {

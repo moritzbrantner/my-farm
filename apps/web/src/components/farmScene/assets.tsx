@@ -64,7 +64,7 @@ function FieldPlotAsset({ state }: { state: FarmAssetState }) {
   const cropColor = state.cropItemId ? colorForItem(state.cropItemId) : "#8a5a35";
   const bedColor = state.blockedByPlacement
     ? blockedColor
-    : state.selected
+    : state.selected || state.movingTarget
       ? "#f4ead2"
       : "#8a5a35";
 
