@@ -1010,7 +1010,7 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-.structure-context-menu {
+.farm-context-menu {
   position: fixed;
   z-index: 1000;
   width: min(280px, calc(100vw - 24px));
@@ -1036,7 +1036,7 @@ h2 {
   font-size: 15px;
 }
 
-.structure-context-menu small {
+.farm-context-menu small {
   color: #536a5e;
   font-size: 12px;
 }
