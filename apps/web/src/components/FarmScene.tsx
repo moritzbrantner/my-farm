@@ -1,9 +1,9 @@
 import { Html, OrbitControls } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ElementRef } from "react";
 import * as THREE from "three";
-import type { FarmView, FieldPlot, MachineState, StructureKind, SweepHarvestMode, Tile } from "../types";
+import type { CatalogDocument, FarmView, FieldPlot, MachineState, StructureKind, SweepHarvestMode, Tile } from "../types";
 import {
   FARM_GRID_SIZE,
   FARM_HOUSE_FOOTPRINT,
@@ -24,6 +24,12 @@ import {
   type FarmCameraFrame,
   type FarmViewportInsets,
 } from "./farmScene/framing";
+import {
+  machineProductionStatus,
+  productionStatusLabel,
+  shelterProductionStatus,
+  type StructureProductionStatus,
+} from "../game/structureStatus";
 
 const MOVE_TILE_BLOCKED_COLOR = "#a9333f";
 const BOARD_ORIGIN = -(FARM_GRID_SIZE - 1) / 2;
@@ -33,7 +39,9 @@ const PAN_SCREEN_RIGHT = new THREE.Vector3(Math.SQRT1_2, 0, -Math.SQRT1_2);
 const PAN_SCREEN_UP = new THREE.Vector3(-0.4082482904638631, 0.8164965809277261, -0.4082482904638631);
 
 type Props = {
+  catalog: CatalogDocument;
   view: FarmView;
+  nowMs: number;
   selection: Selection;
   activeFieldTool: ActiveFieldTool;
   buildPlacement: BuildPlacementState;
@@ -53,7 +61,9 @@ type Props = {
 };
 
 export function FarmScene({
+  catalog,
   view,
+  nowMs,
   selection,
   activeFieldTool,
   buildPlacement,
@@ -174,6 +184,9 @@ export function FarmScene({
         {view.machines.map((machine) => (
           <MachineMesh
             key={machine.id}
+            catalog={catalog}
+            view={view}
+            nowMs={nowMs}
             machine={machine}
             selected={selection?.type === "machine" && selection.id === machine.id}
             buildPlacement={buildPlacement}
@@ -185,27 +198,33 @@ export function FarmScene({
             onPlaceStructure={onPlaceStructure}
           />
         ))}
-        {view.shelters.map((shelter) => (
-          <StructureSprite
-            key={shelter.id}
-            target={{ type: "shelter", id: shelter.id }}
-            label={shelter.kind === "chicken_coop" ? "Chickens" : "Cows"}
-            hitLabel={shelter.kind === "chicken_coop" ? "Chicken Coop" : "Cow Pasture"}
-            tile={shelter.tile}
-            color={shelter.kind === "chicken_coop" ? "#d8a64e" : "#b98762"}
-            footprint={structureFootprint(shelter.kind)}
-            selected={selection?.type === "shelter" && selection.id === shelter.id}
-            buildPlacement={buildPlacement}
-            movingStructure={movingStructure}
-            onHoverTile={setHoverTile}
-            onOpenStructureMenu={onOpenStructureMenu}
-            onPlaceNewStructure={onPlaceNewStructure}
-            onPlaceStructure={onPlaceStructure}
-            onSelect={() => {
-              onSelect({ type: "shelter", id: shelter.id });
-            }}
-          />
-        ))}
+        {view.shelters.map((shelter) => {
+          const status = shelterProductionStatus(catalog, view, shelter, nowMs);
+          const hitLabel = shelter.kind === "chicken_coop" ? "Chicken Coop" : "Cow Pasture";
+          return (
+            <StructureSprite
+              key={shelter.id}
+              target={{ type: "shelter", id: shelter.id }}
+              label={shelter.kind === "chicken_coop" ? "Chickens" : "Cows"}
+              hitLabel={hitLabel}
+              tile={shelter.tile}
+              color={shelter.kind === "chicken_coop" ? "#d8a64e" : "#b98762"}
+              footprint={structureFootprint(shelter.kind)}
+              productionStatus={status}
+              productionStatusLabel={productionStatusLabel(hitLabel, catalog, status)}
+              selected={selection?.type === "shelter" && selection.id === shelter.id}
+              buildPlacement={buildPlacement}
+              movingStructure={movingStructure}
+              onHoverTile={setHoverTile}
+              onOpenStructureMenu={onOpenStructureMenu}
+              onPlaceNewStructure={onPlaceNewStructure}
+              onPlaceStructure={onPlaceStructure}
+              onSelect={() => {
+                onSelect({ type: "shelter", id: shelter.id });
+              }}
+            />
+          );
+        })}
         {view.delivery_board_built ? (
           <StructureSprite
             target={{ type: "delivery_board" }}
@@ -1001,6 +1020,9 @@ function FieldMesh({
 }
 
 function MachineMesh({
+  catalog,
+  view,
+  nowMs,
   machine,
   selected,
   buildPlacement,
@@ -1011,6 +1033,9 @@ function MachineMesh({
   onPlaceNewStructure,
   onPlaceStructure,
 }: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  nowMs: number;
   machine: MachineState;
   selected: boolean;
   buildPlacement: BuildPlacementState;
@@ -1021,14 +1046,18 @@ function MachineMesh({
   onPlaceNewStructure: (tile: Tile) => void;
   onPlaceStructure: (tile: Tile) => void;
 }) {
+  const status = machineProductionStatus(catalog, view, machine, nowMs);
+  const label = machine.kind === "bakery" ? "Bakery" : "Feed Mill";
   return (
     <StructureSprite
       target={{ type: "machine", id: machine.id }}
-      label={machine.kind === "bakery" ? "Bakery" : "Feed Mill"}
-      hitLabel={machine.kind === "bakery" ? "Bakery" : "Feed Mill"}
+      label={label}
+      hitLabel={label}
       tile={machine.tile}
       color={machine.kind === "bakery" ? "#c97a48" : "#79955b"}
       footprint={structureFootprint(machine.kind)}
+      productionStatus={status}
+      productionStatusLabel={productionStatusLabel(label, catalog, status)}
       selected={selected}
       buildPlacement={buildPlacement}
       movingStructure={movingStructure}
@@ -1050,6 +1079,8 @@ function StructureSprite({
   tile,
   color,
   footprint,
+  productionStatus = { type: "idle" },
+  productionStatusLabel,
   selected,
   buildPlacement,
   movingStructure,
@@ -1065,6 +1096,8 @@ function StructureSprite({
   tile: Tile;
   color: string;
   footprint: StructureFootprint;
+  productionStatus?: StructureProductionStatus;
+  productionStatusLabel?: string | null;
   selected: boolean;
   buildPlacement: BuildPlacementState;
   movingStructure: StructureSelection | null;
@@ -1077,6 +1110,7 @@ function StructureSprite({
   const isMovingTarget = isSameStructure(movingStructure, target);
   const blockedByPlacement = buildPlacement !== null || (movingStructure !== null && !isMovingTarget);
   const center = footprintCenter(tile, footprint);
+  const statusTestId = productionStatusLabel ? `structure-status-${statusId(hitLabel)}` : null;
   const longPressTimer = useRef<number | null>(null);
   const longPressStart = useRef<{ x: number; y: number } | null>(null);
   const ignoreNextClick = useRef(false);
@@ -1252,6 +1286,7 @@ function StructureSprite({
             selected,
             blockedByPlacement,
             movingTarget: isMovingTarget,
+            productionStatus,
           }}
         />
         <mesh position={[0, 0.45, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -1287,8 +1322,39 @@ function StructureSprite({
           onPointerCancel={clearLongPress}
         />
       </Html>
+      {productionStatusLabel && statusTestId ? (
+        <Html
+          position={[tileToWorld(center.x), 1.08, tileToWorld(center.y)]}
+          center
+          zIndexRange={[95, 0]}
+          wrapperClass="structure-status-wrapper"
+        >
+          <div
+            className={`structure-status structure-status--${productionStatus.type}`}
+            data-testid={statusTestId}
+            role="img"
+            aria-label={productionStatusLabel}
+          >
+            <span className="structure-status__dot" />
+            {productionStatus.type === "producing" ? (
+              <span
+                className="structure-status__progress"
+                data-testid={`${statusTestId}-progress`}
+                style={{ "--progress": productionStatus.progress } as CSSProperties}
+              />
+            ) : null}
+            {productionStatus.type === "ready" && productionStatus.blockedByStorage ? (
+              <span className="structure-status__warning" data-testid={`${statusTestId}-blocked`} />
+            ) : null}
+          </div>
+        </Html>
+      ) : null}
     </>
   );
+}
+
+function statusId(label: string) {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
 function PlacementPreview({

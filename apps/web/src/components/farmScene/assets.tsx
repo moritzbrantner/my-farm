@@ -1,7 +1,9 @@
 import { Billboard, Text } from "@react-three/drei";
-import { useMemo, type JSX } from "react";
+import { useFrame } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import * as THREE from "three";
 import type { StructureFootprint } from "../../game/selectors";
+import type { StructureProductionStatus } from "../../game/structureStatus";
 import { colorForItem } from "../../assets/sprites";
 
 export type FarmAssetKind =
@@ -20,6 +22,7 @@ export type FarmAssetState = {
   selected: boolean;
   blockedByPlacement: boolean;
   movingTarget: boolean;
+  productionStatus?: StructureProductionStatus;
   cropItemId?: string;
   cropReady?: boolean;
 };
@@ -115,6 +118,12 @@ export function FarmAsset({ kind, label, footprint, state }: FarmAssetProps): JS
     <group>
       <StructureBase footprint={footprint} state={state} />
       {renderStructure(kind, footprint, state)}
+      <ProductionStatusVisual
+        kind={kind}
+        footprint={footprint}
+        status={state.productionStatus ?? { type: "idle" }}
+        hidden={state.blockedByPlacement || state.movingTarget}
+      />
       <StructureLabel label={label} footprint={footprint} kind={kind} />
     </group>
   );
@@ -470,6 +479,179 @@ function FenceRail({
       <meshStandardMaterial color="#624a35" roughness={0.82} metalness={0} />
     </mesh>
   );
+}
+
+function ProductionStatusVisual({
+  kind,
+  footprint,
+  status,
+  hidden,
+}: {
+  kind: Exclude<FarmAssetKind, "ground_tile" | "field_plot">;
+  footprint: StructureFootprint;
+  status: StructureProductionStatus;
+  hidden: boolean;
+}) {
+  if (hidden || status.type === "idle") {
+    return null;
+  }
+
+  const productColor = colorForItem(status.outputItemId);
+  const y = kind === "barn" || kind === "farm_house" ? 1.05 : 0.92;
+  return (
+    <group>
+      {status.type === "producing" ? (
+        <>
+          {isMachineAsset(kind) ? <ProductionSteam productColor={productColor} /> : <ShelterProducingMarker productColor={productColor} />}
+          <StatusProgressBar progress={status.progress} productColor={productColor} footprint={footprint} />
+        </>
+      ) : (
+        <>
+          <ReadyOutputMarker productColor={productColor} y={y} />
+          <ReadyHalo footprint={footprint} productColor={productColor} />
+          {status.blockedByStorage ? <StorageBlockedMarker y={y + 0.12} /> : null}
+        </>
+      )}
+    </group>
+  );
+}
+
+function StatusProgressBar({
+  progress,
+  productColor,
+  footprint,
+}: {
+  progress: number;
+  productColor: string;
+  footprint: StructureFootprint;
+}) {
+  const width = Math.min(1.2, Math.max(0.74, footprint.width * 0.5));
+  const fillWidth = Math.max(0.05, width * progress);
+  return (
+    <Billboard position={[0, 0.9, -footprint.height * 0.12]} follow lockX={false} lockY={false} lockZ={false}>
+      <group>
+        <mesh>
+          <boxGeometry args={[width, 0.07, 0.055]} />
+          <meshBasicMaterial color="#20312b" transparent opacity={0.65} />
+        </mesh>
+        <mesh position={[-width / 2 + fillWidth / 2, 0.006, 0.006]}>
+          <boxGeometry args={[fillWidth, 0.046, 0.07]} />
+          <meshBasicMaterial color={productColor} />
+        </mesh>
+      </group>
+    </Billboard>
+  );
+}
+
+function ProductionSteam({ productColor }: { productColor: string }) {
+  const groupRef = useRef<THREE.Group | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+
+  useFrame(({ clock }) => {
+    if (!groupRef.current || reducedMotion) {
+      return;
+    }
+    const elapsed = clock.getElapsedTime();
+    groupRef.current.position.y = 0.78 + Math.sin(elapsed * 1.8) * 0.025;
+    groupRef.current.rotation.y = Math.sin(elapsed * 0.8) * 0.08;
+  });
+
+  return (
+    <group ref={groupRef} position={[0.38, 0.78, 0.22]}>
+      {[0, 1, 2].map((index) => (
+        <mesh key={index} position={[index * 0.08 - 0.08, index * 0.1, 0]}>
+          <sphereGeometry args={[0.08 + index * 0.025, 10, 8]} />
+          <meshBasicMaterial color={index === 0 ? productColor : "#fff7d0"} transparent opacity={0.34 - index * 0.07} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function ShelterProducingMarker({ productColor }: { productColor: string }) {
+  const groupRef = useRef<THREE.Group | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+
+  useFrame(({ clock }) => {
+    if (!groupRef.current || reducedMotion) {
+      return;
+    }
+    groupRef.current.scale.setScalar(1 + Math.sin(clock.getElapsedTime() * 2) * 0.05);
+  });
+
+  return (
+    <group ref={groupRef} position={[0.48, 0.42, 0.44]}>
+      <mesh castShadow>
+        <boxGeometry args={[0.22, 0.13, 0.18]} />
+        <meshStandardMaterial color={productColor} roughness={0.76} metalness={0} />
+      </mesh>
+      <mesh position={[0, 0.09, 0]}>
+        <sphereGeometry args={[0.07, 8, 6]} />
+        <meshStandardMaterial color="#fff7d0" roughness={0.72} metalness={0} />
+      </mesh>
+    </group>
+  );
+}
+
+function ReadyOutputMarker({ productColor, y }: { productColor: string; y: number }) {
+  return (
+    <Billboard position={[0.36, y, -0.2]} follow lockX={false} lockY={false} lockZ={false}>
+      <group>
+        <mesh castShadow>
+          <boxGeometry args={[0.22, 0.2, 0.08]} />
+          <meshStandardMaterial color={productColor} roughness={0.64} metalness={0} />
+        </mesh>
+        <mesh position={[0, 0.14, 0]}>
+          <sphereGeometry args={[0.11, 12, 8]} />
+          <meshBasicMaterial color="#fff7d0" transparent opacity={0.82} />
+        </mesh>
+      </group>
+    </Billboard>
+  );
+}
+
+function ReadyHalo({ footprint, productColor }: { footprint: StructureFootprint; productColor: string }) {
+  return (
+    <mesh position={[0, 0.12, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[Math.max(0.42, Math.min(footprint.width, footprint.height) * 0.32), Math.max(0.5, Math.min(footprint.width, footprint.height) * 0.42), 32]} />
+      <meshBasicMaterial color={productColor} transparent opacity={0.3} depthWrite={false} side={THREE.DoubleSide} />
+    </mesh>
+  );
+}
+
+function StorageBlockedMarker({ y }: { y: number }) {
+  return (
+    <Billboard position={[0.58, y, -0.18]} follow lockX={false} lockY={false} lockZ={false}>
+      <group>
+        <mesh rotation={[0, 0, Math.PI]}>
+          <coneGeometry args={[0.11, 0.2, 3]} />
+          <meshBasicMaterial color="#f0a43a" />
+        </mesh>
+        <mesh position={[0, -0.015, 0.01]}>
+          <boxGeometry args={[0.025, 0.09, 0.025]} />
+          <meshBasicMaterial color="#20312b" />
+        </mesh>
+      </group>
+    </Billboard>
+  );
+}
+
+function isMachineAsset(kind: FarmAssetKind) {
+  return kind === "bakery" || kind === "feed_mill";
+}
+
+function usePrefersReducedMotion() {
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(query.matches);
+    const onChange = () => setReducedMotion(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+
+  return reducedMotion;
 }
 
 function StructureLabel({

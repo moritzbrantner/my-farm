@@ -36,6 +36,14 @@ _Avoid_: Factory, workstation
 A machine job definition with inputs, outputs, experience, and duration.
 _Avoid_: Craft, formula
 
+**Producing**:
+A Machine job or fed animal is actively progressing toward an output.
+_Avoid_: Working
+
+**Ready Output**:
+A produced good that has finished and is waiting to be collected, unless storage is full.
+_Avoid_: Finished product
+
 **Delivery Order**:
 A generated request for unlocked goods that pays coins and experience.
 _Avoid_: Truck order, shipment

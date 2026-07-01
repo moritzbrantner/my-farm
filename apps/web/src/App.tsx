@@ -807,7 +807,9 @@ export function App() {
   return (
     <main className={`app ${appToolClass}`}>
       <FarmScene
+        catalog={catalog}
         view={view}
+        nowMs={nowMs}
         selection={selection}
         activeFieldTool={activeFieldTool}
         buildPlacement={buildPlacement}

@@ -35,6 +35,108 @@ test("frames the 3d farm scene inside the viewport", async ({ page }) => {
   await expectFarmHitTargetsFramed(page);
 });
 
+test("idle machines do not show production status badges", async ({ page }) => {
+  await mockFarmApi(page, { ...farmView, shelters: [] });
+  await openFarm(page);
+
+  await expect(page.getByLabel("Bakery structure")).toBeVisible();
+  await expect(page.getByTestId("structure-status-bakery")).toHaveCount(0);
+});
+
+test("producing machines show product identity and progress", async ({ page }) => {
+  const now = Date.now();
+  await mockFarmApi(page, {
+    ...farmView,
+    shelters: [],
+    machines: [
+      {
+        id: "machine-1",
+        kind: "bakery",
+        tile: { x: 8, y: 2 },
+        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 5_000, ready_at_ms: now + 5_000 }],
+      },
+      farmView.machines[1],
+    ],
+  });
+  await openFarm(page);
+
+  const status = page.getByTestId("structure-status-bakery");
+  await expect(status).toBeVisible();
+  await expect(status).toHaveAttribute("aria-label", "Bakery status: Producing Bread");
+  await expect(page.getByTestId("structure-status-bakery-progress")).toBeVisible();
+  await expect(page.getByLabel("Bakery structure")).toBeVisible();
+});
+
+test("ready machines show product identity and storage warnings", async ({ page }) => {
+  const now = Date.now();
+  await mockFarmApi(page, {
+    ...farmView,
+    barn_used: 30,
+    barn_capacity: 30,
+    shelters: [],
+    machines: [
+      {
+        id: "machine-1",
+        kind: "bakery",
+        tile: { x: 8, y: 2 },
+        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
+      },
+      farmView.machines[1],
+    ],
+  });
+  await openFarm(page);
+
+  const status = page.getByTestId("structure-status-bakery");
+  await expect(status).toBeVisible();
+  await expect(status).toHaveAttribute("aria-label", "Bakery status: Ready Bread, storage full");
+  await expect(page.getByTestId("structure-status-bakery-blocked")).toBeVisible();
+
+  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await expect(
+    page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Collect Bread Storage full" }),
+  ).toBeDisabled();
+});
+
+test("shelters show producing and ready animal product status", async ({ page }) => {
+  const now = Date.now();
+  await mockFarmApi(page, {
+    ...farmView,
+    shelters: [
+      {
+        id: "shelter-1",
+        kind: "chicken_coop",
+        tile: { x: 5, y: 7 },
+        animals: [
+          { id: "animal-1", state: { type: "idle" } },
+          { id: "animal-2", state: { type: "producing", fed_at_ms: now - 5_000, ready_at_ms: now + 5_000 } },
+        ],
+      },
+      {
+        id: "shelter-2",
+        kind: "cow_pasture",
+        tile: { x: 11, y: 8 },
+        animals: [
+          { id: "animal-1", state: { type: "ready" } },
+          { id: "animal-2", state: { type: "idle" } },
+        ],
+      },
+    ],
+  });
+  await openFarm(page);
+
+  await expect(page.getByTestId("structure-status-chicken-coop")).toHaveAttribute(
+    "aria-label",
+    "Chicken Coop status: Producing Egg",
+  );
+  await expect(page.getByTestId("structure-status-chicken-coop-progress")).toBeVisible();
+  await expect(page.getByTestId("structure-status-cow-pasture")).toHaveAttribute(
+    "aria-label",
+    "Cow Pasture status: Ready Milk",
+  );
+  await expect(page.getByLabel("Chicken Coop structure")).toBeVisible();
+  await expect(page.getByLabel("Cow Pasture structure")).toBeVisible();
+});
+
 test("field tools expose one seed picker and change the cursor", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Cursor behavior is desktop-specific.");
   await mockFarmApi(page);
@@ -208,9 +310,9 @@ test("placing an available structure sends buy_structure with the chosen tile", 
   await tray.getByRole("button", { name: /Bakery/ }).click();
   await expect(page.getByText("Place Bakery")).toBeVisible();
   await expect(page.getByTestId("build-detail-strip")).toContainText("Choose a tile");
-  await expectCanvasToChangeAfterHover(page);
+  await expectCanvasToChangeAfterGroundHover(page, { x: 3, y: 3 });
 
-  const command = await clickUntilCommand(page, commands);
+  const command = await clickGroundTileUntilCommand(page, commands, { x: 3, y: 3 });
   expect(command.command).toMatchObject({
     type: "buy_structure",
     structure_kind: "bakery",
@@ -230,7 +332,7 @@ test("placing a field plot sends buy_field_plot with the chosen tile", async ({ 
   await expect(page.getByText("Place Field Plot")).toBeVisible();
   await expect(page.getByTestId("build-detail-strip")).toContainText("Choose a tile");
 
-  const command = await clickUntilCommand(page, commands);
+  const command = await clickGroundTileUntilCommand(page, commands, { x: 3, y: 3 });
   expect(command.command).toMatchObject({ type: "buy_field_plot" });
   expect(command.command).toHaveProperty("tile");
 });
@@ -919,7 +1021,7 @@ test("moves a structure by choosing move and clicking a destination tile", async
   await expect(page.getByTestId("structure-context-menu")).toBeHidden();
   await expect(page.getByText("Moving Bakery")).toBeVisible();
 
-  const command = await clickUntilCommand(page, commands);
+  const command = await clickGroundTileUntilCommand(page, commands, { x: 3, y: 3 });
   expect(command.command).toMatchObject({
     type: "move_structure",
     target: { type: "machine", id: "machine-1" },
@@ -936,7 +1038,7 @@ test("shows a footprint preview while moving a structure", async ({ page }, test
   await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move" }).click();
   await expect(page.getByText("Moving Bakery")).toBeVisible();
 
-  await expectCanvasToChangeAfterHover(page);
+  await expectCanvasToChangeAfterGroundHover(page, { x: 3, y: 3 });
 });
 
 const catalog: CatalogDocument = {
@@ -1192,29 +1294,17 @@ async function openBuildMenu(page: Page) {
   return page.getByRole("navigation", { name: "Structures" });
 }
 
-async function clickUntilCommand(page: Page, commands: CommandRequest[]) {
-  const canvas = page.locator("canvas").first();
-  await expect(canvas).toBeVisible();
-  const box = await canvas.boundingBox();
-  if (!box) {
-    throw new Error("Canvas has no bounding box");
+async function clickGroundTileUntilCommand(
+  page: Page,
+  commands: CommandRequest[],
+  tile: { x: number; y: number },
+) {
+  await page.getByLabel(`Ground tile ${tile.x},${tile.y}`).click({ force: true });
+  const command = await waitForLatestCommand(commands);
+  if (!command) {
+    throw new Error(`Clicking ground tile ${tile.x},${tile.y} did not send a command`);
   }
-  const maxX = await canvasSearchMaxX(page, box);
-  const maxY = canvasSearchMaxY(box, 96);
-  const appChromeBoxes = await visibleAppChromeBoxes(page);
-  for (let y = box.y + 96; y < maxY; y += 28) {
-    for (let x = box.x + 24; x < maxX; x += 28) {
-      if (isPointInBoxes(appChromeBoxes, x, y)) {
-        continue;
-      }
-      await page.mouse.click(x, y);
-      const command = await waitForLatestCommand(commands);
-      if (command) {
-        return command;
-      }
-    }
-  }
-  throw new Error("Could not click a destination tile");
+  return command;
 }
 
 async function waitForLatestCommand(commands: CommandRequest[]) {
@@ -1430,35 +1520,18 @@ function canvasRegionDifference(left: CanvasRegion, right: CanvasRegion) {
   return left.data.reduce((total, value, index) => total + Math.abs(value - right.data[index]), 0);
 }
 
-async function expectCanvasToChangeAfterHover(page: Page) {
+async function expectCanvasToChangeAfterGroundHover(page: Page, tile: { x: number; y: number }) {
   const canvas = page.locator("canvas").first();
   await expect(canvas).toBeVisible();
-  const box = await canvas.boundingBox();
-  if (!box) {
-    throw new Error("Canvas has no bounding box");
-  }
   const before = await canvasSnapshot(page);
-  const maxX = await canvasSearchMaxX(page, box);
-  const maxY = canvasSearchMaxY(box, 96);
-  const appChromeBoxes = await visibleAppChromeBoxes(page);
-  for (let y = box.y + 96; y < maxY; y += 32) {
-    for (let x = box.x + 24; x < maxX; x += 32) {
-      if (isPointInBoxes(appChromeBoxes, x, y)) {
-        continue;
-      }
-      await page.mouse.move(x, y);
-      await page.waitForTimeout(40);
-      if ((await canvasSnapshot(page)) !== before) {
-        return;
-      }
-    }
-  }
-  throw new Error("Moving over the canvas did not draw a placement preview");
+  await page.getByLabel(`Ground tile ${tile.x},${tile.y}`).hover({ force: true });
+  await expect.poll(async () => await canvasSnapshot(page), { timeout: 2_000 }).not.toBe(before);
 }
 
 async function expectCanvasToRenderNonBlank(page: Page) {
-  const snapshot = await canvasSnapshot(page);
-  expect(snapshot.length).toBeGreaterThan(20_000);
+  await expect
+    .poll(async () => (await canvasSnapshot(page)).length, { timeout: 5_000 })
+    .toBeGreaterThan(20_000);
 }
 
 async function expectFarmHitTargetsFramed(page: Page) {
