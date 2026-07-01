@@ -10,9 +10,9 @@ cargo run
 bun run dev
 ```
 
-Open `http://127.0.0.1:5174`.
+Open `http://127.0.0.1:5176` on this machine, or `http://castle:5176` from another device on the same network.
 
-The server listens on `http://127.0.0.1:8081` by default and stores `my-farm.sqlite` in the project directory unless `MY_FARM_DATABASE_URL` is set.
+The server listens on `http://0.0.0.0:8081` by default so it is reachable over the local network at `http://castle:8081`. Set `MY_FARM_HOST=127.0.0.1` to restrict it to this machine. It stores `my-farm.sqlite` in the project directory unless `MY_FARM_DATABASE_URL` is set.
 
 ## Commands
 

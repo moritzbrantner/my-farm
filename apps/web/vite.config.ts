@@ -4,8 +4,13 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: "127.0.0.1",
-    port: 5174,
+    allowedHosts: ["castle", "castle.local", "castle.fritz.box"],
+    host: "0.0.0.0",
+    port: 5176,
+  },
+  preview: {
+    allowedHosts: ["castle", "castle.local", "castle.fritz.box"],
+    host: "0.0.0.0",
+    port: 4174,
   },
 });
-

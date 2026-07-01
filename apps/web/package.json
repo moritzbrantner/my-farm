@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5174",
+    "dev": "vite --port 5176",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4174",
+    "preview": "vite preview --port 4174",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -25,4 +25,3 @@
     "vite": "^7.1.12"
   }
 }
-

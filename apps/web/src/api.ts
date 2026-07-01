@@ -1,6 +1,6 @@
 import type { CatalogDocument, CommandRequest, CommandResponse, FarmResponse, FarmView, Tile } from "./types";
 
-const defaultBaseUrl = "http://127.0.0.1:8081";
+const defaultApiPort = "8081";
 const defaultSiloTile: Tile = { x: 14, y: 2 };
 const defaultBarnTile: Tile = { x: 16, y: 2 };
 const defaultDeliveryBoardTile: Tile = { x: 2, y: 7 };
@@ -19,7 +19,7 @@ type LegacyCommandResponse = Omit<CommandResponse, "view"> & {
   view: LegacyFarmView;
 };
 
-export function createFarmClient(baseUrl = import.meta.env.VITE_API_BASE_URL ?? defaultBaseUrl) {
+export function createFarmClient(baseUrl = import.meta.env.VITE_API_BASE_URL ?? defaultBaseUrl()) {
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(`${baseUrl}${path}`, {
       headers: {
@@ -57,6 +57,11 @@ export function createFarmClient(baseUrl = import.meta.env.VITE_API_BASE_URL ?? 
       );
     },
   };
+}
+
+function defaultBaseUrl(): string {
+  const hostname = window.location.hostname || "127.0.0.1";
+  return `${window.location.protocol}//${hostname}:${defaultApiPort}`;
 }
 
 function normalizeFarmResponse(response: LegacyFarmResponse): FarmResponse {
