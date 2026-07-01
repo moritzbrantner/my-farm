@@ -47,6 +47,7 @@ import type {
   ItemStack,
   MachineState,
   StructureKind,
+  SweepHarvestMode,
 } from "./types";
 
 type BuildableStructureKind = Exclude<StructureKind, "silo" | "barn">;
@@ -82,6 +83,7 @@ type PlantSweepState = {
 } | null;
 type HarvestSweepState = {
   cropId: string;
+  harvestMode: SweepHarvestMode;
   plotIds: string[];
   pointerId: number;
 } | null;
@@ -133,6 +135,7 @@ export function App() {
   const [movingStructure, setMovingStructure] = useState<StructureSelection | null>(null);
   const [plantSweep, setPlantSweep] = useState<PlantSweepState>(null);
   const [harvestSweep, setHarvestSweep] = useState<HarvestSweepState>(null);
+  const [harvestMode, setHarvestMode] = useState<SweepHarvestMode>("matching_crop");
   const [screen, setScreen] = useState<GameScreen>("main_menu");
   const [message, setMessage] = useState("Connecting to local server...");
   const [nowMs, setNowMs] = useState(Date.now());
@@ -506,8 +509,30 @@ export function App() {
     harvestSweepRef.current = null;
     setPlantSweep(null);
     setHarvestSweep(null);
-    setMessage("Harvest tool");
-  }, []);
+    setMessage(
+      harvestMode === "all_crops" ? "Harvest tool: all ready crops" : "Harvest tool: matching crop",
+    );
+  }, [harvestMode]);
+
+  const selectHarvestMode = useCallback(
+    (mode: SweepHarvestMode) => {
+      setHarvestMode(mode);
+      setActiveFieldTool({ type: "harvest" });
+      setBuildToolSelected(false);
+      setFieldMenu(null);
+      setStructureMenu(null);
+      setBuildPlacement(null);
+      setMovingStructure(null);
+      plantSweepRef.current = null;
+      harvestSweepRef.current = null;
+      setPlantSweep(null);
+      setHarvestSweep(null);
+      setMessage(
+        mode === "all_crops" ? "Harvest tool: all ready crops" : "Harvest tool: matching crop",
+      );
+    },
+    [],
+  );
 
   const selectBuildTool = useCallback(() => {
     setActiveFieldTool({ type: "default" });
@@ -638,7 +663,8 @@ export function App() {
         if (
           current &&
           current.pointerId === pointerId &&
-          current.cropId === cropId
+          current.harvestMode === harvestMode &&
+          (harvestMode === "all_crops" || current.cropId === cropId)
         ) {
           next = current.plotIds.includes(plotId)
             ? current
@@ -646,6 +672,7 @@ export function App() {
         } else {
           next = {
             cropId,
+            harvestMode,
             plotIds: [plotId],
             pointerId,
           };
@@ -654,7 +681,7 @@ export function App() {
         return next;
       });
     },
-    [nowMs, view],
+    [harvestMode, nowMs, view],
   );
 
   const enterHarvestSweepPlot = useCallback(
@@ -668,7 +695,11 @@ export function App() {
           return current;
         }
         const plot = view.field_plots.find((entry) => entry.id === plotId);
-        if (!plot?.crop || plot.crop.item_id !== current.cropId || plot.crop.ready_at_ms > nowMs) {
+        if (
+          !plot?.crop ||
+          plot.crop.ready_at_ms > nowMs ||
+          (current.harvestMode === "matching_crop" && plot.crop.item_id !== current.cropId)
+        ) {
           harvestSweepRef.current = current;
           return current;
         }
@@ -685,10 +716,10 @@ export function App() {
     if (!sweep) {
       return;
     }
-    const plotIds = sweep.plotIds;
+    const { harvestMode, plotIds } = sweep;
     harvestSweepRef.current = null;
     setHarvestSweep(null);
-    const accepted = await send({ type: "sweep_harvest", plot_ids: plotIds });
+    const accepted = await send({ type: "sweep_harvest", harvest_mode: harvestMode, plot_ids: plotIds });
     if (accepted) {
       setSelection({ type: "plot", id: plotIds[0] });
       setFieldMenu(null);
@@ -714,6 +745,9 @@ export function App() {
       }
     };
     const cancelOnContextMenu = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest(".field-tools")) {
+        return;
+      }
       if (
         activeFieldTool.type === "default" &&
         !plantSweepRef.current &&
@@ -802,10 +836,12 @@ export function App() {
               view={view}
               activeFieldTool={activeFieldTool}
               buildToolSelected={buildToolSelected}
+              harvestMode={harvestMode}
               plantSweep={plantSweep}
               onDefault={selectDefaultFieldTool}
               onPlant={selectPlantFieldTool}
               onHarvest={selectHarvestFieldTool}
+              onHarvestMode={selectHarvestMode}
               onBuild={selectBuildTool}
             />
             <SelectionPanel
@@ -1142,23 +1178,28 @@ function FieldTools({
   view,
   activeFieldTool,
   buildToolSelected,
+  harvestMode,
   plantSweep,
   onDefault,
   onPlant,
   onHarvest,
+  onHarvestMode,
   onBuild,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
   activeFieldTool: ActiveFieldTool;
   buildToolSelected: boolean;
+  harvestMode: SweepHarvestMode;
   plantSweep: PlantSweepState;
   onDefault: () => void;
   onPlant: (cropId: string) => void;
   onHarvest: () => void;
+  onHarvestMode: (mode: SweepHarvestMode) => void;
   onBuild: () => void;
 }) {
   const [seedMenuOpen, setSeedMenuOpen] = useState(false);
+  const [harvestMenuOpen, setHarvestMenuOpen] = useState(false);
   const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
   const unlockedCrops = catalog.crops.filter((crop) => crop.unlock_level <= view.level);
   const hasPlantableSeed = unlockedCrops.some((crop) => (inventory.get(crop.item_id) ?? 0) > 0);
@@ -1166,6 +1207,7 @@ function FieldTools({
   const selectedSeedCropId = activeFieldTool.type === "plant" ? activeFieldTool.cropId : null;
   const selectedSeedName = selectedSeedCropId ? itemName(catalog, selectedSeedCropId) : null;
   const defaultToolSelected = !buildToolSelected && activeFieldTool.type === "default";
+  const harvestModeLabel = harvestMode === "all_crops" ? "All crops" : "Matching crop";
 
   useEffect(() => {
     if (activeFieldTool.type !== "plant") {
@@ -1178,6 +1220,11 @@ function FieldTools({
     setSeedMenuOpen(false);
   };
 
+  const selectHarvestMode = (mode: SweepHarvestMode) => {
+    onHarvestMode(mode);
+    setHarvestMenuOpen(false);
+  };
+
   return (
     <section className="panel-section field-tools">
       <h2>Field Tools</h2>
@@ -1188,6 +1235,7 @@ function FieldTools({
           aria-pressed={defaultToolSelected}
           onClick={() => {
             setSeedMenuOpen(false);
+            setHarvestMenuOpen(false);
             onDefault();
           }}
         >
@@ -1197,19 +1245,60 @@ function FieldTools({
           type="button"
           className={activeFieldTool.type === "harvest" ? "field-tool field-tool--active" : "field-tool"}
           aria-pressed={activeFieldTool.type === "harvest"}
+          aria-haspopup="menu"
+          aria-expanded={harvestMenuOpen}
+          aria-label="Harvest"
           onClick={() => {
             setSeedMenuOpen(false);
+            setHarvestMenuOpen(false);
             onHarvest();
           }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setSeedMenuOpen(false);
+            setHarvestMenuOpen((open) => !open);
+          }}
         >
-          Harvest
+          <span>Harvest</span>
+          <strong>{harvestModeLabel}</strong>
         </button>
+        {harvestMenuOpen ? (
+          <div className="harvest-menu" role="menu" aria-label="Harvest mode">
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={harvestMode === "matching_crop"}
+              className={
+                harvestMode === "matching_crop"
+                  ? "harvest-menu__item harvest-menu__item--active"
+                  : "harvest-menu__item"
+              }
+              onClick={() => selectHarvestMode("matching_crop")}
+            >
+              <span>Matching crop</span>
+            </button>
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={harvestMode === "all_crops"}
+              className={
+                harvestMode === "all_crops"
+                  ? "harvest-menu__item harvest-menu__item--active"
+                  : "harvest-menu__item"
+              }
+              onClick={() => selectHarvestMode("all_crops")}
+            >
+              <span>All crops</span>
+            </button>
+          </div>
+        ) : null}
         <button
           type="button"
           className={buildToolSelected ? "field-tool field-tool--active field-tool--build" : "field-tool field-tool--build"}
           aria-pressed={buildToolSelected}
           onClick={() => {
             setSeedMenuOpen(false);
+            setHarvestMenuOpen(false);
             onBuild();
           }}
         >
@@ -1223,7 +1312,10 @@ function FieldTools({
           aria-expanded={seedMenuOpen}
           aria-label="Seed"
           disabled={!hasPlantableSeed}
-          onClick={() => setSeedMenuOpen((open) => !open)}
+          onClick={() => {
+            setHarvestMenuOpen(false);
+            setSeedMenuOpen((open) => !open);
+          }}
         >
           <ResourceIcon type="item" itemId={selectedSeedCropId ?? "wheat"} itemKind="crop" />
           <span>Seed</span>

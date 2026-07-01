@@ -18,5 +18,6 @@ export type {
   ShelterKind,
   StructureKind,
   StructureTarget,
+  SweepHarvestMode,
   Tile,
 } from "../../../contracts/generated/ts/my-farm";

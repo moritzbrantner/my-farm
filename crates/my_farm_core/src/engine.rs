@@ -40,6 +40,9 @@ pub enum FarmCommand {
     },
     SweepHarvest {
         plot_ids: Vec<String>,
+        #[serde(default)]
+        #[ts(optional)]
+        harvest_mode: Option<SweepHarvestMode>,
     },
     BuyStructure {
         structure_kind: StructureKind,
@@ -77,6 +80,14 @@ pub enum FarmCommand {
         item_id: String,
         quantity: u32,
     },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SweepHarvestMode {
+    #[default]
+    MatchingCrop,
+    AllCrops,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -161,7 +172,16 @@ pub fn apply_command(
             sweep_plant(farm, catalog, now_ms, &crop_id, &plot_ids)
         }
         FarmCommand::HarvestCrop { plot_id } => harvest_crop(farm, catalog, now_ms, &plot_id),
-        FarmCommand::SweepHarvest { plot_ids } => sweep_harvest(farm, catalog, now_ms, &plot_ids),
+        FarmCommand::SweepHarvest {
+            plot_ids,
+            harvest_mode,
+        } => sweep_harvest(
+            farm,
+            catalog,
+            now_ms,
+            &plot_ids,
+            harvest_mode.unwrap_or_default(),
+        ),
         FarmCommand::BuyStructure {
             structure_kind,
             tile,
@@ -333,6 +353,7 @@ fn sweep_harvest(
     catalog: &CatalogDocument,
     now_ms: i64,
     plot_ids: &[String],
+    harvest_mode: SweepHarvestMode,
 ) -> Result<Vec<FarmEvent>, CommandError> {
     let plot_ids = dedupe_plot_ids(plot_ids);
     let first_plot_id = plot_ids
@@ -347,12 +368,10 @@ fn sweep_harvest(
         return Err(CommandError::new("crop is not ready"));
     }
 
-    let crop = catalog
+    catalog
         .crop(&first_planted.item_id)
         .ok_or_else(|| CommandError::new("unknown crop"))?;
     let crop_id = first_planted.item_id;
-    let harvest_quantity = crop.harvest_quantity;
-    let xp = crop.xp;
     let mut events = Vec::new();
     let mut stopped_for_storage = false;
 
@@ -361,27 +380,34 @@ fn sweep_harvest(
         let Some(planted) = farm.field_plots[plot_index].crop.clone() else {
             continue;
         };
-        if planted.item_id != crop_id || planted.ready_at_ms > now_ms {
+        if planted.ready_at_ms > now_ms
+            || (harvest_mode == SweepHarvestMode::MatchingCrop && planted.item_id != crop_id)
+        {
             continue;
         }
-        let output = ItemStack::new(&crop_id, harvest_quantity);
+        let crop = catalog
+            .crop(&planted.item_id)
+            .ok_or_else(|| CommandError::new("unknown crop"))?;
+        let output = ItemStack::new(&planted.item_id, crop.harvest_quantity);
         if !has_storage_room(farm, catalog, std::slice::from_ref(&output)) {
             stopped_for_storage = true;
             break;
         }
 
         farm.field_plots[plot_index].crop = None;
-        add_inventory(farm, &crop_id, harvest_quantity);
-        gain_xp(farm, catalog, xp);
+        add_inventory(farm, &planted.item_id, crop.harvest_quantity);
+        gain_xp(farm, catalog, crop.xp);
         events.push(FarmEvent::CropHarvested {
-            crop_id: crop_id.clone(),
-            quantity: harvest_quantity,
+            crop_id: planted.item_id,
+            quantity: crop.harvest_quantity,
         });
     }
 
     if events.is_empty() {
         return Err(CommandError::new(if stopped_for_storage {
             "storage is full"
+        } else if harvest_mode == SweepHarvestMode::AllCrops {
+            "no ready crops"
         } else {
             "no ready matching crops"
         }));

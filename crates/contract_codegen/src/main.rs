@@ -4,7 +4,7 @@ use my_farm_core::{
     CommandRequest, CommandResponse, CropDef, DeliveryOrder, FarmCommand, FarmEvent, FarmResponse,
     FarmState, FarmView, FieldPlot, HealthResponse, InventoryItemView, ItemDef, ItemKind,
     ItemStack, MachineDef, MachineJob, MachineKind, MachineState, PlantedCrop, RecipeDef,
-    ShelterDef, ShelterKind, StructureKind, StructureTarget, Tile, UnlockView,
+    ShelterDef, ShelterKind, StructureKind, StructureTarget, SweepHarvestMode, Tile, UnlockView,
 };
 use schemars::{JsonSchema, schema_for};
 use std::fs;
@@ -64,6 +64,7 @@ fn outputs() -> anyhow::Result<Vec<Output>> {
                 ShelterKind::decl(),
                 StructureKind::decl(),
                 StructureTarget::decl(),
+                SweepHarvestMode::decl(),
                 RecipeDef::decl(),
                 MachineDef::decl(),
                 ShelterDef::decl(),

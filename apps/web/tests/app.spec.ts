@@ -448,6 +448,34 @@ test("dragging across a different ready crop keeps sweep harvest crop-specific",
     .toMatchObject({ type: "sweep_harvest", plot_ids: ["plot-1"] });
 });
 
+test("right click harvest tool enables sweeping all ready crop kinds", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, readyWheatAndCornFieldView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  const wheatPoint = await fieldTargetPoint(page, "plot-1");
+  const cornPoint = await fieldTargetPoint(page, "plot-2");
+  const harvestTool = page.locator(".field-tools").getByRole("button", { name: "Harvest" });
+
+  await harvestTool.click();
+  await harvestTool.click({ button: "right" });
+  await page.getByRole("menuitemradio", { name: "All crops" }).click();
+  await dragHarvestSweep(page, wheatPoint, cornPoint);
+
+  await expect
+    .poll(() => commands.find((request) => request.command.type === "sweep_harvest")?.command)
+    .toMatchObject({
+      type: "sweep_harvest",
+      harvest_mode: "all_crops",
+      plot_ids: ["plot-1", "plot-2"],
+    });
+});
+
 test("dragging the seed tool across empty fields sends one sweep plant command", async ({
   page,
 }, testInfo) => {

@@ -1,7 +1,7 @@
 use my_farm_core::{
     AnimalState, CatalogDocument, FarmCommand, FarmEvent, ItemStack, MachineKind, ShelterKind,
-    StructureKind, StructureTarget, Tile, add_inventory, apply_command, apply_elapsed,
-    inventory_quantity, new_farm, scaled_duration_ms, update_level,
+    StructureKind, StructureTarget, SweepHarvestMode, Tile, add_inventory, apply_command,
+    apply_elapsed, inventory_quantity, new_farm, scaled_duration_ms, update_level,
 };
 
 #[test]
@@ -92,6 +92,7 @@ fn player_can_sweep_harvest_ready_wheat() {
         &mut farm,
         &catalog,
         FarmCommand::SweepHarvest {
+            harvest_mode: Some(SweepHarvestMode::MatchingCrop),
             plot_ids: vec![
                 "plot-1".to_owned(),
                 "plot-2".to_owned(),
@@ -404,6 +405,7 @@ fn sweep_harvest_only_harvests_matching_ready_crop() {
         &mut farm,
         &catalog,
         FarmCommand::SweepHarvest {
+            harvest_mode: Some(SweepHarvestMode::MatchingCrop),
             plot_ids: vec![
                 "plot-1".to_owned(),
                 "plot-2".to_owned(),
@@ -421,6 +423,74 @@ fn sweep_harvest_only_harvests_matching_ready_crop() {
     assert!(farm.field_plots[3].crop.is_some());
     assert_eq!(inventory_quantity(&farm, "wheat"), 7);
     assert_eq!(inventory_quantity(&farm, "corn"), 2);
+}
+
+#[test]
+fn sweep_harvest_all_crops_harvests_mixed_ready_crops() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+
+    for (plot_id, crop_id) in [
+        ("plot-1", "wheat"),
+        ("plot-2", "corn"),
+        ("plot-3", "wheat"),
+        ("plot-4", "corn"),
+    ] {
+        let planted = apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::PlantCrop {
+                plot_id: plot_id.to_owned(),
+                crop_id: crop_id.to_owned(),
+            },
+            0,
+        );
+        assert!(planted.accepted);
+    }
+    farm.field_plots[3].crop.as_mut().unwrap().ready_at_ms =
+        scaled_duration_ms(300, catalog.balance.time_scale) + 1;
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepHarvest {
+            harvest_mode: Some(SweepHarvestMode::AllCrops),
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+                "plot-4".to_owned(),
+            ],
+        },
+        scaled_duration_ms(300, catalog.balance.time_scale),
+    );
+
+    assert!(harvested.accepted);
+    assert!(farm.field_plots[0].crop.is_none());
+    assert!(farm.field_plots[1].crop.is_none());
+    assert!(farm.field_plots[2].crop.is_none());
+    assert!(farm.field_plots[3].crop.is_some());
+    assert_eq!(inventory_quantity(&farm, "wheat"), 8);
+    assert_eq!(inventory_quantity(&farm, "corn"), 3);
+    assert_eq!(
+        harvested.events,
+        vec![
+            FarmEvent::CropHarvested {
+                crop_id: "wheat".to_owned(),
+                quantity: 2,
+            },
+            FarmEvent::CropHarvested {
+                crop_id: "corn".to_owned(),
+                quantity: 2,
+            },
+            FarmEvent::CropHarvested {
+                crop_id: "wheat".to_owned(),
+                quantity: 2,
+            },
+        ]
+    );
 }
 
 #[test]
@@ -446,6 +516,7 @@ fn sweep_harvest_harvests_until_silo_full() {
         &mut farm,
         &catalog,
         FarmCommand::SweepHarvest {
+            harvest_mode: Some(SweepHarvestMode::MatchingCrop),
             plot_ids: vec![
                 "plot-1".to_owned(),
                 "plot-2".to_owned(),
@@ -484,6 +555,7 @@ fn sweep_harvest_rejects_when_no_swept_plot_fits() {
         &mut farm,
         &catalog,
         FarmCommand::SweepHarvest {
+            harvest_mode: Some(SweepHarvestMode::MatchingCrop),
             plot_ids: vec!["plot-1".to_owned()],
         },
         scaled_duration_ms(120, catalog.balance.time_scale),
@@ -505,7 +577,10 @@ fn sweep_harvest_rejects_empty_selection() {
     let harvested = apply_command(
         &mut farm,
         &catalog,
-        FarmCommand::SweepHarvest { plot_ids: vec![] },
+        FarmCommand::SweepHarvest {
+            harvest_mode: Some(SweepHarvestMode::MatchingCrop),
+            plot_ids: vec![],
+        },
         0,
     );
 

@@ -3,7 +3,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementRef } from "react";
 import * as THREE from "three";
-import type { FarmView, FieldPlot, MachineState, StructureKind, Tile } from "../types";
+import type { FarmView, FieldPlot, MachineState, StructureKind, SweepHarvestMode, Tile } from "../types";
 import {
   FARM_GRID_SIZE,
   FARM_HOUSE_FOOTPRINT,
@@ -272,6 +272,7 @@ function StaticFarmHouse() {
 
 type HarvestSweepState = {
   cropId: string;
+  harvestMode: SweepHarvestMode;
   plotIds: string[];
   pointerId: number;
 } | null;
@@ -598,8 +599,8 @@ function FieldMesh({
   const fieldToolActive = activeFieldTool.type !== "default";
   const eligibleForHarvestSweep =
     harvestSweep !== null &&
-    plot.crop?.item_id === harvestSweep.cropId &&
-    Date.now() >= plot.crop.ready_at_ms;
+    cropReady &&
+    (harvestSweep.harvestMode === "all_crops" || plot.crop?.item_id === harvestSweep.cropId);
 
   useEffect(() => {
     return () => {

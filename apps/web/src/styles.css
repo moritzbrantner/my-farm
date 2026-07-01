@@ -649,7 +649,13 @@ h2 {
   margin-left: auto;
 }
 
-.seed-menu {
+.field-tool strong {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.seed-menu,
+.harvest-menu {
   grid-column: 1 / -1;
   display: grid;
   gap: 6px;
@@ -659,7 +665,8 @@ h2 {
   background: #fbf6e8;
 }
 
-.seed-menu__item {
+.seed-menu__item,
+.harvest-menu__item {
   min-width: 0;
   min-height: 38px;
   display: grid;
@@ -671,12 +678,18 @@ h2 {
   background: #e5edd4;
 }
 
-.seed-menu__item span {
+.harvest-menu__item {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.seed-menu__item span,
+.harvest-menu__item span {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.seed-menu__item--active {
+.seed-menu__item--active,
+.harvest-menu__item--active {
   background: #fff7d0;
   outline: 2px solid rgba(68, 109, 56, 0.42);
   outline-offset: 1px;

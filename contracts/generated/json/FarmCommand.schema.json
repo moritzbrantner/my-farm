@@ -74,6 +74,17 @@
         "type"
       ],
       "properties": {
+        "harvest_mode": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SweepHarvestMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "plot_ids": {
           "type": "array",
           "items": {
@@ -388,6 +399,13 @@
             }
           }
         }
+      ]
+    },
+    "SweepHarvestMode": {
+      "type": "string",
+      "enum": [
+        "matching_crop",
+        "all_crops"
       ]
     },
     "Tile": {
