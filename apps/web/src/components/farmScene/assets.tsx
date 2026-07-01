@@ -1,4 +1,4 @@
-import { Billboard, Text } from "@react-three/drei";
+import { Billboard, Html, Text } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import * as THREE from "three";
@@ -44,6 +44,111 @@ type GableRoofDimensions = {
   height: number;
   depth: number;
 };
+
+const arrivalRoadZ = 10.35;
+const arrivalRoadStartX = -10.4;
+const arrivalRoadEndX = 2.4;
+const arrivalPathCenterX = 0;
+const arrivalPathCenterZ = 5.12;
+
+export function FarmArrivalEnvironment() {
+  return (
+    <group>
+      <RoadSurface />
+      <DirtPath />
+      <MovingCar />
+    </group>
+  );
+}
+
+function RoadSurface() {
+  const roadLength = arrivalRoadEndX - arrivalRoadStartX;
+  const roadCenterX = arrivalRoadStartX + roadLength / 2;
+
+  return (
+    <group position={[roadCenterX, -0.02, arrivalRoadZ]}>
+      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[roadLength, 1.12]} />
+        <meshStandardMaterial color="#4d5552" roughness={0.98} metalness={0} />
+      </mesh>
+      <mesh position={[0, 0.014, -0.46]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[roadLength, 0.08]} />
+        <meshBasicMaterial color="#f4ead2" transparent opacity={0.78} depthWrite={false} />
+      </mesh>
+      <mesh position={[0, 0.014, 0.46]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[roadLength, 0.08]} />
+        <meshBasicMaterial color="#f4ead2" transparent opacity={0.78} depthWrite={false} />
+      </mesh>
+      {[-3.8, -1.8, 0.2, 2.2, 4.2].map((offset) => (
+        <mesh key={offset} position={[offset, 0.018, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.72, 0.06]} />
+          <meshBasicMaterial color="#f7d778" transparent opacity={0.9} depthWrite={false} />
+        </mesh>
+      ))}
+      <Html position={[0, 0.24, 0]} center zIndexRange={[20, 0]} wrapperClass="farm-scene-marker-wrapper">
+        <div className="farm-scene-marker" data-testid="farm-scene-road" aria-label="Farm road" />
+      </Html>
+    </group>
+  );
+}
+
+function DirtPath() {
+  return (
+    <group position={[arrivalPathCenterX, -0.012, arrivalPathCenterZ]}>
+      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.72, 8.35]} />
+        <meshStandardMaterial color="#b9824d" roughness={1} metalness={0} />
+      </mesh>
+      {[-0.22, 0.18].map((xOffset) => (
+        <mesh key={xOffset} position={[xOffset, 0.014, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.08, 8.1]} />
+          <meshBasicMaterial color="#d1a06a" transparent opacity={0.55} depthWrite={false} />
+        </mesh>
+      ))}
+      <Html position={[0, 0.24, 0]} center zIndexRange={[20, 0]} wrapperClass="farm-scene-marker-wrapper">
+        <div className="farm-scene-marker" data-testid="farm-scene-dirt-path" aria-label="Dirt path to Farm House" />
+      </Html>
+    </group>
+  );
+}
+
+function MovingCar() {
+  const carRef = useRef<THREE.Group | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+
+  useFrame(({ clock }) => {
+    if (!carRef.current || reducedMotion) {
+      return;
+    }
+    const travel = arrivalRoadEndX - arrivalRoadStartX;
+    const progress = (clock.getElapsedTime() * 0.1) % 1;
+    carRef.current.position.x = arrivalRoadStartX + progress * travel;
+  });
+
+  return (
+    <group ref={carRef} position={[arrivalRoadStartX + 1.2, 0.12, arrivalRoadZ]} rotation={[0, Math.PI / 2, 0]}>
+      <mesh castShadow receiveShadow position={[0, 0.13, 0]}>
+        <boxGeometry args={[0.58, 0.22, 0.34]} />
+        <meshStandardMaterial color="#d84d45" roughness={0.72} metalness={0.04} />
+      </mesh>
+      <mesh castShadow position={[0.02, 0.3, 0]}>
+        <boxGeometry args={[0.32, 0.18, 0.28]} />
+        <meshStandardMaterial color="#f1d2a4" roughness={0.52} metalness={0.02} />
+      </mesh>
+      {[-0.22, 0.22].map((x) =>
+        [-0.2, 0.2].map((z) => (
+          <mesh key={`${x}-${z}`} castShadow position={[x, 0.05, z]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.07, 0.07, 0.06, 10]} />
+            <meshStandardMaterial color="#20312b" roughness={0.75} metalness={0} />
+          </mesh>
+        )),
+      )}
+      <Html position={[0, 0.54, 0]} center zIndexRange={[25, 0]} wrapperClass="farm-scene-marker-wrapper">
+        <div className="farm-scene-marker" data-testid="farm-scene-car" aria-label="Moving car on farm road" />
+      </Html>
+    </group>
+  );
+}
 
 export function createGableRoofGeometry({ width, height, depth }: GableRoofDimensions) {
   const halfWidth = width / 2;

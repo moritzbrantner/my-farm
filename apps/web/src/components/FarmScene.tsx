@@ -18,7 +18,7 @@ import {
   type StructureFootprint,
   type StructureSelection,
 } from "../game/selectors";
-import { FarmAsset, type FarmAssetKind } from "./farmScene/assets";
+import { FarmArrivalEnvironment, FarmAsset, type FarmAssetKind } from "./farmScene/assets";
 import {
   computeFarmCameraFrame,
   type FarmCameraFrame,
@@ -114,6 +114,7 @@ export function FarmScene({
       />
       <FarmCameraController activeFieldTool={activeFieldTool} harvestSweep={harvestSweep} plantSweep={plantSweep} />
       <group>
+        <FarmArrivalEnvironment />
         <FarmGround
           view={view}
           buildPlacement={buildPlacement}
@@ -285,6 +286,9 @@ function StaticFarmHouse() {
           movingTarget: false,
         }}
       />
+      <Html position={[0, 1.1, 0]} center zIndexRange={[95, 0]} wrapperClass="farm-scene-marker-wrapper">
+        <div className="farm-scene-marker" data-testid="farm-scene-farm-house" aria-label="Farm House" />
+      </Html>
     </group>
   );
 }

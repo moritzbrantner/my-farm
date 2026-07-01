@@ -36,6 +36,29 @@ test("frames the 3d farm scene inside the viewport", async ({ page }) => {
   await expectFarmHitTargetsFramed(page);
 });
 
+test("shows the arrival road path and moving car within farm framing", async ({ page }) => {
+  await mockFarmApi(page);
+  await openFarm(page);
+
+  await expectCanvasToRenderNonBlank(page);
+  await expectFarmHitTargetsFramed(page);
+
+  const arrivalTargets = [
+    page.getByTestId("farm-scene-road"),
+    page.getByTestId("farm-scene-dirt-path"),
+    page.getByTestId("farm-scene-car"),
+    page.getByTestId("farm-scene-farm-house"),
+  ];
+
+  for (const target of arrivalTargets) {
+    await expect(target).toBeVisible();
+    await expectElementFramed(page, target);
+  }
+
+  const before = await canvasSnapshot(page);
+  await expect.poll(async () => await canvasSnapshot(page), { timeout: 3_000 }).not.toBe(before);
+});
+
 test("idle machines do not show production status badges", async ({ page }) => {
   await mockFarmApi(page, { ...farmView, shelters: [] });
   await openFarm(page);
@@ -1900,6 +1923,22 @@ async function expectFarmHitTargetsFramed(page: Page) {
 
   expect(farmCenter.x).toBeGreaterThan(viewport.width * 0.16);
   expect(farmCenter.y).toBeGreaterThan(viewport.height * 0.12);
+}
+
+async function expectElementFramed(page: Page, target: Locator) {
+  const viewport = page.viewportSize();
+  if (!viewport) {
+    throw new Error("Page has no viewport size");
+  }
+  const box = await target.boundingBox();
+  if (!box) {
+    throw new Error("Scene marker has no bounding box");
+  }
+
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
 }
 
 function resourceAmount(scope: Locator, name: string, amount: string) {
