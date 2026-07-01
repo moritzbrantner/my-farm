@@ -237,6 +237,66 @@
     {
       "type": "object",
       "required": [
+        "coins_spent",
+        "item_id",
+        "quantity",
+        "type"
+      ],
+      "properties": {
+        "coins_spent": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "market_item_bought"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "coins_gained",
+        "item_id",
+        "quantity",
+        "type"
+      ],
+      "properties": {
+        "coins_gained": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "market_item_sold"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "level",
         "type"
       ],

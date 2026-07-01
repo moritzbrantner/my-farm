@@ -80,6 +80,14 @@ pub enum FarmCommand {
         item_id: String,
         quantity: u32,
     },
+    BuyMarketItem {
+        item_id: String,
+        quantity: u32,
+    },
+    SellMarketItem {
+        item_id: String,
+        quantity: u32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq, Default)]
@@ -103,19 +111,58 @@ pub enum StructureTarget {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FarmEvent {
-    CropPlanted { crop_id: String },
-    CropHarvested { crop_id: String, quantity: u32 },
-    FieldPlotBuilt { plot_id: String },
-    StructureBuilt { structure_kind: StructureKind },
-    StructureMoved { target: StructureTarget, tile: Tile },
-    RecipeQueued { recipe_id: String },
-    MachineJobCollected { recipe_id: String },
-    AnimalFed { shelter_id: String },
-    AnimalProductCollected { item_id: String },
-    DeliveryOrderFulfilled { order_id: String },
-    DeliveryOrderDiscarded { order_id: String },
-    InventoryDiscarded { item_id: String, quantity: u32 },
-    LevelChanged { level: u32 },
+    CropPlanted {
+        crop_id: String,
+    },
+    CropHarvested {
+        crop_id: String,
+        quantity: u32,
+    },
+    FieldPlotBuilt {
+        plot_id: String,
+    },
+    StructureBuilt {
+        structure_kind: StructureKind,
+    },
+    StructureMoved {
+        target: StructureTarget,
+        tile: Tile,
+    },
+    RecipeQueued {
+        recipe_id: String,
+    },
+    MachineJobCollected {
+        recipe_id: String,
+    },
+    AnimalFed {
+        shelter_id: String,
+    },
+    AnimalProductCollected {
+        item_id: String,
+    },
+    DeliveryOrderFulfilled {
+        order_id: String,
+    },
+    DeliveryOrderDiscarded {
+        order_id: String,
+    },
+    InventoryDiscarded {
+        item_id: String,
+        quantity: u32,
+    },
+    MarketItemBought {
+        item_id: String,
+        quantity: u32,
+        coins_spent: u32,
+    },
+    MarketItemSold {
+        item_id: String,
+        quantity: u32,
+        coins_gained: u32,
+    },
+    LevelChanged {
+        level: u32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -211,6 +258,12 @@ pub fn apply_command(
         }
         FarmCommand::DiscardInventory { item_id, quantity } => {
             discard_inventory(farm, &item_id, quantity)
+        }
+        FarmCommand::BuyMarketItem { item_id, quantity } => {
+            buy_market_item(farm, catalog, &item_id, quantity)
+        }
+        FarmCommand::SellMarketItem { item_id, quantity } => {
+            sell_market_item(farm, catalog, &item_id, quantity)
         }
     };
 
@@ -792,6 +845,66 @@ fn discard_inventory(
     Ok(vec![FarmEvent::InventoryDiscarded {
         item_id: item_id.to_owned(),
         quantity,
+    }])
+}
+
+fn buy_market_item(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    item_id: &str,
+    quantity: u32,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    let market_item = catalog
+        .market_item(item_id)
+        .ok_or_else(|| CommandError::new("unknown market item"))?;
+    if quantity == 0 {
+        return Err(CommandError::new("quantity must be greater than zero"));
+    }
+    require_level(farm, market_item.unlock_level)?;
+    let unit_price = market_item
+        .buy_price
+        .ok_or_else(|| CommandError::new("item is not available to buy"))?;
+    let coins_spent = unit_price
+        .checked_mul(quantity)
+        .ok_or_else(|| CommandError::new("market price overflow"))?;
+    let output = ItemStack::new(item_id, quantity);
+    if !has_storage_room(farm, catalog, std::slice::from_ref(&output)) {
+        return Err(CommandError::new("storage is full"));
+    }
+    spend_coins(farm, coins_spent)?;
+    add_inventory(farm, item_id, quantity);
+    Ok(vec![FarmEvent::MarketItemBought {
+        item_id: item_id.to_owned(),
+        quantity,
+        coins_spent,
+    }])
+}
+
+fn sell_market_item(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    item_id: &str,
+    quantity: u32,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    let market_item = catalog
+        .market_item(item_id)
+        .ok_or_else(|| CommandError::new("unknown market item"))?;
+    if quantity == 0 {
+        return Err(CommandError::new("quantity must be greater than zero"));
+    }
+    require_level(farm, market_item.unlock_level)?;
+    let unit_price = market_item
+        .sell_price
+        .ok_or_else(|| CommandError::new("item is not available to sell"))?;
+    let coins_gained = unit_price
+        .checked_mul(quantity)
+        .ok_or_else(|| CommandError::new("market price overflow"))?;
+    remove_inventory(farm, &[ItemStack::new(item_id, quantity)])?;
+    farm.coins += coins_gained;
+    Ok(vec![FarmEvent::MarketItemSold {
+        item_id: item_id.to_owned(),
+        quantity,
+        coins_gained,
     }])
 }
 

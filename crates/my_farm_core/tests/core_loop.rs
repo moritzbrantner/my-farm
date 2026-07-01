@@ -912,6 +912,284 @@ fn player_can_discard_storage_inventory() {
 }
 
 #[test]
+fn player_can_buy_unlocked_market_items() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let bought = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyMarketItem {
+            item_id: "wheat".to_owned(),
+            quantity: 3,
+        },
+        0,
+    );
+
+    assert!(bought.accepted);
+    assert_eq!(farm.coins, 168);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 9);
+    assert!(bought.events.contains(&FarmEvent::MarketItemBought {
+        item_id: "wheat".to_owned(),
+        quantity: 3,
+        coins_spent: 12,
+    }));
+}
+
+#[test]
+fn market_catalog_covers_default_items_with_valid_prices() {
+    let catalog = CatalogDocument::default_catalog();
+
+    let item_ids = catalog
+        .items
+        .iter()
+        .map(|item| item.id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let market_item_ids = catalog
+        .market_items
+        .iter()
+        .map(|item| item.item_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    assert_eq!(market_item_ids, item_ids);
+    for market_item in &catalog.market_items {
+        assert!(
+            market_item.buy_price.is_some() || market_item.sell_price.is_some(),
+            "{} should be buyable or sellable",
+            market_item.item_id
+        );
+        if let (Some(buy_price), Some(sell_price)) = (market_item.buy_price, market_item.sell_price)
+        {
+            assert!(
+                buy_price > sell_price,
+                "{} buy price should be higher than sell price",
+                market_item.item_id
+            );
+        }
+    }
+}
+
+#[test]
+fn player_can_sell_unlocked_market_items() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    let coins_before = farm.coins;
+
+    let sold = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SellMarketItem {
+            item_id: "wheat".to_owned(),
+            quantity: 2,
+        },
+        0,
+    );
+
+    assert!(sold.accepted);
+    assert_eq!(farm.coins, coins_before + 4);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 4);
+    assert!(sold.events.contains(&FarmEvent::MarketItemSold {
+        item_id: "wheat".to_owned(),
+        quantity: 2,
+        coins_gained: 4,
+    }));
+}
+
+#[test]
+fn market_commands_reject_invalid_buys() {
+    let catalog = CatalogDocument::default_catalog();
+
+    let mut farm = new_farm(0, &catalog);
+    let unknown = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyMarketItem {
+            item_id: "stone".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!unknown.accepted);
+    assert_eq!(unknown.error.unwrap().message, "unknown market item");
+
+    let mut farm = new_farm(0, &catalog);
+    let zero = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyMarketItem {
+            item_id: "wheat".to_owned(),
+            quantity: 0,
+        },
+        0,
+    );
+    assert!(!zero.accepted);
+    assert_eq!(
+        zero.error.unwrap().message,
+        "quantity must be greater than zero"
+    );
+
+    let mut farm = new_farm(0, &catalog);
+    let locked = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyMarketItem {
+            item_id: "corn".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!locked.accepted);
+    assert_eq!(locked.error.unwrap().message, "requires level 2");
+
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    update_level(&mut farm, &catalog);
+    let unavailable = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyMarketItem {
+            item_id: "bread".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!unavailable.accepted);
+    assert_eq!(
+        unavailable.error.unwrap().message,
+        "item is not available to buy"
+    );
+
+    let mut farm = new_farm(0, &catalog);
+    farm.coins = 3;
+    let insufficient_coins = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyMarketItem {
+            item_id: "wheat".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!insufficient_coins.accepted);
+    assert_eq!(
+        insufficient_coins.error.unwrap().message,
+        "not enough coins"
+    );
+
+    let mut farm = new_farm(0, &catalog);
+    farm.silo_capacity = 8;
+    let full_silo = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyMarketItem {
+            item_id: "wheat".to_owned(),
+            quantity: 3,
+        },
+        0,
+    );
+    assert!(!full_silo.accepted);
+    assert_eq!(full_silo.error.unwrap().message, "storage is full");
+
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    update_level(&mut farm, &catalog);
+    farm.barn_capacity = 0;
+    let full_barn = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyMarketItem {
+            item_id: "chicken_feed".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!full_barn.accepted);
+    assert_eq!(full_barn.error.unwrap().message, "storage is full");
+}
+
+#[test]
+fn market_commands_reject_invalid_sells() {
+    let catalog = CatalogDocument::default_catalog();
+
+    let mut farm = new_farm(0, &catalog);
+    let unknown = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SellMarketItem {
+            item_id: "stone".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!unknown.accepted);
+    assert_eq!(unknown.error.unwrap().message, "unknown market item");
+
+    let mut farm = new_farm(0, &catalog);
+    let zero = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SellMarketItem {
+            item_id: "wheat".to_owned(),
+            quantity: 0,
+        },
+        0,
+    );
+    assert!(!zero.accepted);
+    assert_eq!(
+        zero.error.unwrap().message,
+        "quantity must be greater than zero"
+    );
+
+    let mut farm = new_farm(0, &catalog);
+    let locked = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SellMarketItem {
+            item_id: "corn".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!locked.accepted);
+    assert_eq!(locked.error.unwrap().message, "requires level 2");
+
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    update_level(&mut farm, &catalog);
+    add_inventory(&mut farm, "chicken_feed", 1);
+    let unavailable = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SellMarketItem {
+            item_id: "chicken_feed".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!unavailable.accepted);
+    assert_eq!(
+        unavailable.error.unwrap().message,
+        "item is not available to sell"
+    );
+
+    let mut farm = new_farm(0, &catalog);
+    let insufficient_inventory = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SellMarketItem {
+            item_id: "wheat".to_owned(),
+            quantity: 7,
+        },
+        0,
+    );
+    assert!(!insufficient_inventory.accepted);
+    assert_eq!(
+        insufficient_inventory.error.unwrap().message,
+        "not enough wheat"
+    );
+}
+
+#[test]
 fn storage_discard_rejects_zero_quantity() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
