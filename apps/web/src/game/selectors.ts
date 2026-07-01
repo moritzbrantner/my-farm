@@ -42,7 +42,7 @@ export type StructureFootprint = {
   height: number;
 };
 
-const FARM_GRID_SIZE = 18;
+export const FARM_GRID_SIZE = 18;
 
 export function selectedPlot(view: FarmView, selection: Selection): FieldPlot | null {
   return selection?.type === "plot"

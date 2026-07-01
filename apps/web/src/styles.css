@@ -41,6 +41,10 @@ button[aria-disabled="true"] {
 }
 
 .app {
+  --farm-viewport-inset-top: 68px;
+  --farm-viewport-inset-right: 380px;
+  --farm-viewport-inset-bottom: 128px;
+  --farm-viewport-inset-left: 0px;
   position: relative;
   width: 100vw;
   height: 100vh;
@@ -74,9 +78,13 @@ button[aria-disabled="true"] {
   pointer-events: none !important;
 }
 
+.ground-hit-wrapper {
+  pointer-events: none !important;
+}
+
 .structure-hit-target {
-  width: 78px;
-  height: 58px;
+  width: 16px;
+  height: 14px;
   min-height: 0;
   padding: 0;
   border: 0;
@@ -90,8 +98,8 @@ button[aria-disabled="true"] {
 }
 
 .field-hit-target {
-  width: 56px;
-  height: 44px;
+  width: 20px;
+  height: 18px;
   min-height: 0;
   padding: 0;
   border: 0;
@@ -99,6 +107,21 @@ button[aria-disabled="true"] {
   background: transparent;
   box-shadow: none;
   cursor: pointer;
+  opacity: 0;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.ground-hit-target {
+  width: 18px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: crosshair;
   opacity: 0;
   pointer-events: auto;
   touch-action: none;
@@ -862,6 +885,13 @@ h2 {
 }
 
 @media (max-width: 760px) {
+  .app {
+    --farm-viewport-inset-top: 58px;
+    --farm-viewport-inset-right: 0px;
+    --farm-viewport-inset-bottom: 148px;
+    --farm-viewport-inset-left: 0px;
+  }
+
   .top-bar {
     right: 12px;
     min-height: 40px;

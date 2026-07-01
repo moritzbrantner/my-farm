@@ -1,11 +1,11 @@
 import { Html, OrbitControls } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementRef } from "react";
 import * as THREE from "three";
-import { colorForItem, spriteTexture } from "../assets/sprites";
 import type { FarmView, FieldPlot, MachineState, StructureKind, Tile } from "../types";
 import {
+  FARM_GRID_SIZE,
   isTileOccupiedForPlacement,
   isTileAvailableForNewFieldPlot,
   isTileAvailableForNewStructure,
@@ -16,14 +16,19 @@ import {
   type StructureFootprint,
   type StructureSelection,
 } from "../game/selectors";
+import { FarmAsset, type FarmAssetKind } from "./farmScene/assets";
+import {
+  computeFarmCameraFrame,
+  type FarmCameraFrame,
+  type FarmViewportInsets,
+} from "./farmScene/framing";
 
-const FARM_GROUND_COLOR = "#6d9b57";
-const MOVE_TILE_AVAILABLE_COLOR = "#2f7d55";
-const MOVE_TILE_AVAILABLE_EMISSIVE = "#123826";
 const MOVE_TILE_BLOCKED_COLOR = "#a9333f";
-const MOVE_TILE_BLOCKED_EMISSIVE = "#461016";
-const MOVE_OCCUPIED_BLOCKED_TINT = "#ef6a66";
-const MOVE_TARGET_TINT = "#fff7c7";
+const BOARD_ORIGIN = -(FARM_GRID_SIZE - 1) / 2;
+const CAMERA_PADDING_PX = 32;
+const RAYCAST_MATERIAL_OPACITY = 0.001;
+const PAN_SCREEN_RIGHT = new THREE.Vector3(Math.SQRT1_2, 0, -Math.SQRT1_2);
+const PAN_SCREEN_UP = new THREE.Vector3(-0.4082482904638631, 0.8164965809277261, -0.4082482904638631);
 
 type Props = {
   view: FarmView;
@@ -78,13 +83,25 @@ export function FarmScene({
       style={{ position: "absolute", inset: 0, width: "100vw", height: "100vh" }}
       gl={{ preserveDrawingBuffer: true }}
       orthographic
-      camera={{ position: [12, 12, 12], zoom: 44, near: 0.1, far: 100 }}
+      camera={{ position: [15, 15, 15], zoom: 28, near: 0.1, far: 100 }}
       shadows
+      dpr={[1, 2]}
     >
       <color attach="background" args={["#9fd3d1"]} />
-      <ambientLight intensity={1.7} />
-      <directionalLight position={[8, 10, 4]} intensity={1.8} castShadow />
-      <group position={[-8.5, 0, -7.8]}>
+      <hemisphereLight args={["#d7f3ee", "#536a5e", 1.25]} />
+      <ambientLight intensity={0.42} />
+      <directionalLight
+        position={[7, 12, 6]}
+        intensity={2.35}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-left={-12}
+        shadow-camera-right={12}
+        shadow-camera-top={12}
+        shadow-camera-bottom={-12}
+      />
+      <FarmCameraController activeFieldTool={activeFieldTool} harvestSweep={harvestSweep} plantSweep={plantSweep} />
+      <group>
         <FarmGround
           view={view}
           buildPlacement={buildPlacement}
@@ -228,24 +245,6 @@ export function FarmScene({
           />
         ) : null}
       </group>
-      <OrbitControls
-        enabled={activeFieldTool.type === "default" && !harvestSweep && !plantSweep}
-        enableRotate={false}
-        enablePan
-        enableZoom
-        mouseButtons={{
-          LEFT: THREE.MOUSE.PAN,
-          MIDDLE: THREE.MOUSE.DOLLY,
-          RIGHT: THREE.MOUSE.PAN,
-        }}
-        touches={{
-          ONE: THREE.TOUCH.PAN,
-          TWO: THREE.TOUCH.DOLLY_PAN,
-        }}
-        minZoom={28}
-        maxZoom={82}
-        target={[0, 0, 0]}
-      />
     </Canvas>
   );
 }
@@ -268,6 +267,142 @@ type BuildPlacementState = {
   kind: StructureKind | "field_plot";
 } | null;
 
+function FarmCameraController({
+  activeFieldTool,
+  harvestSweep,
+  plantSweep,
+}: {
+  activeFieldTool: ActiveFieldTool;
+  harvestSweep: HarvestSweepState;
+  plantSweep: PlantSweepState;
+}) {
+  const { camera, gl, invalidate, size } = useThree();
+  const controlsRef = useRef<ElementRef<typeof OrbitControls> | null>(null);
+  const controlsEnabled = activeFieldTool.type === "default" && !harvestSweep && !plantSweep;
+  const frame = useMemo(
+    () =>
+      computeFarmCameraFrame({
+        canvasWidth: size.width,
+        canvasHeight: size.height,
+        gridSize: FARM_GRID_SIZE,
+        insets: readFarmViewportInsets(gl.domElement.closest(".app")),
+        paddingPx: CAMERA_PADDING_PX,
+      }),
+    [gl.domElement, size.height, size.width],
+  );
+
+  useLayoutEffect(() => {
+    applyFarmCameraFrame(camera, frame);
+  }, [camera, frame]);
+
+  useLayoutEffect(() => {
+    if (!controlsEnabled || !(camera instanceof THREE.OrthographicCamera)) {
+      return;
+    }
+    let activePointer: { id: number; x: number; y: number } | null = null;
+
+    const startTouchPan = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") {
+        return;
+      }
+      activePointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    };
+    const moveTouchPan = (event: PointerEvent) => {
+      if (!activePointer || event.pointerId !== activePointer.id) {
+        return;
+      }
+      const dx = event.clientX - activePointer.x;
+      const dy = event.clientY - activePointer.y;
+      activePointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      panCamera(camera, controlsRef.current, dx, dy);
+      invalidate();
+    };
+    const stopTouchPan = (event: PointerEvent) => {
+      if (activePointer?.id === event.pointerId) {
+        activePointer = null;
+      }
+    };
+
+    const canvas = gl.domElement;
+    canvas.addEventListener("pointerdown", startTouchPan);
+    canvas.addEventListener("pointermove", moveTouchPan);
+    canvas.addEventListener("pointerup", stopTouchPan);
+    canvas.addEventListener("pointercancel", stopTouchPan);
+    return () => {
+      canvas.removeEventListener("pointerdown", startTouchPan);
+      canvas.removeEventListener("pointermove", moveTouchPan);
+      canvas.removeEventListener("pointerup", stopTouchPan);
+      canvas.removeEventListener("pointercancel", stopTouchPan);
+    };
+  }, [camera, controlsEnabled, gl.domElement, invalidate]);
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      enabled={controlsEnabled}
+      enableRotate={false}
+      enablePan
+      enableZoom
+      mouseButtons={{
+        LEFT: THREE.MOUSE.PAN,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN,
+      }}
+      touches={{
+        ONE: THREE.TOUCH.PAN,
+        TWO: THREE.TOUCH.DOLLY_PAN,
+      }}
+      minZoom={frame.minZoom}
+      maxZoom={frame.maxZoom}
+      target={frame.target}
+    />
+  );
+}
+
+function panCamera(
+  camera: THREE.OrthographicCamera,
+  controls: { target: THREE.Vector3; update: () => void } | null,
+  dx: number,
+  dy: number,
+) {
+  const rightPan = PAN_SCREEN_RIGHT.clone().multiplyScalar(-dx / camera.zoom);
+  const upPan = PAN_SCREEN_UP.clone().multiplyScalar(dy / camera.zoom);
+  const pan = rightPan.add(upPan);
+  camera.position.add(pan);
+  controls?.target.add(pan);
+  controls?.update();
+  camera.updateMatrixWorld();
+  camera.updateProjectionMatrix();
+}
+
+function applyFarmCameraFrame(camera: THREE.Camera, frame: FarmCameraFrame) {
+  if (!(camera instanceof THREE.OrthographicCamera)) {
+    return;
+  }
+  camera.position.set(...frame.cameraPosition);
+  camera.zoom = frame.zoom;
+  camera.lookAt(...frame.target);
+  camera.updateProjectionMatrix();
+}
+
+function readFarmViewportInsets(element: Element | null): FarmViewportInsets {
+  if (!element) {
+    return { top: 0, right: 0, bottom: 0, left: 0 };
+  }
+  const styles = window.getComputedStyle(element);
+  return {
+    top: readCssPx(styles, "--farm-viewport-inset-top"),
+    right: readCssPx(styles, "--farm-viewport-inset-right"),
+    bottom: readCssPx(styles, "--farm-viewport-inset-bottom"),
+    left: readCssPx(styles, "--farm-viewport-inset-left"),
+  };
+}
+
+function readCssPx(styles: CSSStyleDeclaration, property: string) {
+  const value = Number.parseFloat(styles.getPropertyValue(property));
+  return Number.isFinite(value) ? value : 0;
+}
+
 function FarmGround({
   view,
   buildPlacement,
@@ -283,57 +418,116 @@ function FarmGround({
   onPlaceNewStructure: (tile: Tile) => void;
   onPlaceStructure: (tile: Tile) => void;
 }) {
-  const material = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: FARM_GROUND_COLOR,
-        roughness: 0.95,
-      }),
-    [],
-  );
   const tiles = [];
-  for (let x = 0; x < 18; x += 1) {
-    for (let y = 0; y < 18; y += 1) {
+  for (let x = 0; x < FARM_GRID_SIZE; x += 1) {
+    for (let y = 0; y < FARM_GRID_SIZE; y += 1) {
       const tile = { x, y };
       const isOccupied = isTileOccupiedForPlacement(view, tile, movingStructure);
       tiles.push(
-        <mesh
+        <group
           key={`${x}-${y}`}
-          position={[x, -0.03, y]}
+          position={[tileToWorld(x), -0.01, tileToWorld(y)]}
+        >
+          <FarmAsset
+            kind="ground_tile"
+            label=""
+            footprint={{ width: 1, height: 1 }}
+            state={{
+              selected: false,
+              blockedByPlacement: Boolean(movingStructure || buildPlacement) && isOccupied,
+              movingTarget: Boolean(movingStructure || buildPlacement) && !isOccupied,
+            }}
+          />
+          <mesh
+            position={[0, 0.07, 0]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            onPointerDown={(event) => {
+              if (event.nativeEvent.button !== 0 || (!movingStructure && !buildPlacement)) {
+                return;
+              }
+              stop(event);
+              if (movingStructure) {
+                onPlaceStructure(tile);
+                return;
+              }
+              onPlaceNewStructure(tile);
+            }}
+            onPointerMove={() => {
+              if (movingStructure || buildPlacement) {
+                onHoverTile(tile);
+              }
+            }}
+          >
+            <planeGeometry args={[0.98, 0.98]} />
+            <meshBasicMaterial transparent opacity={RAYCAST_MATERIAL_OPACITY} depthWrite={false} />
+          </mesh>
+          {(movingStructure || buildPlacement) && !isOccupied ? (
+            <Html
+              position={[0, 0.32, 0]}
+              center
+              zIndexRange={[90, 0]}
+              wrapperClass="ground-hit-wrapper"
+            >
+              <button
+                className="ground-hit-target"
+                type="button"
+                tabIndex={-1}
+                aria-label={`Ground tile ${x},${y}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (movingStructure) {
+                    onPlaceStructure(tile);
+                    return;
+                  }
+                  onPlaceNewStructure(tile);
+                }}
+                onPointerMove={() => {
+                  onHoverTile(tile);
+                }}
+              />
+            </Html>
+          ) : null}
+        </group>,
+      );
+    }
+  }
+  return (
+    <>
+      {tiles}
+      {movingStructure || buildPlacement ? (
+        <mesh
+          position={[0, 0.16, 0]}
           rotation={[-Math.PI / 2, 0, 0]}
-          onClick={(event) => {
-            if (!movingStructure && !buildPlacement) {
+          onPointerDown={(event) => {
+            if (event.nativeEvent.button !== 0) {
+              return;
+            }
+            const tile = tileFromPointerEvent(event);
+            if (!tile) {
               return;
             }
             stop(event);
+            event.nativeEvent.preventDefault();
             if (movingStructure) {
               onPlaceStructure(tile);
               return;
             }
             onPlaceNewStructure(tile);
           }}
-          onPointerMove={() => {
-            if (movingStructure || buildPlacement) {
+          onPointerMove={(event) => {
+            const tile = tileFromPointerEvent(event);
+            if (tile) {
               onHoverTile(tile);
             }
           }}
         >
-          <planeGeometry args={[0.96, 0.96]} />
-          {movingStructure || buildPlacement ? (
-            <meshStandardMaterial
-              color={isOccupied ? MOVE_TILE_BLOCKED_COLOR : MOVE_TILE_AVAILABLE_COLOR}
-              emissive={isOccupied ? MOVE_TILE_BLOCKED_EMISSIVE : MOVE_TILE_AVAILABLE_EMISSIVE}
-              emissiveIntensity={0.22}
-              roughness={0.9}
-            />
-          ) : (
-            <primitive object={material} attach="material" />
-          )}
-        </mesh>,
-      );
-    }
-  }
-  return <>{tiles}</>;
+          <planeGeometry args={[FARM_GRID_SIZE, FARM_GRID_SIZE]} />
+          <meshBasicMaterial transparent opacity={RAYCAST_MATERIAL_OPACITY} depthWrite={false} />
+        </mesh>
+      ) : null}
+    </>
+  );
 }
 
 function FieldMesh({
@@ -374,14 +568,9 @@ function FieldMesh({
   onCancelFieldToolAction: () => void;
 }) {
   const cropReady = plot.crop ? Date.now() >= plot.crop.ready_at_ms : false;
-  const color = plot.crop ? colorForItem(plot.crop.item_id) : "#8a5a35";
   const longPressTimer = useRef<number | null>(null);
   const longPressStart = useRef<{ x: number; y: number } | null>(null);
   const ignoreNextClick = useRef(false);
-  const texture = useMemo(
-    () => spriteTexture(plot.crop ? (cropReady ? "Ready" : plot.crop.item_id) : "Field", color),
-    [color, cropReady, plot.crop],
-  );
   const blockedByPlacement = movingStructure !== null || buildPlacement !== null;
   const sweptByHarvest = harvestSweep?.plotIds.includes(plot.id) ?? false;
   const sweptByPlant = plantSweep?.plotIds.includes(plot.id) ?? false;
@@ -489,6 +678,11 @@ function FieldMesh({
   };
 
   const selectFromDom = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (ignoreNextClick.current) {
+      ignoreNextClick.current = false;
+      event.stopPropagation();
+      return;
+    }
     if (buildPlacement) {
       clearLongPress();
       event.stopPropagation();
@@ -499,11 +693,6 @@ function FieldMesh({
       clearLongPress();
       event.stopPropagation();
       onPlaceStructure(plot.tile);
-      return;
-    }
-    if (ignoreNextClick.current) {
-      ignoreNextClick.current = false;
-      event.stopPropagation();
       return;
     }
     if (harvestSweep) {
@@ -521,7 +710,19 @@ function FieldMesh({
 
   const startDomPointer = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (buildPlacement) {
+      clearLongPress();
+      ignoreNextClick.current = true;
+      event.preventDefault();
       event.stopPropagation();
+      onPlaceNewStructure(plot.tile);
+      return;
+    }
+    if (movingStructure) {
+      clearLongPress();
+      ignoreNextClick.current = true;
+      event.preventDefault();
+      event.stopPropagation();
+      onPlaceStructure(plot.tile);
       return;
     }
     if (event.button === 2 && fieldToolActive) {
@@ -569,9 +770,8 @@ function FieldMesh({
 
   return (
     <>
-      <mesh
-        position={[plot.tile.x, 0.04, plot.tile.y]}
-        rotation={[-Math.PI / 2, 0, 0]}
+      <group
+        position={[tileToWorld(plot.tile.x), 0.02, tileToWorld(plot.tile.y)]}
         onClick={(event) => {
           if (buildPlacement) {
             clearLongPress();
@@ -605,7 +805,15 @@ function FieldMesh({
         onContextMenu={openMenu}
         onPointerDown={(event) => {
           if (buildPlacement) {
+            ignoreNextClick.current = true;
             stop(event);
+            onPlaceNewStructure(plot.tile);
+            return;
+          }
+          if (movingStructure) {
+            ignoreNextClick.current = true;
+            stop(event);
+            onPlaceStructure(plot.tile);
             return;
           }
           if (event.nativeEvent.button === 2) {
@@ -699,26 +907,25 @@ function FieldMesh({
           clearLongPress();
         }}
       >
-        <planeGeometry args={[0.9, 0.9]} />
-        <meshStandardMaterial
-          map={texture}
-          color={
-            blockedByPlacement
-              ? MOVE_OCCUPIED_BLOCKED_TINT
-              : sweptByPlant
-                ? "#d5f4c6"
-              : sweptByHarvest
-                ? MOVE_TARGET_TINT
-                : selected
-                  ? "#ffffff"
-                  : "#f4ead2"
-          }
-          emissive={blockedByPlacement ? MOVE_TILE_BLOCKED_EMISSIVE : selected ? "#446d38" : "#000000"}
-          emissiveIntensity={blockedByPlacement ? 0.18 : selected || sweptByHarvest || sweptByPlant ? 0.22 : 0}
+        <FarmAsset
+          kind="field_plot"
+          label=""
+          footprint={{ width: 1, height: 1 }}
+          state={{
+            selected,
+            blockedByPlacement,
+            movingTarget: sweptByHarvest || sweptByPlant,
+            cropItemId: plot.crop?.item_id,
+            cropReady,
+          }}
         />
-      </mesh>
+        <mesh position={[0, 0.24, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.95, 0.95]} />
+          <meshBasicMaterial transparent opacity={RAYCAST_MATERIAL_OPACITY} depthWrite={false} />
+        </mesh>
+      </group>
       <Html
-        position={[plot.tile.x, 0.12, plot.tile.y]}
+        position={[tileToWorld(plot.tile.x), 0.28, tileToWorld(plot.tile.y)]}
         center
         zIndexRange={[100, 0]}
         wrapperClass="field-hit-wrapper"
@@ -845,12 +1052,9 @@ function StructureSprite({
   onPlaceNewStructure: (tile: Tile) => void;
   onPlaceStructure: (tile: Tile) => void;
 }) {
-  const texture = useMemo(() => spriteTexture(label, color), [label, color]);
   const isMovingTarget = isSameStructure(movingStructure, target);
   const blockedByPlacement = buildPlacement !== null || (movingStructure !== null && !isMovingTarget);
   const center = footprintCenter(tile, footprint);
-  const visualWidth = Math.max(1.35, footprint.width * 1.08);
-  const visualHeight = Math.max(1.35, footprint.height * 1.08);
   const longPressTimer = useRef<number | null>(null);
   const longPressStart = useRef<{ x: number; y: number } | null>(null);
   const ignoreNextClick = useRef(false);
@@ -946,9 +1150,8 @@ function StructureSprite({
 
   return (
     <>
-      <mesh
-        position={[center.x, 0.17, center.y]}
-        rotation={[-Math.PI / 2, 0, 0]}
+      <group
+        position={[tileToWorld(center.x), 0.02, tileToWorld(center.y)]}
         onClick={(event) => {
           if (movingStructure) {
             clearLongPress();
@@ -1019,19 +1222,23 @@ function StructureSprite({
         onPointerUp={clearLongPress}
         onPointerCancel={clearLongPress}
       >
-        <planeGeometry args={[visualWidth, visualHeight]} />
-        <meshStandardMaterial
-          map={texture}
-          transparent
-          color={blockedByPlacement ? MOVE_OCCUPIED_BLOCKED_TINT : isMovingTarget ? MOVE_TARGET_TINT : "#ffffff"}
-          emissive={
-            blockedByPlacement ? MOVE_TILE_BLOCKED_EMISSIVE : selected || isMovingTarget ? "#fff7b2" : "#000000"
-          }
-          emissiveIntensity={blockedByPlacement ? 0.18 : selected || isMovingTarget ? 0.2 : 0}
+        <FarmAsset
+          kind={assetKindForTarget(target, label)}
+          label={label}
+          footprint={footprint}
+          state={{
+            selected,
+            blockedByPlacement,
+            movingTarget: isMovingTarget,
+          }}
         />
-      </mesh>
+        <mesh position={[0, 0.45, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[Math.max(1, footprint.width), Math.max(1, footprint.height)]} />
+          <meshBasicMaterial transparent opacity={RAYCAST_MATERIAL_OPACITY} depthWrite={false} />
+        </mesh>
+      </group>
       <Html
-        position={[center.x, 0.28, center.y]}
+        position={[tileToWorld(center.x), 0.62, tileToWorld(center.y)]}
         center
         zIndexRange={[100, 0]}
         wrapperClass="structure-hit-wrapper"
@@ -1041,11 +1248,11 @@ function StructureSprite({
           type="button"
           tabIndex={-1}
           aria-label={`${hitLabel} structure`}
-          style={{
-            width: `${78 * footprint.width}px`,
-            height: `${58 * footprint.height}px`,
-            pointerEvents: movingStructure || buildPlacement ? "none" : "auto",
-          }}
+	          style={{
+	            width: `${structureHitTargetWidth(footprint)}px`,
+	            height: `${structureHitTargetHeight(footprint)}px`,
+	            pointerEvents: movingStructure || buildPlacement ? "none" : "auto",
+	          }}
           onClick={selectFromDom}
           onContextMenu={openDomMenu}
           onPointerDown={startDomLongPress}
@@ -1079,7 +1286,7 @@ function PlacementPreview({
   const edgeThickness = 0.06;
 
   return (
-    <group position={[center.x, 0.13, center.y]}>
+    <group position={[tileToWorld(center.x), 0.13, tileToWorld(center.y)]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[width, height]} />
         <meshBasicMaterial color={color} transparent opacity={0.2} depthWrite={false} />
@@ -1143,19 +1350,45 @@ function footprintCenter(tile: Tile, footprint: StructureFootprint): Tile {
 }
 
 function tileFromPointerEvent(event: ThreeEvent<MouseEvent | PointerEvent>): Tile | null {
-  const parent = event.object.parent;
-  if (!parent) {
-    return null;
-  }
-  const point = parent.worldToLocal(event.point.clone());
   const tile = {
-    x: Math.round(point.x),
-    y: Math.round(point.z),
+    x: Math.round(worldToTile(event.point.x)),
+    y: Math.round(worldToTile(event.point.z)),
   };
-  if (tile.x < 0 || tile.x >= 18 || tile.y < 0 || tile.y >= 18) {
+  if (tile.x < 0 || tile.x >= FARM_GRID_SIZE || tile.y < 0 || tile.y >= FARM_GRID_SIZE) {
     return null;
   }
   return tile;
+}
+
+function tileToWorld(value: number) {
+  return value + BOARD_ORIGIN;
+}
+
+function worldToTile(value: number) {
+  return value - BOARD_ORIGIN;
+}
+
+function structureHitTargetWidth(footprint: StructureFootprint) {
+  return 16 + (footprint.width - 1) * 10;
+}
+
+function structureHitTargetHeight(footprint: StructureFootprint) {
+  return 14 + (footprint.height - 1) * 8;
+}
+
+function assetKindForTarget(target: StructureSelection, label: string): Exclude<FarmAssetKind, "ground_tile" | "field_plot"> {
+  switch (target.type) {
+    case "silo":
+      return "silo";
+    case "barn":
+      return "barn";
+    case "delivery_board":
+      return "delivery_board";
+    case "machine":
+      return label === "Bakery" ? "bakery" : "feed_mill";
+    case "shelter":
+      return label === "Chickens" ? "chicken_coop" : "cow_pasture";
+  }
 }
 
 function isSameStructure(left: StructureSelection | null, right: StructureSelection): boolean {

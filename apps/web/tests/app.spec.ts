@@ -24,6 +24,14 @@ test("renders the playable farm shell", async ({ page }) => {
   expect(box?.height).toBeGreaterThan(250);
 });
 
+test("frames the 3d farm scene inside the viewport", async ({ page }) => {
+  await mockFarmApi(page);
+  await openFarm(page);
+
+  await expectCanvasToRenderNonBlank(page);
+  await expectFarmHitTargetsFramed(page);
+});
+
 test("field tools expose one seed picker and change the cursor", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Cursor behavior is desktop-specific.");
   await mockFarmApi(page);
@@ -166,9 +174,10 @@ test("blocked structure placement explains the occupied tile without sending a c
   });
   await openFarm(page);
 
-  const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ }).click();
-  await page.mouse.click(fieldPoint.x, fieldPoint.y);
+  await expect(page.getByText("Place Bakery")).toBeVisible();
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Choose a tile");
+  await page.getByLabel("Field Plot plot-1").click({ force: true });
 
   await expect(page.getByText("Tile is occupied")).toBeVisible();
   expect(commands).toHaveLength(0);
@@ -1017,13 +1026,25 @@ async function clickUntilCommand(page: Page, commands: CommandRequest[]) {
         continue;
       }
       await page.mouse.click(x, y);
-      const command = commands.at(-1);
+      const command = await waitForLatestCommand(commands);
       if (command) {
         return command;
       }
     }
   }
   throw new Error("Could not click a destination tile");
+}
+
+async function waitForLatestCommand(commands: CommandRequest[]) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 60) {
+    const command = commands.at(-1);
+    if (command) {
+      return command;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return null;
 }
 
 async function touchPress(
@@ -1147,6 +1168,7 @@ async function touchPressCanvas(page: Page, point: { x: number; y: number }, dur
 
 async function touchDragCanvas(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
   const canvas = page.locator("canvas").first();
+  await page.waitForTimeout(120);
   await canvas.dispatchEvent("pointerdown", touchEvent(from));
   await canvas.dispatchEvent(
     "pointermove",
@@ -1202,6 +1224,54 @@ async function expectCanvasToChangeAfterHover(page: Page) {
     }
   }
   throw new Error("Moving over the canvas did not draw a placement preview");
+}
+
+async function expectCanvasToRenderNonBlank(page: Page) {
+  const snapshot = await canvasSnapshot(page);
+  expect(snapshot.length).toBeGreaterThan(20_000);
+}
+
+async function expectFarmHitTargetsFramed(page: Page) {
+  const viewport = page.viewportSize();
+  if (!viewport) {
+    throw new Error("Page has no viewport size");
+  }
+  const targets = [
+    page.getByLabel("Field Plot plot-1"),
+    page.getByLabel("Silo structure"),
+    page.getByLabel("Barn structure"),
+    page.getByLabel("Bakery structure"),
+  ];
+  const boxes = await Promise.all(
+    targets.map(async (target) => {
+      await expect(target).toBeVisible();
+      const box = await target.boundingBox();
+      if (!box) {
+        throw new Error("Farm hit target has no bounding box");
+      }
+      return box;
+    }),
+  );
+
+  for (const box of boxes) {
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+  }
+
+  const farmCenter = boxes.reduce(
+    (center, box) => ({
+      x: center.x + box.x + box.width / 2,
+      y: center.y + box.y + box.height / 2,
+    }),
+    { x: 0, y: 0 },
+  );
+  farmCenter.x /= boxes.length;
+  farmCenter.y /= boxes.length;
+
+  expect(farmCenter.x).toBeGreaterThan(viewport.width * 0.16);
+  expect(farmCenter.y).toBeGreaterThan(viewport.height * 0.12);
 }
 
 function resourceAmount(scope: Locator, name: string, amount: string) {
