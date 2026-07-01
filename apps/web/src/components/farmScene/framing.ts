@@ -24,6 +24,7 @@ export type FarmCameraFrame = {
 const cameraDistance = 15;
 const screenRight: [number, number, number] = [Math.SQRT1_2, 0, -Math.SQRT1_2];
 const screenUp: [number, number, number] = [-0.4082482904638631, 0.8164965809277261, -0.4082482904638631];
+const arrivalFrameTarget: [number, number, number] = [-0.65, 0, 0.95];
 
 export function computeFarmCameraFrame({
   canvasWidth,
@@ -34,14 +35,17 @@ export function computeFarmCameraFrame({
 }: FarmCameraFrameInput): FarmCameraFrame {
   const safeWidth = Math.max(260, canvasWidth - insets.left - insets.right - paddingPx * 2);
   const safeHeight = Math.max(220, canvasHeight - insets.top - insets.bottom - paddingPx * 2);
-  const projectedWidth = gridSize * 1.5;
-  const projectedHeight = gridSize * 1.08;
+  const projectedWidth = gridSize * 1.62;
+  const projectedHeight = gridSize * 1.24;
   const zoom = clamp(Math.min(safeWidth / projectedWidth, safeHeight / projectedHeight), 12, 44);
   const deltaX = (insets.left - insets.right) / 2;
   const deltaY = (insets.top - insets.bottom) / 2;
   const target = addVectors(
-    scaleVector(screenRight, -deltaX / zoom),
-    scaleVector(screenUp, deltaY / zoom),
+    arrivalFrameTarget,
+    addVectors(
+      scaleVector(screenRight, -deltaX / zoom),
+      scaleVector(screenUp, deltaY / zoom),
+    ),
   );
 
   return {
