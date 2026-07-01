@@ -428,6 +428,9 @@ test("opens a structure menu from right click without replacing normal selection
   await expect(page.getByText("Need Wheat x1")).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Corn Bread Unlocks at level 4" })).toBeDisabled();
   await expect(page.getByText("Unlocks at level 4")).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Potato Bread Unlocks at level 6" })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Carrot Cake Unlocks at level 6" })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Tomato Tart Unlocks at level 7" })).toBeDisabled();
 
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("structure-context-menu")).toBeHidden();
@@ -435,6 +438,132 @@ test("opens a structure menu from right click without replacing normal selection
   await bakeryHitTarget.click();
   await expect(page.getByTestId("structure-context-menu")).toBeHidden();
   await expect(page.getByText("Bakery - queue 0/2")).toBeVisible();
+});
+
+test("machine context menu sends collect and closes after success", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  const now = Date.now();
+  await mockFarmApi(
+    page,
+    {
+      ...farmView,
+      machines: [
+        {
+          id: "machine-1",
+          kind: "bakery",
+          tile: { x: 8, y: 2 },
+          queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
+        },
+        farmView.machines[1],
+      ],
+    },
+    catalog,
+    (request) => {
+      commands.push(request);
+    },
+  );
+  await openFarm(page);
+
+  await page.getByLabel("Bakery structure").click({ button: "right" });
+  const menu = page.getByTestId("structure-context-menu");
+  await expect(menu).toContainText("Bakery");
+  await expect(menu).toContainText("Queue 1/2");
+  await menu.getByRole("menuitem", { name: "Collect Bread" }).click();
+
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "collect_machine_job",
+    machine_id: "machine-1",
+  });
+  await expect(menu).toBeHidden();
+});
+
+test("machine context menu disables collect until ready", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+  const now = Date.now();
+  await mockFarmApi(page, {
+    ...farmView,
+    machines: [
+      {
+        id: "machine-1",
+        kind: "bakery",
+        tile: { x: 8, y: 2 },
+        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now, ready_at_ms: now + 60_000 }],
+      },
+      farmView.machines[1],
+    ],
+  });
+  await openFarm(page);
+
+  await page.getByLabel("Bakery structure").click({ button: "right" });
+  const menu = page.getByTestId("structure-context-menu");
+  await expect(menu).toContainText("Queue 1/2");
+  await expect(menu.getByRole("menuitem", { name: /Collect Bread \d+s/ })).toBeDisabled();
+});
+
+test("machine context menu disables recipes when queue is full", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+  const now = Date.now();
+  await mockFarmApi(page, {
+    ...farmView,
+    level: 7,
+    inventory: [
+      { item_id: "wheat", name: "Wheat", quantity: 20, kind: "crop" },
+      { item_id: "corn", name: "Corn", quantity: 20, kind: "crop" },
+      { item_id: "egg", name: "Egg", quantity: 20, kind: "animal_product" },
+      { item_id: "potato", name: "Potato", quantity: 20, kind: "crop" },
+      { item_id: "carrot", name: "Carrot", quantity: 20, kind: "crop" },
+      { item_id: "milk", name: "Milk", quantity: 20, kind: "animal_product" },
+      { item_id: "tomato", name: "Tomato", quantity: 20, kind: "crop" },
+    ],
+    machines: [
+      {
+        id: "machine-1",
+        kind: "bakery",
+        tile: { x: 8, y: 2 },
+        queue: [
+          { id: "job-1", recipe_id: "bread", started_at_ms: now, ready_at_ms: now + 60_000 },
+          { id: "job-2", recipe_id: "corn_bread", started_at_ms: now, ready_at_ms: now + 120_000 },
+        ],
+      },
+      farmView.machines[1],
+    ],
+  });
+  await openFarm(page);
+
+  await page.getByLabel("Bakery structure").click({ button: "right" });
+  const menu = page.getByTestId("structure-context-menu");
+  await expect(menu).toContainText("Queue 2/2");
+  await expect(menu.getByRole("menuitem", { name: "Bread Queue full", exact: true })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Tomato Tart Queue full", exact: true })).toBeDisabled();
+});
+
+test("machine context menu sends queue recipe and closes after success", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(
+    page,
+    {
+      ...farmView,
+      inventory: [{ item_id: "wheat", name: "Wheat", quantity: 3, kind: "crop" }],
+    },
+    catalog,
+    (request) => {
+      commands.push(request);
+    },
+  );
+  await openFarm(page);
+
+  await page.getByLabel("Bakery structure").click({ button: "right" });
+  const menu = page.getByTestId("structure-context-menu");
+  await menu.getByRole("menuitem", { name: "Bread", exact: true }).click();
+
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "queue_recipe",
+    machine_id: "machine-1",
+    recipe_id: "bread",
+  });
+  await expect(menu).toBeHidden();
 });
 
 test("opens a structure menu from the visible canvas structure", async ({ page }, testInfo) => {
