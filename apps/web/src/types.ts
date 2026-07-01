@@ -14,6 +14,7 @@ export type {
   ItemStack,
   MachineKind,
   MachineState,
+  MarketItemDef,
   RecipeDef,
   ShelterKind,
   StructureKind,

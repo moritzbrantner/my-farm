@@ -954,6 +954,71 @@ test("delivery board menu focuses delivery orders", async ({ page }, testInfo) =
   await expect(resourceAmount(orders, "Wheat", "x1")).toBeVisible();
 });
 
+test("farmers market buys and sells items through commands", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  let currentView: FarmView = {
+    ...farmView,
+    coins: 20,
+    silo_used: 2,
+    inventory: [{ item_id: "wheat", name: "Wheat", quantity: 2, kind: "crop" }],
+  };
+  await mockMutableFarmApi(page, () => currentView, catalog, (request) => {
+    commands.push(request);
+    if (request.command.type === "buy_market_item") {
+      currentView = {
+        ...currentView,
+        coins: currentView.coins - 4,
+        silo_used: currentView.silo_used + 1,
+        inventory: [{ item_id: "wheat", name: "Wheat", quantity: 3, kind: "crop" }],
+      };
+    }
+    if (request.command.type === "sell_market_item") {
+      currentView = {
+        ...currentView,
+        coins: currentView.coins + 2,
+        silo_used: currentView.silo_used - 1,
+        inventory: [{ item_id: "wheat", name: "Wheat", quantity: 2, kind: "crop" }],
+      };
+    }
+  });
+  await openFarm(page);
+
+  const marketLauncher = page.locator(".market-launcher");
+  await expect(marketLauncher.getByRole("button", { name: "Open Farmers Market" })).toBeVisible();
+  await marketLauncher.getByRole("button", { name: "Open Farmers Market" }).click();
+
+  const market = page.getByRole("region", { name: "Farmers Market" });
+  await expect(market).toBeVisible();
+  await expect(market.getByText("Delivery Orders stay below.")).toBeVisible();
+  await expect(
+    page.locator(".panel-section").filter({ has: page.getByRole("heading", { name: "Delivery Orders" }) }),
+  ).toBeVisible();
+
+  const wheat = market.getByTestId("market-item-wheat");
+  await expect(wheat).toContainText("Wheat");
+  await expect(wheat).toContainText("Owned 2");
+  await expect(wheat).toContainText("Buy 4 coins");
+  await expect(wheat).toContainText("Sell 2 coins");
+
+  await wheat.getByRole("button", { name: "Buy 1 Wheat" }).click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "buy_market_item",
+    item_id: "wheat",
+    quantity: 1,
+  });
+  await expect(page.locator(".top-bar").getByText("16 coins")).toBeVisible();
+  await expect(wheat).toContainText("Owned 3");
+
+  await wheat.getByRole("button", { name: "Sell 1 Wheat" }).click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "sell_market_item",
+    item_id: "wheat",
+    quantity: 1,
+  });
+  await expect(page.locator(".top-bar").getByText("18 coins")).toBeVisible();
+  await expect(wheat).toContainText("Owned 2");
+});
+
 test("filters inventory to the selected structure materials", async ({ page }) => {
   await mockFarmApi(page);
   await openFarm(page);
@@ -1201,6 +1266,23 @@ const catalog: CatalogDocument = {
       reference_seconds: 3600,
       xp: 5,
     },
+  ],
+  market_items: [
+    { item_id: "wheat", buy_price: 4, sell_price: 2, unlock_level: 1 },
+    { item_id: "corn", buy_price: 8, sell_price: 4, unlock_level: 2 },
+    { item_id: "soybean", buy_price: 14, sell_price: 7, unlock_level: 3 },
+    { item_id: "carrot", buy_price: 18, sell_price: 9, unlock_level: 5 },
+    { item_id: "potato", buy_price: 24, sell_price: 12, unlock_level: 6 },
+    { item_id: "tomato", buy_price: 28, sell_price: 14, unlock_level: 7 },
+    { item_id: "chicken_feed", buy_price: 12, sell_price: null, unlock_level: 3 },
+    { item_id: "cow_feed", buy_price: 18, sell_price: null, unlock_level: 5 },
+    { item_id: "egg", buy_price: null, sell_price: 10, unlock_level: 3 },
+    { item_id: "milk", buy_price: null, sell_price: 16, unlock_level: 5 },
+    { item_id: "bread", buy_price: null, sell_price: 18, unlock_level: 2 },
+    { item_id: "corn_bread", buy_price: null, sell_price: 28, unlock_level: 4 },
+    { item_id: "potato_bread", buy_price: null, sell_price: 34, unlock_level: 6 },
+    { item_id: "carrot_cake", buy_price: null, sell_price: 42, unlock_level: 6 },
+    { item_id: "tomato_tart", buy_price: null, sell_price: 46, unlock_level: 7 },
   ],
   level_xp: [0, 0, 4, 14, 30, 55, 90, 140],
 };
