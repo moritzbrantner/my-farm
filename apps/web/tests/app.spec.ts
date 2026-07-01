@@ -566,6 +566,108 @@ test("machine context menu sends queue recipe and closes after success", async (
   await expect(menu).toBeHidden();
 });
 
+test("animal shelter context menu shows slot actions and sends enabled commands", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  const now = Date.now();
+  await mockFarmApi(
+    page,
+    {
+      ...farmView,
+      barn_used: 0,
+      barn_capacity: 30,
+      inventory: [{ item_id: "chicken_feed", name: "Chicken Feed", quantity: 1, kind: "feed" }],
+      shelters: [
+        {
+          id: "shelter-1",
+          kind: "chicken_coop",
+          tile: { x: 5, y: 7 },
+          animals: [
+            { id: "animal-1", state: { type: "idle" } },
+            { id: "animal-2", state: { type: "producing", fed_at_ms: now - 5_000, ready_at_ms: now + 55_000 } },
+            { id: "animal-3", state: { type: "ready" } },
+          ],
+        },
+      ],
+    },
+    catalog,
+    (request) => {
+      commands.push(request);
+    },
+  );
+  await openFarm(page);
+
+  await page.getByLabel("Chicken Coop structure").click({ button: "right" });
+  const menu = page.getByTestId("structure-context-menu");
+  await expect(menu).toContainText("Chicken Coop");
+  await expect(menu.getByRole("menuitem")).toHaveCount(4);
+  await expect(menu.getByRole("menuitem", { name: "Feed Chicken 1" })).toBeEnabled();
+  await expect(menu.getByRole("menuitem", { name: /Chicken 2 producing Egg \d+s/ })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Collect Egg from Chicken 3" })).toBeEnabled();
+
+  await menu.getByRole("menuitem", { name: "Feed Chicken 1" }).click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "feed_animal",
+    shelter_id: "shelter-1",
+    animal_slot: "animal-1",
+  });
+  await expect(menu).toBeHidden();
+
+  await page.getByLabel("Chicken Coop structure").click({ button: "right" });
+  await page
+    .getByTestId("structure-context-menu")
+    .getByRole("menuitem", { name: "Collect Egg from Chicken 3" })
+    .click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "collect_animal_product",
+    shelter_id: "shelter-1",
+    animal_slot: "animal-3",
+  });
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+});
+
+test("animal shelter context menu explains missing feed and full Barn storage", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(
+    page,
+    {
+      ...farmView,
+      barn_used: 30,
+      barn_capacity: 30,
+      inventory: [],
+      shelters: [
+        {
+          id: "shelter-1",
+          kind: "chicken_coop",
+          tile: { x: 5, y: 7 },
+          animals: [
+            { id: "animal-1", state: { type: "idle" } },
+            { id: "animal-2", state: { type: "ready" } },
+          ],
+        },
+      ],
+    },
+    catalog,
+    (request) => {
+      commands.push(request);
+    },
+  );
+  await openFarm(page);
+
+  await page.getByLabel("Chicken Coop structure").click({ button: "right" });
+  const menu = page.getByTestId("structure-context-menu");
+  await expect(menu.getByRole("menuitem", { name: "Feed Chicken 1 Need Chicken Feed x1" })).toBeDisabled();
+  await expect(
+    menu.getByRole("menuitem", { name: "Collect Egg from Chicken 2 Storage full" }),
+  ).toBeDisabled();
+  expect(commands).toHaveLength(0);
+});
+
 test("opens a structure menu from the visible canvas structure", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page);
