@@ -1,5 +1,6 @@
 import { Billboard, Text } from "@react-three/drei";
-import type { JSX } from "react";
+import { useMemo, type JSX } from "react";
+import * as THREE from "three";
 import type { StructureFootprint } from "../../game/selectors";
 import { colorForItem } from "../../assets/sprites";
 
@@ -35,6 +36,74 @@ const highlightColor = "#fff1a8";
 const blockedColor = "#ef6a66";
 const movingColor = "#fff7c7";
 
+type GableRoofDimensions = {
+  width: number;
+  height: number;
+  depth: number;
+};
+
+export function createGableRoofGeometry({ width, height, depth }: GableRoofDimensions) {
+  const halfWidth = width / 2;
+  const halfDepth = depth / 2;
+  const geometry = new THREE.BufferGeometry();
+
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(
+      [
+        -halfWidth,
+        0,
+        -halfDepth,
+        halfWidth,
+        0,
+        -halfDepth,
+        0,
+        height,
+        -halfDepth,
+        -halfWidth,
+        0,
+        halfDepth,
+        halfWidth,
+        0,
+        halfDepth,
+        0,
+        height,
+        halfDepth,
+      ],
+      3,
+    ),
+  );
+  geometry.setIndex([
+    0,
+    2,
+    1,
+    3,
+    4,
+    5,
+    0,
+    1,
+    4,
+    0,
+    4,
+    3,
+    0,
+    3,
+    5,
+    0,
+    5,
+    2,
+    1,
+    2,
+    5,
+    1,
+    5,
+    4,
+  ]);
+  geometry.computeVertexNormals();
+
+  return geometry;
+}
+
 export function FarmAsset({ kind, label, footprint, state }: FarmAssetProps): JSX.Element {
   if (kind === "ground_tile") {
     return <GroundTile state={state} />;
@@ -46,7 +115,7 @@ export function FarmAsset({ kind, label, footprint, state }: FarmAssetProps): JS
     <group>
       <StructureBase footprint={footprint} state={state} />
       {renderStructure(kind, footprint, state)}
-      <StructureLabel label={label} footprint={footprint} />
+      <StructureLabel label={label} footprint={footprint} kind={kind} />
     </group>
   );
 }
@@ -183,10 +252,7 @@ function FarmHouse() {
         <boxGeometry args={[1.25, 0.55, 1.05]} />
         <meshStandardMaterial color="#f0d7a0" roughness={0.78} metalness={0} />
       </mesh>
-      <mesh castShadow position={[0, 0.72, 0]} rotation={[0, 0, Math.PI / 4]}>
-        <boxGeometry args={[0.9, 0.9, 1.18]} />
-        <meshStandardMaterial color="#7d5642" roughness={0.82} metalness={0} />
-      </mesh>
+      <GableRoof width={1.55} height={0.55} depth={1.2} position={[0, 0.61, 0]} color="#7d5642" />
       <mesh castShadow position={[-0.36, 0.24, -0.54]}>
         <boxGeometry args={[0.24, 0.32, 0.04]} />
         <meshStandardMaterial color="#68412f" roughness={0.86} metalness={0} />
@@ -195,7 +261,7 @@ function FarmHouse() {
         <boxGeometry args={[0.26, 0.22, 0.04]} />
         <meshStandardMaterial color="#bfe2e0" roughness={0.35} metalness={0} />
       </mesh>
-      <mesh castShadow position={[0.46, 0.86, 0.2]}>
+      <mesh castShadow position={[0.46, 0.91, 0.2]}>
         <boxGeometry args={[0.16, 0.42, 0.16]} />
         <meshStandardMaterial color="#624a35" roughness={0.82} metalness={0} />
       </mesh>
@@ -227,21 +293,36 @@ function Barn({ footprint, state }: { footprint: StructureFootprint; state: Farm
   const bodyColor = state.blockedByPlacement ? blockedColor : "#b95346";
   const width = Math.min(1.28, footprint.width - 0.45);
   const depth = Math.min(1.08, footprint.height - 0.55);
+  const roofWidth = width + 0.28;
+  const roofDepth = depth + 0.16;
   return (
     <group position={[0, 0.08, 0]}>
       <mesh castShadow receiveShadow position={[0, 0.27, 0]}>
         <boxGeometry args={[width, 0.46, depth]} />
         <meshStandardMaterial color={bodyColor} roughness={0.76} metalness={0} />
       </mesh>
-      <mesh castShadow position={[0, 0.58, 0]} rotation={[0, 0, Math.PI / 4]}>
-        <boxGeometry args={[width * 0.78, width * 0.78, depth + 0.08]} />
-        <meshStandardMaterial color="#6d3b35" roughness={0.8} metalness={0} />
-      </mesh>
+      <GableRoof width={roofWidth} height={0.54} depth={roofDepth} position={[0, 0.5, 0]} color="#6d3b35" />
       <mesh castShadow position={[0, 0.22, -0.33]}>
         <boxGeometry args={[0.24, 0.3, 0.035]} />
         <meshStandardMaterial color="#f1d2a4" roughness={0.85} metalness={0} />
       </mesh>
     </group>
+  );
+}
+
+function GableRoof({
+  width,
+  height,
+  depth,
+  position,
+  color,
+}: GableRoofDimensions & { position: [number, number, number]; color: string }) {
+  const geometry = useMemo(() => createGableRoofGeometry({ width, height, depth }), [width, height, depth]);
+
+  return (
+    <mesh castShadow receiveShadow position={position} geometry={geometry}>
+      <meshStandardMaterial color={color} roughness={0.82} metalness={0} />
+    </mesh>
   );
 }
 
@@ -391,9 +472,18 @@ function FenceRail({
   );
 }
 
-function StructureLabel({ label, footprint }: { label: string; footprint: StructureFootprint }) {
+function StructureLabel({
+  label,
+  footprint,
+  kind,
+}: {
+  label: string;
+  footprint: StructureFootprint;
+  kind: Exclude<FarmAssetKind, "ground_tile" | "field_plot">;
+}) {
+  const labelY = kind === "farm_house" || kind === "barn" ? 1.55 : 1.15;
   return (
-    <Billboard position={[0, 1.15, -footprint.height * 0.08]} follow lockX={false} lockY={false} lockZ={false}>
+    <Billboard position={[0, labelY, -footprint.height * 0.08]} follow lockX={false} lockY={false} lockZ={false}>
       <Text
         color="#20312b"
         anchorX="center"
