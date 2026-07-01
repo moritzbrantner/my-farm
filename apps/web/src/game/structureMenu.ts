@@ -253,6 +253,7 @@ function buildShelterMenu(
   const shelterDef = catalog.shelters.find((entry) => entry.kind === shelter.kind);
   const animalName = shelterDef?.animal_name ?? "Animal";
   const feedName = shelterDef ? itemName(catalog, shelterDef.feed_item_id) : "Feed";
+  const productName = shelterDef ? itemName(catalog, shelterDef.product_item_id) : "Product";
   const productStack = shelterDef ? [{ item_id: shelterDef.product_item_id, quantity: 1 }] : [];
   const animalItems: StructureMenuItem[] = shelter.animals.map((animal, index) => {
     const labelIndex = index + 1;
@@ -262,7 +263,7 @@ function buildShelterMenu(
       const reason = missing.length > 0 ? `Need ${missing.join(", ")}` : undefined;
       return {
         id: `feed-${animal.id}`,
-        label: `Feed ${labelIndex}`,
+        label: `Feed ${animalName} ${labelIndex}`,
         icon: shelterDef ? itemIcon(catalog, shelterDef.feed_item_id) : undefined,
         disabled: Boolean(reason),
         reason,
@@ -275,7 +276,7 @@ function buildShelterMenu(
       const storageFull = !hasStorageRoom(catalog, view, productStack);
       return {
         id: `collect-${animal.id}`,
-        label: `Collect ${labelIndex}`,
+        label: `Collect ${productName} from ${animalName} ${labelIndex}`,
         icon: shelterDef ? itemIcon(catalog, shelterDef.product_item_id) : undefined,
         disabled: storageFull,
         reason: storageFull ? "Storage full" : undefined,
@@ -286,7 +287,7 @@ function buildShelterMenu(
     }
     return {
       id: `producing-${animal.id}`,
-      label: `${animalName} ${labelIndex}`,
+      label: `${animalName} ${labelIndex} producing ${productName}`,
       icon: shelterDef ? itemIcon(catalog, shelterDef.product_item_id) : undefined,
       reason: `${secondsRemaining(animal.state.ready_at_ms, nowMs)}s`,
       disabled: true,
@@ -295,7 +296,7 @@ function buildShelterMenu(
 
   return {
     title: shelterDef?.name ?? structureLabel(shelter.kind),
-    subtitle: `${animalName}s - ${feedName}`,
+    subtitle: `${shelter.animals.length} ${pluralize(animalName, shelter.animals.length)} - feed ${feedName}`,
     items: [
       ...animalItems,
       {
@@ -320,4 +321,8 @@ function itemIcon(catalog: CatalogDocument, itemId: string) {
     itemId,
     itemKind: itemKind(catalog, itemId),
   };
+}
+
+function pluralize(name: string, count: number) {
+  return count === 1 ? name : `${name}s`;
 }
