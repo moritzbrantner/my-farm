@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type Ref,
 } from "react";
 import { createFarmClient } from "./api";
@@ -71,6 +72,8 @@ type StructureBuildCardMeta = {
   accentClass: string;
 };
 type ActiveFieldTool = { type: "default" } | { type: "plant"; cropId: string } | { type: "harvest" };
+type GameScreen = "main_menu" | "playing";
+type MainMenuPanel = "home" | "settings" | "wiki" | "account";
 type PlantSweepState = {
   cropId: string;
   plotIds: string[];
@@ -128,6 +131,7 @@ export function App() {
   const [movingStructure, setMovingStructure] = useState<StructureSelection | null>(null);
   const [plantSweep, setPlantSweep] = useState<PlantSweepState>(null);
   const [harvestSweep, setHarvestSweep] = useState<HarvestSweepState>(null);
+  const [screen, setScreen] = useState<GameScreen>("main_menu");
   const [message, setMessage] = useState("Connecting to local server...");
   const [nowMs, setNowMs] = useState(Date.now());
   const ordersRef = useRef<HTMLElement | null>(null);
@@ -299,6 +303,22 @@ export function App() {
     setMessage("Farm reset");
   }, []);
 
+  const startNewFarm = useCallback(async () => {
+    await reset();
+    setScreen("playing");
+  }, [reset]);
+
+  const openMainMenu = useCallback(() => {
+    setFieldMenu(null);
+    setStructureMenu(null);
+    setBuildPlacement(null);
+    setMovingStructure(null);
+    setPlantSweep(null);
+    setHarvestSweep(null);
+    setActiveFieldTool({ type: "default" });
+    setScreen("main_menu");
+  }, []);
+
   const viewDeliveryOrders = useCallback(() => {
     setSelection({ type: "delivery_board" });
     setFieldMenu(null);
@@ -432,10 +452,21 @@ export function App() {
       setBuildPlacement(null);
       setMovingStructure(null);
       setHarvestSweep(null);
-      setPlantSweep({
-        cropId: activeFieldTool.cropId,
-        plotIds: [plotId],
-        pointerId,
+      setPlantSweep((current) => {
+        if (
+          current &&
+          current.pointerId === pointerId &&
+          current.cropId === activeFieldTool.cropId
+        ) {
+          return current.plotIds.includes(plotId)
+            ? current
+            : { ...current, plotIds: [...current.plotIds, plotId] };
+        }
+        return {
+          cropId: activeFieldTool.cropId,
+          plotIds: [plotId],
+          pointerId,
+        };
       });
     },
     [activeFieldTool, view],
@@ -485,16 +516,28 @@ export function App() {
       if (!plot?.crop || plot.crop.ready_at_ms > nowMs) {
         return;
       }
+      const cropId = plot.crop.item_id;
       setSelection({ type: "plot", id: plotId });
       setFieldMenu(null);
       setStructureMenu(null);
       setBuildPlacement(null);
       setMovingStructure(null);
       setPlantSweep(null);
-      setHarvestSweep({
-        cropId: plot.crop.item_id,
-        plotIds: [plotId],
-        pointerId,
+      setHarvestSweep((current) => {
+        if (
+          current &&
+          current.pointerId === pointerId &&
+          current.cropId === cropId
+        ) {
+          return current.plotIds.includes(plotId)
+            ? current
+            : { ...current, plotIds: [...current.plotIds, plotId] };
+        }
+        return {
+          cropId,
+          plotIds: [plotId],
+          pointerId,
+        };
       });
     },
     [nowMs, view],
@@ -608,36 +651,47 @@ export function App() {
         onStartHarvestSweep={startHarvestSweep}
         onEnterHarvestSweepPlot={enterHarvestSweepPlot}
       />
-      <TopBar view={view} message={message} />
-      <aside className="side-panel">
-        <PanelHeader view={view} version={version} onReset={reset} />
-        <Inventory catalog={catalog} view={view} selection={selection} />
-        <FieldTools
-          catalog={catalog}
+      {screen === "playing" ? (
+        <>
+          <TopBar view={view} message={message} onOpenMenu={openMainMenu} />
+          <aside className="side-panel">
+            <PanelHeader view={view} version={version} onReset={reset} />
+            <Inventory catalog={catalog} view={view} selection={selection} />
+            <FieldTools
+              catalog={catalog}
+              view={view}
+              activeFieldTool={activeFieldTool}
+              onDefault={selectDefaultFieldTool}
+              onPlant={selectPlantFieldTool}
+              onHarvest={selectHarvestFieldTool}
+            />
+            <SelectionPanel
+              catalog={catalog}
+              view={view}
+              selection={selection}
+              nowMs={nowMs}
+              send={send}
+            />
+            <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
+          </aside>
+          <BuildTray
+            catalog={catalog}
+            view={view}
+            selectedKind={selectedBuildKind}
+            buildPlacement={buildPlacement}
+            onInspectKind={inspectBuildKind}
+            onSelectKind={selectBuildKind}
+          />
+        </>
+      ) : (
+        <MainMenu
           view={view}
-          activeFieldTool={activeFieldTool}
-          onDefault={selectDefaultFieldTool}
-          onPlant={selectPlantFieldTool}
-          onHarvest={selectHarvestFieldTool}
+          message={message}
+          onContinue={() => setScreen("playing")}
+          onNewFarm={startNewFarm}
         />
-        <SelectionPanel
-          catalog={catalog}
-          view={view}
-          selection={selection}
-          nowMs={nowMs}
-          send={send}
-        />
-        <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
-      </aside>
-      <BuildTray
-        catalog={catalog}
-        view={view}
-        selectedKind={selectedBuildKind}
-        buildPlacement={buildPlacement}
-        onInspectKind={inspectBuildKind}
-        onSelectKind={selectBuildKind}
-      />
-      {menuPoint && menuModel ? (
+      )}
+      {screen === "playing" && menuPoint && menuModel ? (
         <StructureContextMenu
           model={menuModel}
           x={menuPoint.x}
@@ -665,7 +719,165 @@ export function App() {
   );
 }
 
-function TopBar({ view, message }: { view: FarmView; message: string }) {
+function MainMenu({
+  view,
+  message,
+  onContinue,
+  onNewFarm,
+}: {
+  view: FarmView;
+  message: string;
+  onContinue: () => void;
+  onNewFarm: () => void;
+}) {
+  const [panel, setPanel] = useState<MainMenuPanel>("home");
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  const openHome = () => setPanel("home");
+
+  return (
+    <section className="main-menu" aria-label="Main menu">
+      <div className="main-menu__panel">
+        {panel === "home" ? (
+          <>
+            <div className="main-menu__title">
+              <span>Local Farm</span>
+              <h1>My Farm</h1>
+            </div>
+            <div className="main-menu__stats" aria-label="Farm status">
+              <Metric type="level" label={`Level ${view.level}`} />
+              <Metric type="coins" label={`${view.coins} coins`} />
+              <Metric type="silo" label={`Silo ${view.silo_used}/${view.silo_capacity}`} />
+              <Metric type="barn" label={`Barn ${view.barn_used}/${view.barn_capacity}`} />
+            </div>
+            <div className="main-menu__actions">
+              <button className="main-menu__primary" type="button" onClick={onContinue}>
+                Start Farm
+              </button>
+              <button type="button" onClick={onNewFarm}>
+                New Farm
+              </button>
+            </div>
+            <nav className="main-menu__options" aria-label="Main menu options">
+              <button type="button" onClick={() => setPanel("settings")}>
+                Settings
+              </button>
+              <button type="button" onClick={() => setPanel("wiki")}>
+                Wiki
+              </button>
+              <button type="button" onClick={() => setPanel("account")}>
+                Account
+              </button>
+            </nav>
+            <small>{message}</small>
+          </>
+        ) : null}
+        {panel === "settings" ? (
+          <MainMenuSubpanel title="Settings" onBack={openHome}>
+            <div className="main-menu__settings">
+              <label>
+                <span>Sound</span>
+                <input
+                  type="checkbox"
+                  checked={soundEnabled}
+                  onChange={(event) => setSoundEnabled(event.target.checked)}
+                />
+              </label>
+              <label>
+                <span>Notifications</span>
+                <input
+                  type="checkbox"
+                  checked={notificationsEnabled}
+                  onChange={(event) => setNotificationsEnabled(event.target.checked)}
+                />
+              </label>
+              <label>
+                <span>Reduced Motion</span>
+                <input
+                  type="checkbox"
+                  checked={reducedMotion}
+                  onChange={(event) => setReducedMotion(event.target.checked)}
+                />
+              </label>
+            </div>
+          </MainMenuSubpanel>
+        ) : null}
+        {panel === "wiki" ? (
+          <MainMenuSubpanel title="Wiki" onBack={openHome}>
+            <dl className="main-menu__wiki">
+              <div>
+                <dt>Field Plot</dt>
+                <dd>A tile that holds one planted crop job.</dd>
+              </div>
+              <div>
+                <dt>Crop</dt>
+                <dd>A harvestable plant stored in the silo.</dd>
+              </div>
+              <div>
+                <dt>Machine</dt>
+                <dd>A structure with a recipe queue for farm products.</dd>
+              </div>
+              <div>
+                <dt>Delivery Order</dt>
+                <dd>A request that pays coins and XP for goods.</dd>
+              </div>
+            </dl>
+          </MainMenuSubpanel>
+        ) : null}
+        {panel === "account" ? (
+          <MainMenuSubpanel title="Account" onBack={openHome}>
+            <div className="main-menu__account">
+              <strong>Local Player</strong>
+              <span>Farm level {view.level}</span>
+              <span>{view.xp} XP earned</span>
+              <span>{view.delivery_orders.length} delivery orders</span>
+              <button className="main-menu__primary" type="button" onClick={onContinue}>
+                Continue
+              </button>
+            </div>
+          </MainMenuSubpanel>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function MainMenuSubpanel({
+  title,
+  onBack,
+  children,
+}: {
+  title: string;
+  onBack: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <div className="main-menu__subheader">
+        <div className="main-menu__title">
+          <span>My Farm</span>
+          <h1>{title}</h1>
+        </div>
+        <button type="button" onClick={onBack}>
+          Back
+        </button>
+      </div>
+      {children}
+    </>
+  );
+}
+
+function TopBar({
+  view,
+  message,
+  onOpenMenu,
+}: {
+  view: FarmView;
+  message: string;
+  onOpenMenu: () => void;
+}) {
   return (
     <header className="top-bar">
       <strong>My Farm</strong>
@@ -675,6 +887,9 @@ function TopBar({ view, message }: { view: FarmView; message: string }) {
       <Metric type="silo" label={`Silo ${view.silo_used}/${view.silo_capacity}`} />
       <Metric type="barn" label={`Barn ${view.barn_used}/${view.barn_capacity}`} />
       <small>{message}</small>
+      <button className="top-bar__menu-button" type="button" onClick={onOpenMenu}>
+        Menu
+      </button>
     </header>
   );
 }

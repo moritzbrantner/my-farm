@@ -226,7 +226,7 @@ export function FarmScene({
         ) : null}
       </group>
       <OrbitControls
-        enabled={!harvestSweep && !plantSweep}
+        enabled={activeFieldTool.type === "default" && !harvestSweep && !plantSweep}
         enableRotate={false}
         enablePan
         enableZoom
@@ -416,6 +416,41 @@ function FieldMesh({
     }
   }
 
+  function primaryButtonPressed(buttons: number) {
+    return (buttons & 1) === 1;
+  }
+
+  function applyActiveFieldTool(pointerId: number, buttons: number) {
+    if (!primaryButtonPressed(buttons)) {
+      return false;
+    }
+    if (activeFieldTool.type === "plant") {
+      if (plot.crop) {
+        return true;
+      }
+      if (plantSweep && plantSweep.pointerId === pointerId) {
+        onEnterPlantSweepPlot(plot.id);
+      } else {
+        onStartPlantSweep(plot.id, pointerId);
+      }
+      return true;
+    }
+    if (activeFieldTool.type === "harvest") {
+      if (!plot.crop || !cropReady) {
+        return true;
+      }
+      if (harvestSweep && harvestSweep.pointerId === pointerId) {
+        if (eligibleForHarvestSweep) {
+          onEnterHarvestSweepPlot(plot.id);
+        }
+      } else {
+        onStartHarvestSweep(plot.id, pointerId);
+      }
+      return true;
+    }
+    return false;
+  }
+
   const openMenu = (event: ThreeEvent<MouseEvent | PointerEvent>) => {
     stop(event);
     event.nativeEvent.preventDefault();
@@ -589,6 +624,10 @@ function FieldMesh({
           }, 500);
         }}
         onPointerMove={(event) => {
+          if (applyActiveFieldTool(event.nativeEvent.pointerId, event.nativeEvent.buttons)) {
+            stop(event);
+            return;
+          }
           if (harvestSweep && event.nativeEvent.pointerId === harvestSweep.pointerId) {
             stop(event);
             if (eligibleForHarvestSweep) {
@@ -615,6 +654,11 @@ function FieldMesh({
           );
           if (moved > 8) {
             clearLongPress();
+          }
+        }}
+        onPointerOver={(event) => {
+          if (applyActiveFieldTool(event.nativeEvent.pointerId, event.nativeEvent.buttons)) {
+            stop(event);
           }
         }}
         onPointerUp={() => {
@@ -657,6 +701,10 @@ function FieldMesh({
           onContextMenu={openDomMenu}
           onPointerDown={startDomPointer}
           onPointerMove={(event) => {
+            if (applyActiveFieldTool(event.pointerId, event.buttons)) {
+              event.stopPropagation();
+              return;
+            }
             if (harvestSweep && event.pointerId === harvestSweep.pointerId) {
               event.stopPropagation();
               if (eligibleForHarvestSweep) {
@@ -673,6 +721,11 @@ function FieldMesh({
             }
             if (movingStructure || buildPlacement) {
               onHoverTile(plot.tile);
+            }
+          }}
+          onPointerOver={(event) => {
+            if (applyActiveFieldTool(event.pointerId, event.buttons)) {
+              event.stopPropagation();
             }
           }}
           onPointerUp={() => {

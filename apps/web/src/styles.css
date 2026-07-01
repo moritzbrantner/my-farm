@@ -127,10 +127,170 @@ button[aria-disabled="true"] {
   color: #536a5e;
 }
 
+.top-bar__menu-button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 4px 10px;
+  background: #e5edd4;
+}
+
 .metric {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.main-menu {
+  position: absolute;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(90deg, rgba(73, 112, 92, 0.7), rgba(73, 112, 92, 0.2)),
+    rgba(247, 239, 221, 0.12);
+}
+
+.main-menu__panel {
+  width: min(500px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid rgba(32, 49, 43, 0.28);
+  border-radius: 8px;
+  background: rgba(251, 246, 232, 0.96);
+  box-shadow: 0 22px 52px rgba(32, 49, 43, 0.24);
+}
+
+.main-menu__title {
+  display: grid;
+  gap: 4px;
+}
+
+.main-menu__title span,
+.main-menu small {
+  color: #536a5e;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.main-menu h1 {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.main-menu__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.main-menu__stats .metric {
+  min-width: 0;
+  padding: 8px 9px;
+  border-radius: 6px;
+  background: #e5edd4;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.main-menu__actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.main-menu__actions button,
+.main-menu__options button,
+.main-menu__subheader button,
+.main-menu__account button {
+  min-width: 0;
+  min-height: 46px;
+  padding: 8px 10px;
+}
+
+.main-menu__options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.main-menu__options button,
+.main-menu__subheader button {
+  background: #e5edd4;
+}
+
+.main-menu__subheader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.main-menu__primary {
+  background: #fff7d0;
+  border-color: #446d38;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.48);
+}
+
+.main-menu__settings,
+.main-menu__account,
+.main-menu__wiki {
+  display: grid;
+  gap: 8px;
+}
+
+.main-menu__settings label,
+.main-menu__account span,
+.main-menu__wiki div {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 6px;
+  background: #e5edd4;
+}
+
+.main-menu__settings label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  font-weight: 800;
+}
+
+.main-menu__settings input {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  accent-color: #446d38;
+}
+
+.main-menu__wiki {
+  margin: 0;
+}
+
+.main-menu__wiki div {
+  display: grid;
+  gap: 3px;
+}
+
+.main-menu__wiki dt {
+  font-weight: 900;
+}
+
+.main-menu__wiki dd {
+  margin: 0;
+  color: #536a5e;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.main-menu__account strong {
+  font-size: 20px;
+}
+
+.main-menu__account span {
+  font-weight: 800;
 }
 
 .side-panel {
@@ -632,6 +792,32 @@ h2 {
     right: 12px;
     min-height: 40px;
     font-size: 13px;
+  }
+
+  .main-menu {
+    align-items: end;
+    padding: 14px;
+  }
+
+  .main-menu__panel {
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .main-menu h1 {
+    font-size: 34px;
+  }
+
+  .main-menu__stats,
+  .main-menu__actions,
+  .main-menu__options {
+    grid-template-columns: 1fr;
+  }
+
+  .main-menu__subheader {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
   }
 
   .side-panel {

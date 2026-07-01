@@ -4,6 +4,13 @@ import type { CatalogDocument, CommandRequest, FarmView } from "../src/types";
 
 test("renders the playable farm shell", async ({ page }) => {
   await page.goto("/");
+  await expect(page.getByRole("region", { name: "Main menu" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start Farm" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Wiki" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Account" })).toBeVisible();
+  await startFarm(page);
+
   await expect(page.getByText("My Farm")).toBeVisible();
   await expect(page.getByText(/Level 1/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
@@ -16,9 +23,47 @@ test("renders the playable farm shell", async ({ page }) => {
   expect(box?.height).toBeGreaterThan(250);
 });
 
-test("barn and silo are preplaced storage structures", async ({ page }) => {
+test("main menu opens settings wiki and account panels", async ({ page }) => {
   await mockFarmApi(page);
   await page.goto("/");
+
+  const options = page.getByRole("navigation", { name: "Main menu options" });
+
+  await options.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByLabel("Sound")).toBeChecked();
+  await expect(page.getByLabel("Reduced Motion")).not.toBeChecked();
+  await page.getByRole("button", { name: "Back" }).click();
+
+  await options.getByRole("button", { name: "Wiki" }).click();
+  await expect(page.getByRole("heading", { name: "Wiki" })).toBeVisible();
+  await expect(page.getByText("Field Plot")).toBeVisible();
+  await expect(page.getByText("Delivery Order")).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
+
+  await options.getByRole("button", { name: "Account" }).click();
+  await expect(page.getByRole("heading", { name: "Account" })).toBeVisible();
+  await expect(page.getByText("Local Player")).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
+});
+
+test("top bar menu returns to the main menu", async ({ page }) => {
+  await mockFarmApi(page);
+  await openFarm(page);
+
+  await page.getByRole("button", { name: "Menu" }).click();
+  await expect(page.getByRole("region", { name: "Main menu" })).toBeVisible();
+
+  await page.getByRole("button", { name: "New Farm" }).click();
+  await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
+  await expect(page.getByText("Farm reset")).toBeVisible();
+});
+
+test("barn and silo are preplaced storage structures", async ({ page }) => {
+  await mockFarmApi(page);
+  await openFarm(page);
 
   await expect(page.getByLabel("Silo structure")).toBeVisible();
   await expect(page.getByLabel("Barn structure")).toBeVisible();
@@ -38,14 +83,14 @@ test("legacy farm responses without storage tiles still render preplaced storage
   delete (legacyView as Partial<FarmView>).barn_tile;
 
   await mockFarmApi(page, legacyView);
-  await page.goto("/");
+  await openFarm(page);
 
   await expect(page.getByLabel("Silo structure")).toBeVisible();
   await expect(page.getByLabel("Barn structure")).toBeVisible();
 });
 
 test("build tray shows disabled structure details without opening a context menu", async ({ page }) => {
-  await page.goto("/");
+  await openFarm(page);
 
   const tray = page.getByRole("navigation", { name: "Structures" });
   await tray.getByRole("button", { name: /Bakery/ }).click();
@@ -60,7 +105,7 @@ test("placing an available structure sends buy_structure with the chosen tile", 
   await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
     commands.push(request);
   });
-  await page.goto("/");
+  await openFarm(page);
 
   await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ }).click();
   await expect(page.getByText("Place Bakery")).toBeVisible();
@@ -80,7 +125,7 @@ test("placing a field plot sends buy_field_plot with the chosen tile", async ({ 
   await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
     commands.push(request);
   });
-  await page.goto("/");
+  await openFarm(page);
 
   await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Field Plot/ }).click();
   await expect(page.getByText("Place Field Plot")).toBeVisible();
@@ -98,7 +143,7 @@ test("blocked structure placement explains the occupied tile without sending a c
   await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
     commands.push(request);
   });
-  await page.goto("/");
+  await openFarm(page);
 
   const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ }).click();
@@ -113,7 +158,7 @@ test("escape cancels structure placement", async ({ page }) => {
   await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
     commands.push(request);
   });
-  await page.goto("/");
+  await openFarm(page);
 
   const groundPoint = await findFreeCanvasPoint(page);
   await page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ }).click();
@@ -129,7 +174,7 @@ test("built and locked structure cards show reasons without buying", async ({ pa
   await mockFarmApi(page, farmView, catalog, (request) => {
     commands.push(request);
   });
-  await page.goto("/");
+  await openFarm(page);
 
   const tray = page.getByRole("navigation", { name: "Structures" });
   const details = page.getByTestId("build-detail-strip");
@@ -147,7 +192,7 @@ test("unaffordable structure card shows its coin shortfall without buying", asyn
   await mockFarmApi(page, { ...buildableFarmView(), coins: 0 }, catalog, (request) => {
     commands.push(request);
   });
-  await page.goto("/");
+  await openFarm(page);
 
   const tray = page.getByRole("navigation", { name: "Structures" });
   const details = page.getByTestId("build-detail-strip");
@@ -162,7 +207,7 @@ test("opens a structure menu from right click without replacing normal selection
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page);
-  await page.goto("/");
+  await openFarm(page);
 
   const bakeryHitTarget = page.getByLabel("Bakery structure");
   await bakeryHitTarget.click({ button: "right" });
@@ -184,7 +229,7 @@ test("opens a structure menu from right click without replacing normal selection
 test("opens a structure menu from the visible canvas structure", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page);
-  await page.goto("/");
+  await openFarm(page);
 
   const bakeryPoint = await findCanvasSelectionPoint(page, "Bakery - queue 0/2");
   await page.mouse.click(bakeryPoint.x, bakeryPoint.y, { button: "right" });
@@ -197,7 +242,7 @@ test("right mouse drag on a structure opens menu instead of panning canvas", asy
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page);
-  await page.goto("/");
+  await openFarm(page);
 
   const bakeryPoint = await findCanvasSelectionPoint(page, "Bakery - queue 0/2");
   await page.mouse.move(bakeryPoint.x, bakeryPoint.y);
@@ -211,7 +256,7 @@ test("right mouse drag on a structure opens menu instead of panning canvas", asy
 test("right mouse drag on free ground pans the canvas", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-drag behavior is covered in desktop.");
   await mockFarmApi(page);
-  await page.goto("/");
+  await openFarm(page);
 
   const groundPoint = await findFreeCanvasPoint(page);
   const before = await canvasSnapshot(page);
@@ -228,7 +273,7 @@ test("right mouse drag on free ground pans the canvas", async ({ page }, testInf
 
 test("touch drag on free ground pans the canvas", async ({ page }) => {
   await mockFarmApi(page);
-  await page.goto("/");
+  await openFarm(page);
 
   const groundPoint = await findFreeCanvasPoint(page);
   const before = await canvasSnapshot(page);
@@ -243,7 +288,7 @@ test("touch drag on free ground pans the canvas", async ({ page }) => {
 test("right click on ready field opens harvest menu", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page, readyFieldView());
-  await page.goto("/");
+  await openFarm(page);
 
   const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
@@ -262,12 +307,13 @@ test("dragging across ready matching crops sends one sweep harvest command", asy
   await mockMutableFarmApi(page, () => currentView, catalog, (request) => {
     commands.push(request);
   });
-  await page.goto("/");
+  await openFarm(page);
 
   const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
 
   currentView = twoReadyWheatFieldView();
   await page.reload();
+  await startFarm(page);
   await expect(page.getByText("Local farm synced")).toBeVisible();
   const readyStartPoint = await fieldTargetPoint(page, "plot-1");
 
@@ -287,7 +333,7 @@ test("dragging across a different ready crop keeps sweep harvest crop-specific",
   await mockFarmApi(page, readyWheatAndCornFieldView(), catalog, (request) => {
     commands.push(request);
   });
-  await page.goto("/");
+  await openFarm(page);
 
   const wheatPoint = await fieldTargetPoint(page, "plot-1");
   const cornPoint = await fieldTargetPoint(page, "plot-2");
@@ -308,7 +354,7 @@ test("dragging the seed tool across empty fields sends one sweep plant command",
   await mockFarmApi(page, farmView, catalog, (request) => {
     commands.push(request);
   });
-  await page.goto("/");
+  await openFarm(page);
 
   const firstFieldPoint = await fieldTargetPoint(page, "plot-1");
   const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
@@ -316,9 +362,39 @@ test("dragging the seed tool across empty fields sends one sweep plant command",
   await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
   await dragHarvestSweep(page, firstFieldPoint, secondFieldPoint);
 
-  await expect
-    .poll(() => commands.find((request) => request.command.type === "sweep_plant")?.command)
-    .toMatchObject({ type: "sweep_plant", crop_id: "wheat", plot_ids: ["plot-1", "plot-2"] });
+  await expect.poll(() => {
+    const command = commands.find((request) => request.command.type === "sweep_plant")?.command;
+    return command?.type === "sweep_plant"
+      ? { ...command, plot_ids: [...command.plot_ids].sort() }
+      : command;
+  }).toMatchObject({ type: "sweep_plant", crop_id: "wheat", plot_ids: ["plot-1", "plot-2"] });
+});
+
+test("seed tool plants when pressed before moving over a field", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, farmView, catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  const firstFieldPoint = await fieldTargetPoint(page, "plot-1");
+  const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
+  const groundPoint = { x: firstFieldPoint.x + 180, y: firstFieldPoint.y + 120 };
+
+  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await page.mouse.move(groundPoint.x, groundPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(firstFieldPoint.x, firstFieldPoint.y, { steps: 8 });
+  await page.mouse.move(secondFieldPoint.x, secondFieldPoint.y, { steps: 8 });
+  await page.mouse.up();
+
+  await expect.poll(() => {
+    const command = commands.find((request) => request.command.type === "sweep_plant")?.command;
+    return command?.type === "sweep_plant"
+      ? { ...command, plot_ids: [...command.plot_ids].sort() }
+      : command;
+  }).toMatchObject({ type: "sweep_plant", crop_id: "wheat", plot_ids: ["plot-1", "plot-2"] });
 });
 
 test("default field tool cancels harvest dragging", async ({ page }, testInfo) => {
@@ -327,7 +403,7 @@ test("default field tool cancels harvest dragging", async ({ page }, testInfo) =
   await mockFarmApi(page, twoReadyWheatFieldView(), catalog, (request) => {
     commands.push(request);
   });
-  await page.goto("/");
+  await openFarm(page);
 
   const firstFieldPoint = await fieldTargetPoint(page, "plot-1");
   const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
@@ -344,7 +420,7 @@ test("default field tool cancels harvest dragging", async ({ page }, testInfo) =
 test("right mouse drag on a field opens menu instead of panning canvas", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page, readyFieldView());
-  await page.goto("/");
+  await openFarm(page);
 
   const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.move(fieldPoint.x, fieldPoint.y);
@@ -357,7 +433,7 @@ test("right mouse drag on a field opens menu instead of panning canvas", async (
 
 test("long press on field opens field menu", async ({ page }) => {
   await mockFarmApi(page, readyFieldView());
-  await page.goto("/");
+  await openFarm(page);
 
   await touchPress(page.getByLabel("Field Plot plot-1"), 560);
 
@@ -367,7 +443,7 @@ test("long press on field opens field menu", async ({ page }) => {
 test("empty field menu shows plant options", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page, farmView);
-  await page.goto("/");
+  await openFarm(page);
 
   const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
@@ -381,7 +457,7 @@ test("empty field menu shows plant options", async ({ page }, testInfo) => {
 test("growing field menu shows timer", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page, growingFieldView());
-  await page.goto("/");
+  await openFarm(page);
 
   const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
@@ -394,7 +470,7 @@ test("growing field menu shows timer", async ({ page }, testInfo) => {
 test("ready harvest is disabled when storage is full", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page, { ...readyFieldView(), silo_used: 40, silo_capacity: 40 });
-  await page.goto("/");
+  await openFarm(page);
 
   const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
@@ -406,7 +482,7 @@ test("ready harvest is disabled when storage is full", async ({ page }, testInfo
 
 test("supports long press for structures and cancels moved touch presses", async ({ page }) => {
   await mockFarmApi(page);
-  await page.goto("/");
+  await openFarm(page);
 
   const shelterHitTarget = page.getByLabel("Chicken Coop structure");
 
@@ -426,7 +502,7 @@ test("supports long press for structures and cancels moved touch presses", async
 test("delivery board menu focuses delivery orders", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   await mockFarmApi(page);
-  await page.goto("/");
+  await openFarm(page);
 
   await page.getByLabel("Delivery Board structure").click({ button: "right" });
   await page
@@ -444,7 +520,7 @@ test("delivery board menu focuses delivery orders", async ({ page }, testInfo) =
 
 test("filters inventory to the selected structure materials", async ({ page }) => {
   await mockFarmApi(page);
-  await page.goto("/");
+  await openFarm(page);
 
   const inventory = page.locator(".panel-section").filter({
     has: page.getByRole("heading", { name: "Inventory" }),
@@ -469,7 +545,7 @@ test("moves a structure by choosing move and clicking a destination tile", async
   await mockFarmApi(page, farmView, catalog, (request) => {
     commands.push(request);
   });
-  await page.goto("/");
+  await openFarm(page);
 
   await page.getByLabel("Bakery structure").click({ button: "right" });
   await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move" }).click();
@@ -487,7 +563,7 @@ test("moves a structure by choosing move and clicking a destination tile", async
 test("shows a footprint preview while moving a structure", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop hover behavior is covered in desktop.");
   await mockFarmApi(page);
-  await page.goto("/");
+  await openFarm(page);
 
   await page.getByLabel("Bakery structure").click({ button: "right" });
   await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move" }).click();
@@ -725,10 +801,22 @@ async function mockMutableFarmApi(
   await page.route("**/api/farm", async (route) => {
     await route.fulfill({ json: { version: 1, view: getView() } });
   });
+  await page.route("**/api/farm/reset", async (route) => {
+    await route.fulfill({ json: { version: 1, view: getView() } });
+  });
   await page.route("**/api/commands", async (route) => {
     onCommand?.(route.request().postDataJSON() as CommandRequest);
     await route.fulfill({ json: { accepted: true, version: 2, events: [], view: getView(), error: null } });
   });
+}
+
+async function openFarm(page: Page) {
+  await page.goto("/");
+  await startFarm(page);
+}
+
+async function startFarm(page: Page) {
+  await page.getByRole("button", { name: "Start Farm" }).click();
 }
 
 async function clickUntilCommand(page: Page, commands: CommandRequest[]) {
