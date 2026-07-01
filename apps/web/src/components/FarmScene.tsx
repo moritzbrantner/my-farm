@@ -42,6 +42,7 @@ type Props = {
   onEnterPlantSweepPlot: (plotId: string) => void;
   onStartHarvestSweep: (plotId: string, pointerId: number) => void;
   onEnterHarvestSweepPlot: (plotId: string) => void;
+  onCancelFieldToolAction: () => void;
 };
 
 export function FarmScene({
@@ -61,6 +62,7 @@ export function FarmScene({
   onEnterPlantSweepPlot,
   onStartHarvestSweep,
   onEnterHarvestSweepPlot,
+  onCancelFieldToolAction,
 }: Props) {
   const [hoverTile, setHoverTile] = useState<Tile | null>(null);
 
@@ -110,6 +112,7 @@ export function FarmScene({
             onEnterPlantSweepPlot={onEnterPlantSweepPlot}
             onStartHarvestSweep={onStartHarvestSweep}
             onEnterHarvestSweepPlot={onEnterHarvestSweepPlot}
+            onCancelFieldToolAction={onCancelFieldToolAction}
           />
         ))}
         <StructureSprite
@@ -350,6 +353,7 @@ function FieldMesh({
   onEnterPlantSweepPlot,
   onStartHarvestSweep,
   onEnterHarvestSweepPlot,
+  onCancelFieldToolAction,
 }: {
   plot: FieldPlot;
   selected: boolean;
@@ -367,6 +371,7 @@ function FieldMesh({
   onEnterPlantSweepPlot: (plotId: string) => void;
   onStartHarvestSweep: (plotId: string, pointerId: number) => void;
   onEnterHarvestSweepPlot: (plotId: string) => void;
+  onCancelFieldToolAction: () => void;
 }) {
   const cropReady = plot.crop ? Date.now() >= plot.crop.ready_at_ms : false;
   const color = plot.crop ? colorForItem(plot.crop.item_id) : "#8a5a35";
@@ -420,6 +425,12 @@ function FieldMesh({
     return (buttons & 1) === 1;
   }
 
+  function cancelActiveFieldTool() {
+    clearLongPress();
+    ignoreNextClick.current = true;
+    onCancelFieldToolAction();
+  }
+
   function applyActiveFieldTool(pointerId: number, buttons: number) {
     if (!primaryButtonPressed(buttons)) {
       return false;
@@ -454,6 +465,10 @@ function FieldMesh({
   const openMenu = (event: ThreeEvent<MouseEvent | PointerEvent>) => {
     stop(event);
     event.nativeEvent.preventDefault();
+    if (fieldToolActive) {
+      cancelActiveFieldTool();
+      return;
+    }
     onOpenFieldMenu(plot.id, {
       x: event.nativeEvent.clientX,
       y: event.nativeEvent.clientY,
@@ -463,6 +478,10 @@ function FieldMesh({
   const openDomMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    if (fieldToolActive) {
+      cancelActiveFieldTool();
+      return;
+    }
     onOpenFieldMenu(plot.id, {
       x: event.clientX,
       y: event.clientY,
@@ -503,6 +522,12 @@ function FieldMesh({
   const startDomPointer = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (buildPlacement) {
       event.stopPropagation();
+      return;
+    }
+    if (event.button === 2 && fieldToolActive) {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelActiveFieldTool();
       return;
     }
     if (activeFieldTool.type === "plant") {
@@ -584,6 +609,12 @@ function FieldMesh({
             return;
           }
           if (event.nativeEvent.button === 2) {
+            if (fieldToolActive) {
+              stop(event);
+              event.nativeEvent.preventDefault();
+              cancelActiveFieldTool();
+              return;
+            }
             openMenu(event);
             return;
           }

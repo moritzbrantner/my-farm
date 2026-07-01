@@ -135,14 +135,41 @@ export function App() {
   const [message, setMessage] = useState("Connecting to local server...");
   const [nowMs, setNowMs] = useState(Date.now());
   const ordersRef = useRef<HTMLElement | null>(null);
+  const versionRef = useRef(0);
+  const plantSweepRef = useRef<PlantSweepState>(null);
+  const harvestSweepRef = useRef<HarvestSweepState>(null);
+
+  useLayoutEffect(() => {
+    versionRef.current = version;
+  }, [version]);
+
+  useLayoutEffect(() => {
+    plantSweepRef.current = plantSweep;
+  }, [plantSweep]);
+
+  useLayoutEffect(() => {
+    harvestSweepRef.current = harvestSweep;
+  }, [harvestSweep]);
+
+  const applyFarmSnapshot = useCallback(
+    (nextVersion: number, nextView: FarmView, options: { force?: boolean } = {}) => {
+      if (!options.force && nextVersion < versionRef.current) {
+        return false;
+      }
+      versionRef.current = nextVersion;
+      setView(nextView);
+      setVersion(nextVersion);
+      return true;
+    },
+    [],
+  );
 
   const load = useCallback(async () => {
     const [catalogResponse, farmResponse] = await Promise.all([client.catalog(), client.farm()]);
     setCatalog(catalogResponse);
-    setView(farmResponse.view);
-    setVersion(farmResponse.version);
+    applyFarmSnapshot(farmResponse.version, farmResponse.view);
     setMessage("Local farm synced");
-  }, []);
+  }, [applyFarmSnapshot]);
 
   useEffect(() => {
     load().catch((error) => setMessage(error.message));
@@ -154,13 +181,12 @@ export function App() {
       client
         .farm()
         .then((farm) => {
-          setView(farm.view);
-          setVersion(farm.version);
+          applyFarmSnapshot(farm.version, farm.view);
         })
         .catch((error) => setMessage(error.message));
     }, 2500);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [applyFarmSnapshot]);
 
   useEffect(() => {
     if (!view || !structureMenu || isStructureTargetPresent(view, structureMenu.target)) {
@@ -208,6 +234,8 @@ export function App() {
         setStructureMenu(null);
         setBuildPlacement(null);
         setMovingStructure(null);
+        plantSweepRef.current = null;
+        harvestSweepRef.current = null;
         setPlantSweep(null);
         setHarvestSweep(null);
         setActiveFieldTool({ type: "default" });
@@ -227,6 +255,8 @@ export function App() {
     setStructureMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
     setPlantSweep(null);
     setHarvestSweep(null);
   }, []);
@@ -236,6 +266,8 @@ export function App() {
     setStructureMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
     setPlantSweep(null);
     setHarvestSweep(null);
     setFieldMenu({ plotId, x: point.x, y: point.y });
@@ -246,6 +278,8 @@ export function App() {
     setFieldMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
     setPlantSweep(null);
     setHarvestSweep(null);
     setStructureMenu({ target, x: point.x, y: point.y });
@@ -257,6 +291,8 @@ export function App() {
     setFieldMenu(null);
     setStructureMenu(null);
     setMovingStructure(null);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
     setPlantSweep(null);
     setHarvestSweep(null);
     if (canPlace) {
@@ -275,9 +311,12 @@ export function App() {
   const send = useCallback(
     async (command: FarmCommand): Promise<boolean> => {
       try {
-        const response = await client.command({ expected_version: version, command });
-        setView(response.view);
-        setVersion(response.version);
+        let response = await client.command({ expected_version: versionRef.current, command });
+        if (!response.accepted && response.error?.startsWith("version mismatch")) {
+          applyFarmSnapshot(response.version, response.view);
+          response = await client.command({ expected_version: response.version, command });
+        }
+        applyFarmSnapshot(response.version, response.view);
         setMessage(response.accepted ? "Command accepted" : response.error ?? "Command rejected");
         return response.accepted;
       } catch (error) {
@@ -285,23 +324,24 @@ export function App() {
         return false;
       }
     },
-    [version],
+    [applyFarmSnapshot],
   );
 
   const reset = useCallback(async () => {
     const response = await client.reset();
-    setView(response.view);
-    setVersion(response.version);
+    applyFarmSnapshot(response.version, response.view, { force: true });
     setSelection(null);
     setFieldMenu(null);
     setStructureMenu(null);
     setActiveFieldTool({ type: "default" });
     setBuildPlacement(null);
     setMovingStructure(null);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
     setPlantSweep(null);
     setHarvestSweep(null);
     setMessage("Farm reset");
-  }, []);
+  }, [applyFarmSnapshot]);
 
   const startNewFarm = useCallback(async () => {
     await reset();
@@ -313,6 +353,8 @@ export function App() {
     setStructureMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
     setPlantSweep(null);
     setHarvestSweep(null);
     setActiveFieldTool({ type: "default" });
@@ -325,6 +367,8 @@ export function App() {
     setStructureMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
     setPlantSweep(null);
     setHarvestSweep(null);
     window.setTimeout(() => {
@@ -344,6 +388,8 @@ export function App() {
       setActiveFieldTool({ type: "default" });
       setBuildPlacement(null);
       setMovingStructure(target);
+      plantSweepRef.current = null;
+      harvestSweepRef.current = null;
       setPlantSweep(null);
       setHarvestSweep(null);
       setMessage(`Moving ${selectedStructureLabel(view, target)}`);
@@ -406,6 +452,8 @@ export function App() {
     setStructureMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
     setPlantSweep(null);
     setHarvestSweep(null);
     setMessage("Default tool");
@@ -418,6 +466,8 @@ export function App() {
       setStructureMenu(null);
       setBuildPlacement(null);
       setMovingStructure(null);
+      plantSweepRef.current = null;
+      harvestSweepRef.current = null;
       setPlantSweep(null);
       setHarvestSweep(null);
       setMessage(`Seed tool: ${itemName(catalog, cropId)}`);
@@ -431,9 +481,22 @@ export function App() {
     setStructureMenu(null);
     setBuildPlacement(null);
     setMovingStructure(null);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
     setPlantSweep(null);
     setHarvestSweep(null);
     setMessage("Harvest tool");
+  }, []);
+
+  const cancelFieldToolAction = useCallback(() => {
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
+    setPlantSweep(null);
+    setHarvestSweep(null);
+    setFieldMenu(null);
+    setStructureMenu(null);
+    setActiveFieldTool({ type: "default" });
+    setMessage("Field tool cancelled");
   }, []);
 
   const startPlantSweep = useCallback(
@@ -451,22 +514,27 @@ export function App() {
       setStructureMenu(null);
       setBuildPlacement(null);
       setMovingStructure(null);
+      harvestSweepRef.current = null;
       setHarvestSweep(null);
       setPlantSweep((current) => {
+        let next: PlantSweepState;
         if (
           current &&
           current.pointerId === pointerId &&
           current.cropId === activeFieldTool.cropId
         ) {
-          return current.plotIds.includes(plotId)
+          next = current.plotIds.includes(plotId)
             ? current
             : { ...current, plotIds: [...current.plotIds, plotId] };
+        } else {
+          next = {
+            cropId: activeFieldTool.cropId,
+            plotIds: [plotId],
+            pointerId,
+          };
         }
-        return {
-          cropId: activeFieldTool.cropId,
-          plotIds: [plotId],
-          pointerId,
-        };
+        plantSweepRef.current = next;
+        return next;
       });
     },
     [activeFieldTool, view],
@@ -479,24 +547,30 @@ export function App() {
       }
       setPlantSweep((current) => {
         if (!current || current.plotIds.includes(plotId)) {
+          plantSweepRef.current = current;
           return current;
         }
         const plot = view.field_plots.find((entry) => entry.id === plotId);
         const inventory = view.inventory.find((item) => item.item_id === current.cropId)?.quantity ?? 0;
         if (plot?.crop || current.plotIds.length >= inventory) {
+          plantSweepRef.current = current;
           return current;
         }
-        return { ...current, plotIds: [...current.plotIds, plotId] };
+        const next = { ...current, plotIds: [...current.plotIds, plotId] };
+        plantSweepRef.current = next;
+        return next;
       });
     },
     [view],
   );
 
   const finishPlantSweep = useCallback(async () => {
-    if (!plantSweep) {
+    const sweep = plantSweepRef.current;
+    if (!sweep) {
       return;
     }
-    const { cropId, plotIds } = plantSweep;
+    const { cropId, plotIds } = sweep;
+    plantSweepRef.current = null;
     setPlantSweep(null);
     const accepted = await send({ type: "sweep_plant", crop_id: cropId, plot_ids: plotIds });
     if (accepted) {
@@ -505,7 +579,7 @@ export function App() {
       setStructureMenu(null);
       setBuildPlacement(null);
     }
-  }, [plantSweep, send]);
+  }, [send]);
 
   const startHarvestSweep = useCallback(
     (plotId: string, pointerId: number) => {
@@ -522,22 +596,27 @@ export function App() {
       setStructureMenu(null);
       setBuildPlacement(null);
       setMovingStructure(null);
+      plantSweepRef.current = null;
       setPlantSweep(null);
       setHarvestSweep((current) => {
+        let next: HarvestSweepState;
         if (
           current &&
           current.pointerId === pointerId &&
           current.cropId === cropId
         ) {
-          return current.plotIds.includes(plotId)
+          next = current.plotIds.includes(plotId)
             ? current
             : { ...current, plotIds: [...current.plotIds, plotId] };
+        } else {
+          next = {
+            cropId,
+            plotIds: [plotId],
+            pointerId,
+          };
         }
-        return {
-          cropId,
-          plotIds: [plotId],
-          pointerId,
-        };
+        harvestSweepRef.current = next;
+        return next;
       });
     },
     [nowMs, view],
@@ -550,23 +629,29 @@ export function App() {
       }
       setHarvestSweep((current) => {
         if (!current || current.plotIds.includes(plotId)) {
+          harvestSweepRef.current = current;
           return current;
         }
         const plot = view.field_plots.find((entry) => entry.id === plotId);
         if (!plot?.crop || plot.crop.item_id !== current.cropId || plot.crop.ready_at_ms > nowMs) {
+          harvestSweepRef.current = current;
           return current;
         }
-        return { ...current, plotIds: [...current.plotIds, plotId] };
+        const next = { ...current, plotIds: [...current.plotIds, plotId] };
+        harvestSweepRef.current = next;
+        return next;
       });
     },
     [nowMs, view],
   );
 
   const finishHarvestSweep = useCallback(async () => {
-    if (!harvestSweep) {
+    const sweep = harvestSweepRef.current;
+    if (!sweep) {
       return;
     }
-    const plotIds = harvestSweep.plotIds;
+    const plotIds = sweep.plotIds;
+    harvestSweepRef.current = null;
     setHarvestSweep(null);
     const accepted = await send({ type: "sweep_harvest", plot_ids: plotIds });
     if (accepted) {
@@ -575,41 +660,50 @@ export function App() {
       setStructureMenu(null);
       setBuildPlacement(null);
     }
-  }, [harvestSweep, send]);
+  }, [send]);
 
   useEffect(() => {
-    if (!plantSweep) {
+    if (activeFieldTool.type === "default" && !plantSweep && !harvestSweep) {
       return;
     }
     const finish = (event: PointerEvent) => {
-      if (event.pointerId === plantSweep.pointerId) {
+      const currentPlantSweep = plantSweepRef.current;
+      if (currentPlantSweep && event.pointerId === currentPlantSweep.pointerId) {
         void finishPlantSweep();
+        return;
       }
-    };
-    window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", finish);
-    return () => {
-      window.removeEventListener("pointerup", finish);
-      window.removeEventListener("pointercancel", finish);
-    };
-  }, [finishPlantSweep, plantSweep]);
-
-  useEffect(() => {
-    if (!harvestSweep) {
-      return;
-    }
-    const finish = (event: PointerEvent) => {
-      if (event.pointerId === harvestSweep.pointerId) {
+      const currentHarvestSweep = harvestSweepRef.current;
+      if (currentHarvestSweep && event.pointerId === currentHarvestSweep.pointerId) {
         void finishHarvestSweep();
       }
     };
+    const cancelOnContextMenu = (event: MouseEvent) => {
+      if (
+        activeFieldTool.type === "default" &&
+        !plantSweepRef.current &&
+        !harvestSweepRef.current
+      ) {
+        return;
+      }
+      event.preventDefault();
+      cancelFieldToolAction();
+    };
     window.addEventListener("pointerup", finish);
     window.addEventListener("pointercancel", finish);
+    window.addEventListener("contextmenu", cancelOnContextMenu);
     return () => {
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
+      window.removeEventListener("contextmenu", cancelOnContextMenu);
     };
-  }, [finishHarvestSweep, harvestSweep]);
+  }, [
+    activeFieldTool.type,
+    cancelFieldToolAction,
+    finishHarvestSweep,
+    finishPlantSweep,
+    harvestSweep,
+    plantSweep,
+  ]);
 
   if (!view || !catalog) {
     return (
@@ -650,6 +744,7 @@ export function App() {
         onEnterPlantSweepPlot={enterPlantSweepPlot}
         onStartHarvestSweep={startHarvestSweep}
         onEnterHarvestSweepPlot={enterHarvestSweepPlot}
+        onCancelFieldToolAction={cancelFieldToolAction}
       />
       {screen === "playing" ? (
         <>
@@ -661,6 +756,7 @@ export function App() {
               catalog={catalog}
               view={view}
               activeFieldTool={activeFieldTool}
+              plantSweep={plantSweep}
               onDefault={selectDefaultFieldTool}
               onPlant={selectPlantFieldTool}
               onHarvest={selectHarvestFieldTool}
@@ -957,6 +1053,7 @@ function FieldTools({
   catalog,
   view,
   activeFieldTool,
+  plantSweep,
   onDefault,
   onPlant,
   onHarvest,
@@ -964,11 +1061,13 @@ function FieldTools({
   catalog: CatalogDocument;
   view: FarmView;
   activeFieldTool: ActiveFieldTool;
+  plantSweep: PlantSweepState;
   onDefault: () => void;
   onPlant: (cropId: string) => void;
   onHarvest: () => void;
 }) {
   const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  const selectedSeedFieldCount = plantSweep?.plotIds.length ?? 0;
   return (
     <section className="panel-section field-tools">
       <h2>Field Tools</h2>
@@ -1010,6 +1109,15 @@ function FieldTools({
             );
           })}
       </div>
+      {activeFieldTool.type === "plant" ? (
+        <p className="field-tool-status" role="status" aria-live="polite">
+          {selectedSeedFieldCount === 0
+            ? "No fields selected for seeding"
+            : `${selectedSeedFieldCount} ${
+                selectedSeedFieldCount === 1 ? "field" : "fields"
+              } selected for seeding`}
+        </p>
+      ) : null}
     </section>
   );
 }

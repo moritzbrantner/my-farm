@@ -397,6 +397,167 @@ test("seed tool plants when pressed before moving over a field", async ({ page }
   }).toMatchObject({ type: "sweep_plant", crop_id: "wheat", plot_ids: ["plot-1", "plot-2"] });
 });
 
+test("seed tool finishes a lower row sweep on release and shows selected count", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, sixEmptyFieldView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  const plot4 = await fieldTargetPoint(page, "plot-4");
+  const plot5 = await fieldTargetPoint(page, "plot-5");
+  const plot6 = await fieldTargetPoint(page, "plot-6");
+
+  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await page.mouse.move(plot4.x, plot4.y);
+  await page.mouse.down();
+  await expect(page.getByText("1 field selected for seeding")).toBeVisible();
+  await page.mouse.move(plot5.x, plot5.y, { steps: 2 });
+  await page.mouse.move(plot6.x, plot6.y, { steps: 2 });
+  await expect(page.getByText("3 fields selected for seeding")).toBeVisible();
+  await page.mouse.up();
+
+  await expect
+    .poll(() => commands.find((request) => request.command.type === "sweep_plant")?.command)
+    .toMatchObject({
+      type: "sweep_plant",
+      crop_id: "wheat",
+      plot_ids: ["plot-4", "plot-5", "plot-6"],
+    });
+});
+
+test("right click cancels a pending seed sweep", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, sixEmptyFieldView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  const plot4 = await fieldTargetPoint(page, "plot-4");
+  const plot5 = await fieldTargetPoint(page, "plot-5");
+
+  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await page.mouse.move(plot4.x, plot4.y);
+  await page.mouse.down();
+  await page.mouse.move(plot5.x, plot5.y, { steps: 2 });
+  await expect(page.getByText("2 fields selected for seeding")).toBeVisible();
+  await page.mouse.click(plot5.x, plot5.y, { button: "right" });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+
+  await expect(page.getByText("No fields selected for seeding")).toBeHidden();
+  expect(commands.find((request) => request.command.type === "sweep_plant")).toBeUndefined();
+});
+
+test("accepted seed sweep is not overwritten by an older farm poll", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
+  const emptyView = sixEmptyFieldView();
+  const plantedView = plantedFieldView(emptyView, ["plot-4", "plot-5", "plot-6"]);
+  let commandSeen = false;
+  let staleFarmReturned = false;
+
+  await page.route("**/api/catalog", async (route) => {
+    await route.fulfill({ json: { catalog } });
+  });
+  await page.route("**/api/farm", async (route) => {
+    if (commandSeen && !staleFarmReturned) {
+      staleFarmReturned = true;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.fulfill({ json: { version: 0, view: emptyView } });
+      return;
+    }
+    await route.fulfill({ json: { version: commandSeen ? 1 : 0, view: commandSeen ? plantedView : emptyView } });
+  });
+  await page.route("**/api/farm/reset", async (route) => {
+    await route.fulfill({ json: { version: 0, view: emptyView } });
+  });
+  await page.route("**/api/commands", async (route) => {
+    commandSeen = true;
+    await route.fulfill({
+      json: { accepted: true, version: 1, events: [], view: plantedView, error: null },
+    });
+  });
+
+  await openFarm(page);
+
+  const plot4 = await fieldTargetPoint(page, "plot-4");
+  const plot5 = await fieldTargetPoint(page, "plot-5");
+  const plot6 = await fieldTargetPoint(page, "plot-6");
+
+  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await page.mouse.move(plot4.x, plot4.y);
+  await page.mouse.down();
+  await page.mouse.move(plot5.x, plot5.y, { steps: 2 });
+  await page.mouse.move(plot6.x, plot6.y, { steps: 2 });
+  await expect(page.getByText("3 fields selected for seeding")).toBeVisible();
+  await page.waitForTimeout(2600);
+  await page.mouse.up();
+
+  await expect(page.getByText(/Wheat - \d+s/)).toBeVisible();
+  await expect.poll(() => staleFarmReturned, { timeout: 6000 }).toBe(true);
+  await expect(page.getByText(/Wheat - \d+s/)).toBeVisible();
+});
+
+test("seed sweep retries once after a version mismatch", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
+  const emptyView = sixEmptyFieldView();
+  const plantedView = plantedFieldView(emptyView, ["plot-4", "plot-5", "plot-6"]);
+  let commandAttempts = 0;
+
+  await page.route("**/api/catalog", async (route) => {
+    await route.fulfill({ json: { catalog } });
+  });
+  await page.route("**/api/farm", async (route) => {
+    await route.fulfill({
+      json: { version: commandAttempts >= 2 ? 2 : 0, view: commandAttempts >= 2 ? plantedView : emptyView },
+    });
+  });
+  await page.route("**/api/farm/reset", async (route) => {
+    await route.fulfill({ json: { version: 0, view: emptyView } });
+  });
+  await page.route("**/api/commands", async (route) => {
+    commandAttempts += 1;
+    if (commandAttempts === 1) {
+      await route.fulfill({
+        json: {
+          accepted: false,
+          version: 1,
+          events: [],
+          view: emptyView,
+          error: "version mismatch: expected 0, found 1",
+        },
+      });
+      return;
+    }
+    await route.fulfill({
+      json: { accepted: true, version: 2, events: [], view: plantedView, error: null },
+    });
+  });
+
+  await openFarm(page);
+
+  const plot4 = await fieldTargetPoint(page, "plot-4");
+  const plot5 = await fieldTargetPoint(page, "plot-5");
+  const plot6 = await fieldTargetPoint(page, "plot-6");
+
+  await page.locator(".field-tools").getByRole("button", { name: /Wheat/ }).click();
+  await page.mouse.move(plot4.x, plot4.y);
+  await page.mouse.down();
+  await page.mouse.move(plot5.x, plot5.y, { steps: 2 });
+  await page.mouse.move(plot6.x, plot6.y, { steps: 2 });
+  await expect(page.getByText("3 fields selected for seeding")).toBeVisible();
+  await page.mouse.up();
+
+  await expect.poll(() => commandAttempts).toBe(2);
+  await expect(page.getByText(/Wheat - \d+s/)).toBeVisible();
+});
+
 test("default field tool cancels harvest dragging", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
   const commands: CommandRequest[] = [];
@@ -1066,6 +1227,41 @@ function readyFieldView(): FarmView {
       },
       farmView.field_plots[1],
     ],
+  };
+}
+
+function sixEmptyFieldView(): FarmView {
+  return {
+    ...farmView,
+    inventory: [{ item_id: "wheat", name: "Wheat", quantity: 4, kind: "crop" }],
+    field_plots: [
+      { id: "plot-1", tile: { x: 0, y: 0 }, crop: null },
+      { id: "plot-2", tile: { x: 1, y: 0 }, crop: null },
+      { id: "plot-3", tile: { x: 2, y: 0 }, crop: null },
+      { id: "plot-4", tile: { x: 0, y: 1 }, crop: null },
+      { id: "plot-5", tile: { x: 1, y: 1 }, crop: null },
+      { id: "plot-6", tile: { x: 2, y: 1 }, crop: null },
+    ],
+  };
+}
+
+function plantedFieldView(view: FarmView, plotIds: string[]): FarmView {
+  const plantedIds = new Set(plotIds);
+  return {
+    ...view,
+    inventory: [],
+    field_plots: view.field_plots.map((plot) =>
+      plantedIds.has(plot.id)
+        ? {
+            ...plot,
+            crop: {
+              item_id: "wheat",
+              planted_at_ms: Date.now(),
+              ready_at_ms: Date.now() + 60_000,
+            },
+          }
+        : plot,
+    ),
   };
 }
 
