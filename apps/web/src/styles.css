@@ -543,6 +543,111 @@ h2 {
   border-radius: 6px;
 }
 
+.market-launcher button {
+  flex: 0 0 128px;
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+.farmers-market {
+  display: grid;
+  gap: 10px;
+}
+
+.farmers-market__header {
+  display: grid;
+  gap: 2px;
+}
+
+.farmers-market__header p,
+.market-launcher p,
+.market-item__status {
+  color: #536a5e;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.market-list {
+  display: grid;
+  gap: 8px;
+}
+
+.market-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(32, 49, 43, 0.18);
+  border-radius: 6px;
+  background: #fbf6e8;
+}
+
+.market-item__identity {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.market-item__identity div,
+.market-item__prices {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.market-item__identity strong,
+.market-item__identity span,
+.market-item__prices span,
+.market-item__status {
+  overflow-wrap: anywhere;
+}
+
+.market-item__identity span,
+.market-item__prices {
+  color: #536a5e;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.market-item__quantity {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  gap: 4px;
+}
+
+.market-item__quantity button,
+.market-item__quantity input,
+.market-item__actions button {
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.market-item__quantity input {
+  width: 100%;
+  border: 1px solid #486355;
+  background: #fffdf5;
+  color: #20312b;
+  font: inherit;
+  font-weight: 800;
+  text-align: center;
+}
+
+.market-item__prices,
+.market-item__status {
+  grid-column: 1 / -1;
+}
+
+.market-item__actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
 .resource-icon {
   width: 22px;
   height: 22px;

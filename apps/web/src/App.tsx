@@ -46,6 +46,7 @@ import type {
   InventoryItemView,
   ItemStack,
   MachineState,
+  MarketItemDef,
   StructureKind,
   SweepHarvestMode,
 } from "./types";
@@ -137,6 +138,7 @@ export function App() {
   const [harvestSweep, setHarvestSweep] = useState<HarvestSweepState>(null);
   const [harvestMode, setHarvestMode] = useState<SweepHarvestMode>("matching_crop");
   const [screen, setScreen] = useState<GameScreen>("main_menu");
+  const [marketOpen, setMarketOpen] = useState(false);
   const [message, setMessage] = useState("Connecting to local server...");
   const [nowMs, setNowMs] = useState(Date.now());
   const ordersRef = useRef<HTMLElement | null>(null);
@@ -377,7 +379,23 @@ export function App() {
     setPlantSweep(null);
     setHarvestSweep(null);
     setActiveFieldTool({ type: "default" });
+    setMarketOpen(false);
     setScreen("main_menu");
+  }, []);
+
+  const openMarket = useCallback(() => {
+    setMarketOpen(true);
+    setFieldMenu(null);
+    setStructureMenu(null);
+    setBuildPlacement(null);
+    setMovingStructure(null);
+    setBuildToolSelected(false);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
+    setPlantSweep(null);
+    setHarvestSweep(null);
+    setActiveFieldTool({ type: "default" });
+    setMessage("Farmers Market open");
   }, []);
 
   const viewDeliveryOrders = useCallback(() => {
@@ -833,6 +851,8 @@ export function App() {
           <aside className="side-panel">
             <PanelHeader view={view} version={version} onReset={reset} />
             <Inventory catalog={catalog} view={view} selection={selection} send={send} />
+            <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} />
+            {marketOpen ? <FarmersMarket catalog={catalog} view={view} send={send} /> : null}
             <FieldTools
               catalog={catalog}
               view={view}
@@ -1145,6 +1165,215 @@ function PanelHeader({
       </button>
     </section>
   );
+}
+
+function MarketLauncher({
+  marketOpen,
+  onOpenMarket,
+}: {
+  marketOpen: boolean;
+  onOpenMarket: () => void;
+}) {
+  return (
+    <section className="panel-section compact market-launcher">
+      <div>
+        <h2>Farmers Market</h2>
+        <p>Buy and sell unlocked goods.</p>
+      </div>
+      <button type="button" onClick={onOpenMarket} aria-pressed={marketOpen}>
+        Open Farmers Market
+      </button>
+    </section>
+  );
+}
+
+function FarmersMarket({
+  catalog,
+  view,
+  send,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  send: SendCommand;
+}) {
+  const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  const itemKinds = new Map(catalog.items.map((item) => [item.id, item.kind]));
+
+  return (
+    <section className="panel-section farmers-market" aria-label="Farmers Market">
+      <div className="farmers-market__header">
+        <h2>Farmers Market</h2>
+        <p>Delivery Orders stay below.</p>
+      </div>
+      <div className="market-list">
+        {catalog.market_items.map((marketItem) => {
+          const item = resourceItem(catalog, marketItem.item_id, inventory.get(marketItem.item_id) ?? 0);
+          const storage = itemKinds.get(marketItem.item_id) === "crop"
+            ? {
+                label: "Silo",
+                used: view.silo_used,
+                capacity: view.silo_capacity,
+              }
+            : {
+                label: "Barn",
+                used: view.barn_used,
+                capacity: view.barn_capacity,
+              };
+          return (
+            <MarketItemRow
+              key={marketItem.item_id}
+              item={item}
+              marketItem={marketItem}
+              level={view.level}
+              coins={view.coins}
+              storage={storage}
+              send={send}
+            />
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function MarketItemRow({
+  item,
+  marketItem,
+  level,
+  coins,
+  storage,
+  send,
+}: {
+  item: InventoryItemView;
+  marketItem: MarketItemDef;
+  level: number;
+  coins: number;
+  storage: { label: string; used: number; capacity: number };
+  send: SendCommand;
+}) {
+  const [quantityInput, setQuantityInput] = useState("1");
+  const quantity = Number(quantityInput);
+  const commandQuantity = Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
+  const locked = level < marketItem.unlock_level;
+  const storageRoom = Math.max(0, storage.capacity - storage.used);
+  const buyReason = buyMarketDisabledReason(marketItem, locked, quantity, coins, storageRoom, storage.label);
+  const sellReason = sellMarketDisabledReason(marketItem, locked, quantity, item.quantity);
+  const buyTotal = marketItem.buy_price === null ? null : marketItem.buy_price * commandQuantity;
+  const sellTotal = marketItem.sell_price === null ? null : marketItem.sell_price * commandQuantity;
+  const status = locked
+    ? `Unlocks at level ${marketItem.unlock_level}`
+    : (marketItem.buy_price !== null && buyReason) ||
+      (marketItem.sell_price !== null && sellReason) ||
+      `${storage.label} room ${storageRoom}`;
+
+  return (
+    <article className="market-item" data-testid={`market-item-${marketItem.item_id}`}>
+      <div className="market-item__identity">
+        <ResourceIcon type="item" itemId={item.item_id} itemKind={item.kind} />
+        <div>
+          <strong>{item.name}</strong>
+          <span>Owned {item.quantity}</span>
+        </div>
+      </div>
+      <div className="market-item__prices">
+        <span>{marketItem.buy_price === null ? "Buy unavailable" : `Buy ${marketItem.buy_price} coins`}</span>
+        <span>{marketItem.sell_price === null ? "Sell unavailable" : `Sell ${marketItem.sell_price} coins`}</span>
+      </div>
+      <div className="market-item__quantity" aria-label={`${item.name} trade quantity`}>
+        <button
+          type="button"
+          aria-label={`Decrease ${item.name} quantity`}
+          onClick={() => setQuantityInput(String(Math.max(1, commandQuantity - 1)))}
+        >
+          -
+        </button>
+        <input
+          aria-label={`${item.name} quantity`}
+          type="number"
+          min="1"
+          step="1"
+          value={quantityInput}
+          onChange={(event) => setQuantityInput(event.target.value)}
+        />
+        <button
+          type="button"
+          aria-label={`Increase ${item.name} quantity`}
+          onClick={() => setQuantityInput(String(commandQuantity + 1))}
+        >
+          +
+        </button>
+      </div>
+      <div className="market-item__actions">
+        <button
+          type="button"
+          disabled={buyReason !== null}
+          title={buyReason ?? (buyTotal === null ? "Buy unavailable" : `Spend ${buyTotal} coins`)}
+          aria-label={`Buy ${commandQuantity} ${item.name}`}
+          onClick={() => send({ type: "buy_market_item", item_id: item.item_id, quantity: commandQuantity })}
+        >
+          Buy {buyTotal === null ? "" : buyTotal}
+        </button>
+        <button
+          type="button"
+          disabled={sellReason !== null}
+          title={sellReason ?? (sellTotal === null ? "Sell unavailable" : `Gain ${sellTotal} coins`)}
+          aria-label={`Sell ${commandQuantity} ${item.name}`}
+          onClick={() => send({ type: "sell_market_item", item_id: item.item_id, quantity: commandQuantity })}
+        >
+          Sell {sellTotal === null ? "" : sellTotal}
+        </button>
+      </div>
+      <small className="market-item__status">{status}</small>
+    </article>
+  );
+}
+
+function buyMarketDisabledReason(
+  marketItem: MarketItemDef,
+  locked: boolean,
+  quantity: number,
+  coins: number,
+  storageRoom: number,
+  storageLabel: string,
+) {
+  if (locked) {
+    return `Unlocks at level ${marketItem.unlock_level}`;
+  }
+  if (marketItem.buy_price === null) {
+    return "Cannot buy here";
+  }
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    return "Choose at least 1";
+  }
+  const total = marketItem.buy_price * quantity;
+  if (coins < total) {
+    return `Need ${total} coins`;
+  }
+  if (storageRoom < quantity) {
+    return `${storageLabel} full`;
+  }
+  return null;
+}
+
+function sellMarketDisabledReason(
+  marketItem: MarketItemDef,
+  locked: boolean,
+  quantity: number,
+  owned: number,
+) {
+  if (locked) {
+    return `Unlocks at level ${marketItem.unlock_level}`;
+  }
+  if (marketItem.sell_price === null) {
+    return "Cannot sell here";
+  }
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    return "Choose at least 1";
+  }
+  if (owned < quantity) {
+    return `Need ${quantity} owned`;
+  }
+  return null;
 }
 
 function Inventory({
