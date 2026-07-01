@@ -228,7 +228,7 @@ export function App() {
       return;
     }
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (event.target instanceof Element && event.target.closest(".structure-context-menu")) {
+      if (event.target instanceof Element && event.target.closest(".farm-context-menu")) {
         return;
       }
       setFieldMenu(null);
@@ -876,6 +876,7 @@ export function App() {
       )}
       {screen === "playing" && menuPoint && menuModel ? (
         <StructureContextMenu
+          targetType={structureMenu ? "structure" : "field"}
           model={menuModel}
           x={menuPoint.x}
           y={menuPoint.y}
@@ -1930,6 +1931,7 @@ function buildCostForBuildKind(catalog: CatalogDocument, kind: BuildableKind): n
 
 
 function StructureContextMenu({
+  targetType,
   model,
   x,
   y,
@@ -1938,6 +1940,7 @@ function StructureContextMenu({
   onStartMove,
   onViewOrders,
 }: {
+  targetType: "structure" | "field";
   model: StructureMenuModel;
   x: number;
   y: number;
@@ -1963,11 +1966,11 @@ function StructureContextMenu({
   return (
     <div
       ref={menuRef}
-      className="structure-context-menu"
+      className={`farm-context-menu farm-context-menu--${targetType}`}
       style={{ left: position.x, top: position.y }}
       role="menu"
       aria-label={`${model.title} actions`}
-      data-testid="structure-context-menu"
+      data-testid={targetType === "structure" ? "structure-context-menu" : "field-context-menu"}
       onContextMenu={(event) => event.preventDefault()}
     >
       <div className="structure-context-menu__header">

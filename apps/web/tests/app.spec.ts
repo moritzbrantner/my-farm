@@ -504,7 +504,8 @@ test("right click on ready field opens harvest menu", async ({ page }, testInfo)
   const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
 
-  const menu = page.getByTestId("structure-context-menu");
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  const menu = page.getByTestId("field-context-menu");
   await expect(menu).toContainText("Wheat");
   await expect(menu.getByRole("menuitem", { name: "Harvest" })).toBeEnabled();
 });
@@ -859,7 +860,8 @@ test("right mouse drag on a field opens menu instead of panning canvas", async (
   await page.mouse.move(fieldPoint.x + 96, fieldPoint.y + 64);
   await page.mouse.up({ button: "right" });
 
-  await expect(page.getByTestId("structure-context-menu")).toContainText("Harvest");
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  await expect(page.getByTestId("field-context-menu")).toContainText("Harvest");
 });
 
 test("long press on field opens field menu", async ({ page }) => {
@@ -868,7 +870,8 @@ test("long press on field opens field menu", async ({ page }) => {
 
   await touchPress(page.getByLabel("Field Plot plot-1"), 560);
 
-  await expect(page.getByTestId("structure-context-menu")).toContainText("Harvest");
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  await expect(page.getByTestId("field-context-menu")).toContainText("Harvest");
 });
 
 test("empty field menu shows plant options", async ({ page }, testInfo) => {
@@ -879,7 +882,8 @@ test("empty field menu shows plant options", async ({ page }, testInfo) => {
   const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
 
-  const menu = page.getByTestId("structure-context-menu");
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  const menu = page.getByTestId("field-context-menu");
   await expect(menu).toContainText("Field Plot");
   await expect(menu.getByRole("menuitem", { name: "Wheat" })).toBeEnabled();
   await expect(menu.getByRole("menuitem", { name: "Corn Need Corn" })).toBeDisabled();
@@ -893,7 +897,8 @@ test("growing field menu shows timer", async ({ page }, testInfo) => {
   const fieldPoint = await fieldTargetPoint(page, "plot-1");
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
 
-  const menu = page.getByTestId("structure-context-menu");
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  const menu = page.getByTestId("field-context-menu");
   await expect(menu).toContainText("Wheat");
   await expect(menu.getByRole("menuitem", { name: /Growing \d+s/ })).toBeDisabled();
 });
@@ -907,7 +912,7 @@ test("ready harvest is disabled when storage is full", async ({ page }, testInfo
   await page.mouse.click(fieldPoint.x, fieldPoint.y, { button: "right" });
 
   await expect(
-    page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Harvest Storage full" }),
+    page.getByTestId("field-context-menu").getByRole("menuitem", { name: "Harvest Storage full" }),
   ).toBeDisabled();
 });
 
@@ -938,7 +943,7 @@ test("delivery board menu focuses delivery orders", async ({ page }, testInfo) =
   await page.getByLabel("Delivery Board structure").click({ button: "right" });
   await page
     .getByTestId("structure-context-menu")
-    .getByRole("menuitem", { name: "Orders" })
+    .getByRole("menuitem", { name: "View delivery orders" })
     .click();
 
   await expect(page.getByTestId("structure-context-menu")).toBeHidden();
@@ -1605,7 +1610,7 @@ type SearchBox = { x: number; y: number; width: number; height: number };
 
 async function visibleAppChromeBoxes(page: Page): Promise<SearchBox[]> {
   const boxes = await Promise.all(
-    [".top-bar", ".side-panel", ".build-dock", ".structure-context-menu"].map(async (selector) => {
+    [".top-bar", ".side-panel", ".build-dock", ".farm-context-menu"].map(async (selector) => {
       const element = await page.$(selector);
       return element ? element.boundingBox() : null;
     }),

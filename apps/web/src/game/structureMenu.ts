@@ -62,7 +62,7 @@ export function buildStructureMenuModel(
     ? {
         title: "Delivery Board",
         items: [
-          { id: "view-orders", label: "Orders" },
+          { id: "view-orders", label: "View delivery orders" },
           { id: "move-structure", label: "Move", action: "move_structure" },
         ],
       }
