@@ -145,7 +145,12 @@ export function FarmScene({
             onCancelFieldToolAction={onCancelFieldToolAction}
           />
         ))}
-        <StaticFarmHouse />
+        <StaticFarmHouse
+          buildPlacement={buildPlacement}
+          movingStructure={movingStructure}
+          onPlaceNewStructure={onPlaceNewStructure}
+          onPlaceStructure={onPlaceStructure}
+        />
         <StructureSprite
           target={{ type: "silo" }}
           label="Silo"
@@ -272,8 +277,34 @@ export function FarmScene({
   );
 }
 
-function StaticFarmHouse() {
+function StaticFarmHouse({
+  buildPlacement,
+  movingStructure,
+  onPlaceNewStructure,
+  onPlaceStructure,
+}: {
+  buildPlacement: BuildPlacementState;
+  movingStructure: StructureSelection | null;
+  onPlaceNewStructure: (tile: Tile) => void;
+  onPlaceStructure: (tile: Tile) => void;
+}) {
   const center = footprintCenter(FARM_HOUSE_TILE, FARM_HOUSE_FOOTPRINT);
+  const clearFixedInteraction = (event: React.MouseEvent<HTMLButtonElement> | React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleFixedClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    clearFixedInteraction(event);
+    if (movingStructure) {
+      onPlaceStructure(FARM_HOUSE_TILE);
+      return;
+    }
+    if (buildPlacement) {
+      onPlaceNewStructure(FARM_HOUSE_TILE);
+    }
+  };
+
   return (
     <group position={[tileToWorld(center.x), 0.015, tileToWorld(center.y)]}>
       <FarmAsset
@@ -288,6 +319,21 @@ function StaticFarmHouse() {
       />
       <Html position={[0, 1.1, 0]} center zIndexRange={[95, 0]} wrapperClass="farm-scene-marker-wrapper">
         <div className="farm-scene-marker" data-testid="farm-scene-farm-house" aria-label="Farm House" />
+      </Html>
+      <Html position={[0, 0.62, 0]} center zIndexRange={[100, 0]} wrapperClass="structure-hit-wrapper">
+        <button
+          className="structure-hit-target"
+          type="button"
+          tabIndex={-1}
+          aria-label="Farm House structure"
+          style={{
+            width: `${structureHitTargetWidth(FARM_HOUSE_FOOTPRINT)}px`,
+            height: `${structureHitTargetHeight(FARM_HOUSE_FOOTPRINT)}px`,
+          }}
+          onClick={handleFixedClick}
+          onContextMenu={clearFixedInteraction}
+          onPointerDown={clearFixedInteraction}
+        />
       </Html>
     </group>
   );
