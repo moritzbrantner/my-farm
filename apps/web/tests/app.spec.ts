@@ -7,6 +7,7 @@ test("renders the playable farm shell", async ({ page }) => {
   await expect(page.getByRole("region", { name: "Main menu" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Start Farm" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Tutorial" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Wiki" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Account" })).toBeVisible();
   await startFarm(page);
@@ -162,7 +163,7 @@ test("field tools expose one seed picker and change the cursor", async ({ page }
   await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", "cell");
 });
 
-test("main menu opens settings wiki and account panels", async ({ page }) => {
+test("main menu opens settings tutorial wiki and account panels", async ({ page }) => {
   await mockFarmApi(page);
   await page.goto("/");
 
@@ -172,6 +173,12 @@ test("main menu opens settings wiki and account panels", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.getByLabel("Sound")).toBeChecked();
   await expect(page.getByLabel("Reduced Motion")).not.toBeChecked();
+  await page.getByRole("button", { name: "Back" }).click();
+
+  await options.getByRole("button", { name: "Tutorial" }).click();
+  await expect(page.getByRole("heading", { name: "Tutorial" })).toBeVisible();
+  await expect(page.getByText("Plant crops.")).toBeVisible();
+  await expect(page.getByText("Fill delivery orders.")).toBeVisible();
   await page.getByRole("button", { name: "Back" }).click();
 
   await options.getByRole("button", { name: "Wiki" }).click();

@@ -75,7 +75,7 @@ type StructureBuildCardMeta = {
 };
 type ActiveFieldTool = { type: "default" } | { type: "plant"; cropId: string } | { type: "harvest" };
 type GameScreen = "main_menu" | "playing";
-type MainMenuPanel = "home" | "settings" | "wiki" | "account";
+type MainMenuPanel = "home" | "settings" | "tutorial" | "wiki" | "account";
 type PlantSweepState = {
   cropId: string;
   plotIds: string[];
@@ -947,6 +947,9 @@ function MainMenu({
               <button type="button" onClick={() => setPanel("settings")}>
                 Settings
               </button>
+              <button type="button" onClick={() => setPanel("tutorial")}>
+                Tutorial
+              </button>
               <button type="button" onClick={() => setPanel("wiki")}>
                 Wiki
               </button>
@@ -985,6 +988,35 @@ function MainMenu({
                 />
               </label>
             </div>
+          </MainMenuSubpanel>
+        ) : null}
+        {panel === "tutorial" ? (
+          <MainMenuSubpanel title="Tutorial" onBack={openHome}>
+            <ol className="main-menu__tutorial">
+              <li>
+                <strong>Plant crops.</strong>
+                <span>Open Seed, pick Wheat, then drag across empty Field Plots to seed several at once.</span>
+              </li>
+              <li>
+                <strong>Harvest when ready.</strong>
+                <span>Use Harvest and drag across ready crops. Right-click Harvest to switch between matching crops and all crops.</span>
+              </li>
+              <li>
+                <strong>Fill delivery orders.</strong>
+                <span>Select the Delivery Board or its Orders menu, then ship matching goods for coins and XP.</span>
+              </li>
+              <li>
+                <strong>Build the chain.</strong>
+                <span>Use Build to place Field Plots, Machines, Shelters, and the Delivery Board as levels and coins allow.</span>
+              </li>
+              <li>
+                <strong>Run structures.</strong>
+                <span>Click a Machine or Shelter to queue recipes, feed animals, collect ready output, or move the structure.</span>
+              </li>
+            </ol>
+            <button className="main-menu__primary" type="button" onClick={onContinue}>
+              Start Farm
+            </button>
           </MainMenuSubpanel>
         ) : null}
         {panel === "wiki" ? (

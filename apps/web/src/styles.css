@@ -329,7 +329,7 @@ button[aria-disabled="true"] {
 
 .main-menu__options {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -353,6 +353,7 @@ button[aria-disabled="true"] {
 
 .main-menu__settings,
 .main-menu__account,
+.main-menu__tutorial,
 .main-menu__wiki {
   display: grid;
   gap: 8px;
@@ -360,6 +361,7 @@ button[aria-disabled="true"] {
 
 .main-menu__settings label,
 .main-menu__account span,
+.main-menu__tutorial li,
 .main-menu__wiki div {
   min-width: 0;
   padding: 10px;
@@ -384,6 +386,23 @@ button[aria-disabled="true"] {
 
 .main-menu__wiki {
   margin: 0;
+}
+
+.main-menu__tutorial {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.main-menu__tutorial li {
+  display: grid;
+  gap: 3px;
+}
+
+.main-menu__tutorial span {
+  color: #536a5e;
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .main-menu__wiki div {
