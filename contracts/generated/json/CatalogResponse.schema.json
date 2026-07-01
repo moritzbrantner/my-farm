@@ -38,6 +38,7 @@
         "items",
         "level_xp",
         "machines",
+        "market_items",
         "recipes",
         "shelters"
       ],
@@ -69,6 +70,12 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/MachineDef"
+          }
+        },
+        "market_items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MarketItemDef"
           }
         },
         "recipes": {
@@ -210,6 +217,39 @@
         "bakery",
         "feed_mill"
       ]
+    },
+    "MarketItemDef": {
+      "type": "object",
+      "required": [
+        "item_id",
+        "unlock_level"
+      ],
+      "properties": {
+        "buy_price": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "sell_price": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
     },
     "RecipeDef": {
       "type": "object",

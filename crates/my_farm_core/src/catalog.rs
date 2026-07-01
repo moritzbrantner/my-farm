@@ -105,6 +105,14 @@ pub struct ShelterDef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct MarketItemDef {
+    pub item_id: String,
+    pub buy_price: Option<u32>,
+    pub sell_price: Option<u32>,
+    pub unlock_level: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct BalanceConfig {
     pub time_scale: u32,
     pub max_orders: usize,
@@ -127,6 +135,7 @@ pub struct CatalogDocument {
     pub recipes: Vec<RecipeDef>,
     pub machines: Vec<MachineDef>,
     pub shelters: Vec<ShelterDef>,
+    pub market_items: Vec<MarketItemDef>,
     pub level_xp: Vec<u32>,
 }
 
@@ -281,6 +290,23 @@ impl CatalogDocument {
                     xp: 5,
                 },
             ],
+            market_items: vec![
+                market_item("wheat", Some(4), Some(2), 1),
+                market_item("corn", Some(8), Some(4), 2),
+                market_item("soybean", Some(14), Some(7), 3),
+                market_item("carrot", Some(18), Some(9), 5),
+                market_item("potato", Some(24), Some(12), 6),
+                market_item("tomato", Some(28), Some(14), 7),
+                market_item("chicken_feed", Some(12), None, 3),
+                market_item("cow_feed", Some(18), None, 5),
+                market_item("egg", None, Some(10), 3),
+                market_item("milk", None, Some(16), 5),
+                market_item("bread", None, Some(18), 2),
+                market_item("corn_bread", None, Some(28), 4),
+                market_item("potato_bread", None, Some(34), 6),
+                market_item("carrot_cake", None, Some(42), 6),
+                market_item("tomato_tart", None, Some(46), 7),
+            ],
             level_xp: vec![0, 0, 4, 14, 30, 55, 90, 140],
         }
     }
@@ -303,6 +329,12 @@ impl CatalogDocument {
 
     pub fn shelter(&self, kind: &ShelterKind) -> Option<&ShelterDef> {
         self.shelters.iter().find(|shelter| &shelter.kind == kind)
+    }
+
+    pub fn market_item(&self, item_id: &str) -> Option<&MarketItemDef> {
+        self.market_items
+            .iter()
+            .find(|market_item| market_item.item_id == item_id)
     }
 
     pub fn item_kind(&self, item_id: &str) -> Option<&ItemKind> {
@@ -370,6 +402,20 @@ fn recipe(
         outputs,
         reference_seconds,
         xp,
+        unlock_level,
+    }
+}
+
+fn market_item(
+    item_id: &str,
+    buy_price: Option<u32>,
+    sell_price: Option<u32>,
+    unlock_level: u32,
+) -> MarketItemDef {
+    MarketItemDef {
+        item_id: item_id.to_owned(),
+        buy_price,
+        sell_price,
         unlock_level,
     }
 }

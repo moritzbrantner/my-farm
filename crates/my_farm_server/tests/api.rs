@@ -1,6 +1,8 @@
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
-use my_farm_core::{CommandRequest, CommandResponse, FarmCommand, FarmResponse};
+use my_farm_core::{
+    CatalogResponse, CommandRequest, CommandResponse, FarmCommand, FarmEvent, FarmResponse,
+};
 use my_farm_server::{AppState, app, connect_database};
 use tower::ServiceExt;
 
@@ -65,6 +67,85 @@ async fn post_command_persists_state_and_rejects_stale_versions() {
 }
 
 #[tokio::test]
+async fn catalog_exposes_market_items() {
+    let app = test_app().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/catalog")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let catalog: CatalogResponse = json_body(response).await;
+    assert_eq!(
+        catalog.catalog.market_items.len(),
+        catalog.catalog.items.len()
+    );
+    assert!(
+        catalog
+            .catalog
+            .market_items
+            .iter()
+            .any(|item| item.item_id == "wheat" && item.buy_price == Some(4))
+    );
+}
+
+#[tokio::test]
+async fn post_market_command_persists_state_and_journal_through_restart() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let url = format!("sqlite://{}", tempdir.path().join("farm.db").display());
+    let pool = connect_database(&url).await.unwrap();
+    let router = app(AppState::new(pool.clone()));
+    let initial = get_farm(router.clone()).await;
+
+    let bought = post_command(
+        router.clone(),
+        CommandRequest {
+            expected_version: initial.version,
+            command: FarmCommand::BuyMarketItem {
+                item_id: "wheat".to_owned(),
+                quantity: 2,
+            },
+        },
+    )
+    .await;
+
+    assert!(bought.accepted);
+    assert_eq!(bought.version, 1);
+    assert_eq!(inventory_quantity(&bought, "wheat"), 8);
+    assert_eq!(bought.view.coins, 172);
+    assert!(bought.events.contains(&FarmEvent::MarketItemBought {
+        item_id: "wheat".to_owned(),
+        quantity: 2,
+        coins_spent: 8,
+    }));
+
+    let journal_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM command_journal WHERE command_json LIKE ?")
+            .bind("%buy_market_item%")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(journal_count, 1);
+
+    drop(router);
+    pool.close().await;
+
+    let restarted_pool = connect_database(&url).await.unwrap();
+    let restarted_app = app(AppState::new(restarted_pool.clone()));
+    let reloaded = get_farm(restarted_app).await;
+
+    assert_eq!(reloaded.version, 1);
+    assert_eq!(inventory_quantity_from_farm(&reloaded, "wheat"), 8);
+    assert_eq!(reloaded.view.coins, 172);
+    restarted_pool.close().await;
+}
+
+#[tokio::test]
 async fn post_command_reports_invalid_command_json_as_json() {
     let app = test_app().await;
     let response = app
@@ -89,12 +170,7 @@ async fn post_command_reports_invalid_command_json_as_json() {
         .unwrap_or("");
     assert!(content_type.starts_with("application/json"));
     let body: serde_json::Value = json_body(response).await;
-    assert!(
-        body["error"]
-            .as_str()
-            .unwrap()
-            .contains("unknown_command")
-    );
+    assert!(body["error"].as_str().unwrap().contains("unknown_command"));
 }
 
 async fn test_app() -> axum::Router {
@@ -133,6 +209,26 @@ async fn post_command(app: axum::Router, request: CommandRequest) -> CommandResp
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     json_body(response).await
+}
+
+fn inventory_quantity(response: &CommandResponse, item_id: &str) -> u32 {
+    response
+        .view
+        .inventory
+        .iter()
+        .find(|item| item.item_id == item_id)
+        .map(|item| item.quantity)
+        .unwrap_or(0)
+}
+
+fn inventory_quantity_from_farm(response: &FarmResponse, item_id: &str) -> u32 {
+    response
+        .view
+        .inventory
+        .iter()
+        .find(|item| item.item_id == item_id)
+        .map(|item| item.quantity)
+        .unwrap_or(0)
 }
 
 async fn json_body<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
