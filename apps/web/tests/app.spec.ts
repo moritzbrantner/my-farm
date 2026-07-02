@@ -1273,7 +1273,7 @@ test("farmers market buys and sells items through commands", async ({ page }) =>
 
   const market = page.getByRole("region", { name: "Farmers Market" });
   await expect(market).toBeVisible();
-  await expect(market.getByText("Buy and sell unlocked goods.")).toBeVisible();
+  await expect(market.getByText("Select a resource, then choose whether to buy or sell.")).toBeVisible();
   await expect(
     page.locator(".panel-section").filter({ has: page.getByRole("heading", { name: "Delivery Orders" }) }),
   ).toBeHidden();
@@ -1283,8 +1283,11 @@ test("farmers market buys and sells items through commands", async ({ page }) =>
   await expect(wheat).toContainText("Owned 2");
   await expect(wheat).toContainText("Buy 4 coins");
   await expect(wheat).toContainText("Sell 2 coins");
+  await wheat.click();
 
-  await wheat.getByRole("button", { name: "Buy 1 Wheat" }).click();
+  const wheatTrade = market.getByTestId("market-trade-wheat");
+  await expect(wheatTrade).toContainText("Owned 2");
+  await wheatTrade.getByRole("button", { name: "Buy 1 Wheat" }).click();
   await expect.poll(() => commands.at(-1)?.command).toEqual({
     type: "buy_market_item",
     item_id: "wheat",
@@ -1292,8 +1295,10 @@ test("farmers market buys and sells items through commands", async ({ page }) =>
   });
   await expect(page.locator(".top-bar").getByText("16 coins")).toBeVisible();
   await expect(wheat).toContainText("Owned 3");
+  await expect(wheatTrade).toContainText("Owned 3");
 
-  await wheat.getByRole("button", { name: "Sell 1 Wheat" }).click();
+  await wheatTrade.getByRole("button", { name: "Sell" }).click();
+  await wheatTrade.getByRole("button", { name: "Sell 1 Wheat" }).click();
   await expect.poll(() => commands.at(-1)?.command).toEqual({
     type: "sell_market_item",
     item_id: "wheat",
@@ -1301,6 +1306,7 @@ test("farmers market buys and sells items through commands", async ({ page }) =>
   });
   await expect(page.locator(".top-bar").getByText("18 coins")).toBeVisible();
   await expect(wheat).toContainText("Owned 2");
+  await expect(wheatTrade).toContainText("Owned 2");
 });
 
 test("filters inventory to the selected structure materials", async ({ page }) => {

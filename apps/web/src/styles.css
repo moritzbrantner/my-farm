@@ -565,13 +565,47 @@ h2 {
 }
 
 .farmers-market {
+  position: absolute;
+  top: 76px;
+  right: 24px;
+  bottom: 24px;
+  left: 24px;
+  z-index: 700;
   display: grid;
-  gap: 8px;
+  grid-template-columns: minmax(230px, 320px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  background: #f7efdd;
+  box-shadow: 0 18px 48px rgba(32, 49, 43, 0.22);
+  overflow: hidden;
 }
 
 .farmers-market__header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.farmers-market__header div {
   display: grid;
   gap: 2px;
+  min-width: 0;
+}
+
+.farmers-market__header h2 {
+  margin-bottom: 0;
+  font-size: 22px;
+}
+
+.farmers-market__header button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 5px 10px;
+  background: #e5edd4;
 }
 
 .farmers-market__header p,
@@ -584,17 +618,31 @@ h2 {
 
 .market-list {
   display: grid;
+  align-content: start;
   gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .market-item {
+  width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 86px;
-  gap: 6px;
-  padding: 7px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+  min-height: 68px;
+  padding: 8px;
   border: 1px solid rgba(32, 49, 43, 0.18);
   border-radius: 6px;
   background: #fbf6e8;
+  text-align: left;
+}
+
+.market-item--selected {
+  border-color: rgba(68, 109, 56, 0.72);
+  background: #fff7d0;
+  outline: 2px solid rgba(68, 109, 56, 0.32);
+  outline-offset: -2px;
 }
 
 .market-item__identity {
@@ -605,7 +653,7 @@ h2 {
   min-width: 0;
 }
 
-.market-item__identity div,
+.market-item__identity > span,
 .market-item__prices {
   display: grid;
   gap: 2px;
@@ -626,6 +674,13 @@ h2 {
   font-weight: 750;
 }
 
+.market-item__prices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  text-align: left;
+}
+
 .market-item__quantity {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) 28px;
@@ -633,11 +688,10 @@ h2 {
 }
 
 .market-item__quantity button,
-.market-item__quantity input,
-.market-item__actions button {
+.market-item__quantity input {
   min-width: 0;
-  min-height: 30px;
-  padding: 4px 6px;
+  min-height: 36px;
+  padding: 5px 7px;
   border-radius: 6px;
 }
 
@@ -656,11 +710,103 @@ h2 {
   grid-column: 1 / -1;
 }
 
-.market-item__actions {
-  grid-column: 1 / -1;
+.market-trade {
+  display: grid;
+  grid-template-rows: auto auto auto auto auto 1fr;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px;
+  border: 1px solid rgba(32, 49, 43, 0.18);
+  border-radius: 8px;
+  background: #fbf6e8;
+  overflow-y: auto;
+}
+
+.market-trade__hero {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.market-trade__hero .resource-icon {
+  width: 58px;
+  height: 58px;
+  border-width: 2px;
+}
+
+.market-trade__hero .resource-icon::before {
+  font-size: 18px;
+}
+
+.market-trade__hero div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.market-trade__hero h3 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.market-trade__hero p {
+  color: #536a5e;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.market-trade__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.market-trade__stats span {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: #e5edd4;
+  font-size: 13px;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.market-trade__mode {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+  padding: 5px;
+  border: 1px solid rgba(32, 49, 43, 0.16);
+  border-radius: 8px;
+  background: #e5edd4;
+}
+
+.market-trade__mode-button,
+.market-trade__submit {
+  min-width: 0;
+  min-height: 42px;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+
+.market-trade__mode-button {
+  background: transparent;
+  border-color: transparent;
+}
+
+.market-trade__mode-button--active,
+.market-trade__submit {
+  background: #fff7d0;
+  border-color: #446d38;
+}
+
+.market-trade__submit {
+  font-size: 16px;
 }
 
 .resource-icon {
@@ -1277,6 +1423,61 @@ h2 {
 
   .panel-section {
     padding: 10px;
+  }
+
+  .farmers-market {
+    top: 64px;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(140px, 34vh) minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .farmers-market__header {
+    align-items: flex-start;
+  }
+
+  .farmers-market__header h2 {
+    font-size: 20px;
+  }
+
+  .market-list {
+    grid-template-columns: 1fr;
+  }
+
+  .market-item {
+    min-height: 68px;
+  }
+
+  .market-trade {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .market-trade__hero {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .market-trade__hero .resource-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .market-trade__hero .resource-icon::before {
+    font-size: 13px;
+  }
+
+  .market-trade__hero h3 {
+    font-size: 22px;
+  }
+
+  .market-trade__stats {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 
   .build-dock {
