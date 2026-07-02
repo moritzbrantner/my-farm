@@ -873,7 +873,9 @@ export function App() {
               nowMs={nowMs}
               send={send}
             />
-            <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
+            {selection?.type === "delivery_board" ? (
+              <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
+            ) : null}
           </aside>
           {buildToolSelected ? (
             <BuildTray
@@ -1180,8 +1182,13 @@ function MarketLauncher({
         <h2>Farmers Market</h2>
         <p>Buy and sell unlocked goods.</p>
       </div>
-      <button type="button" onClick={onOpenMarket} aria-pressed={marketOpen}>
-        Open Farmers Market
+      <button
+        type="button"
+        onClick={onOpenMarket}
+        aria-pressed={marketOpen}
+        aria-label="Open Farmers Market"
+      >
+        Open
       </button>
     </section>
   );
@@ -1203,7 +1210,7 @@ function FarmersMarket({
     <section className="panel-section farmers-market" aria-label="Farmers Market">
       <div className="farmers-market__header">
         <h2>Farmers Market</h2>
-        <p>Delivery Orders stay below.</p>
+        <p>Buy and sell unlocked goods.</p>
       </div>
       <div className="market-list">
         {catalog.market_items.map((marketItem) => {
@@ -1507,7 +1514,11 @@ function FieldTools({
         </button>
         <button
           type="button"
-          className={activeFieldTool.type === "harvest" ? "field-tool field-tool--active" : "field-tool"}
+          className={
+            activeFieldTool.type === "harvest"
+              ? "field-tool field-tool--harvest field-tool--active"
+              : "field-tool field-tool--harvest"
+          }
           aria-pressed={activeFieldTool.type === "harvest"}
           aria-haspopup="menu"
           aria-expanded={harvestMenuOpen}

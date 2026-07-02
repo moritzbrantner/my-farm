@@ -42,7 +42,7 @@ button[aria-disabled="true"] {
 
 .app {
   --farm-viewport-inset-top: 68px;
-  --farm-viewport-inset-right: 380px;
+  --farm-viewport-inset-right: 336px;
   --farm-viewport-inset-bottom: 128px;
   --farm-viewport-inset-left: 0px;
   position: relative;
@@ -237,7 +237,7 @@ button[aria-disabled="true"] {
   position: absolute;
   top: 12px;
   left: 12px;
-  right: 380px;
+  right: 336px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -446,15 +446,15 @@ button[aria-disabled="true"] {
   top: 12px;
   right: 12px;
   bottom: 128px;
-  width: 352px;
+  width: 308px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   overflow-y: auto;
 }
 
 .panel-section {
-  padding: 12px;
+  padding: 9px 10px;
   border: 1px solid rgba(32, 49, 43, 0.2);
   border-radius: 8px;
   background: rgba(251, 246, 232, 0.94);
@@ -465,7 +465,7 @@ button[aria-disabled="true"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 
 h1,
@@ -479,25 +479,26 @@ h1 {
 }
 
 h2 {
-  margin-bottom: 8px;
-  font-size: 15px;
+  margin-bottom: 6px;
+  font-size: 14px;
 }
 
 .inventory-grid,
 .action-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .inventory-grid .resource-amount,
 .action-stack > span {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  padding: 7px 8px;
+  gap: 6px;
+  padding: 5px 6px;
   border-radius: 6px;
   background: #e5edd4;
+  font-size: 13px;
 }
 
 .resource-amount {
@@ -514,18 +515,19 @@ h2 {
 
 .storage-inventory-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .storage-inventory-item {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) 54px;
   align-items: center;
-  gap: 8px;
-  min-height: 46px;
-  padding: 7px 8px;
+  gap: 6px;
+  min-height: 40px;
+  padding: 5px 6px;
   border-radius: 6px;
   background: #e5edd4;
+  font-size: 13px;
 }
 
 .storage-inventory-item__body {
@@ -556,14 +558,15 @@ h2 {
 }
 
 .market-launcher button {
-  flex: 0 0 128px;
+  flex: 0 0 112px;
   min-width: 0;
-  padding: 6px 8px;
+  min-height: 32px;
+  padding: 4px 7px;
 }
 
 .farmers-market {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .farmers-market__header {
@@ -581,14 +584,14 @@ h2 {
 
 .market-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .market-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 86px;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 7px;
   border: 1px solid rgba(32, 49, 43, 0.18);
   border-radius: 6px;
   background: #fbf6e8;
@@ -752,18 +755,18 @@ h2 {
 
 .action-stack {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .recipe-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .recipe-card {
   display: grid;
-  gap: 7px;
-  padding: 8px;
+  gap: 6px;
+  padding: 7px;
   border: 1px solid rgba(32, 49, 43, 0.18);
   border-radius: 6px;
   background: #fbf6e8;
@@ -771,9 +774,9 @@ h2 {
 
 .recipe-card__header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 78px;
+  grid-template-columns: minmax(0, 1fr) 70px;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .recipe-card__header strong {
@@ -783,25 +786,25 @@ h2 {
 
 .recipe-card__header button {
   min-width: 0;
-  min-height: 32px;
-  padding: 5px 8px;
+  min-height: 30px;
+  padding: 4px 6px;
 }
 
 .recipe-card__inputs {
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 
 .recipe-input {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 5px 6px;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 5px;
   border-radius: 6px;
   background: #e5edd4;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .recipe-input__name {
@@ -823,21 +826,24 @@ h2 {
 .field-tool-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .field-tool {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
-  padding: 7px 8px;
+  min-height: 32px;
+  padding: 5px 7px;
+  font-size: 13px;
 }
 
 .field-tool span {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .field-tool--seed {
@@ -845,21 +851,33 @@ h2 {
   justify-content: flex-start;
 }
 
+.field-tool--harvest {
+  flex-direction: column;
+  gap: 1px;
+}
+
 .field-tool--seed strong {
   margin-left: auto;
 }
 
 .field-tool strong {
+  flex: 0 0 auto;
   margin-left: auto;
   font-size: 11px;
+  text-align: right;
+}
+
+.field-tool--harvest strong {
+  margin-left: 0;
+  line-height: 1.1;
 }
 
 .seed-menu,
 .harvest-menu {
   grid-column: 1 / -1;
   display: grid;
-  gap: 6px;
-  padding: 8px;
+  gap: 5px;
+  padding: 6px;
   border: 1px solid rgba(32, 49, 43, 0.2);
   border-radius: 8px;
   background: #fbf6e8;
@@ -868,14 +886,15 @@ h2 {
 .seed-menu__item,
 .harvest-menu__item {
   min-width: 0;
-  min-height: 38px;
+  min-height: 32px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 7px;
+  gap: 6px;
   align-items: center;
-  padding: 6px 8px;
+  padding: 5px 7px;
   text-align: left;
   background: #e5edd4;
+  font-size: 13px;
 }
 
 .harvest-menu__item {
@@ -902,8 +921,8 @@ h2 {
 }
 
 .field-tool-status {
-  margin-top: 8px;
-  padding: 7px 8px;
+  margin-top: 6px;
+  padding: 6px 7px;
   border-radius: 6px;
   background: #e5edd4;
   color: #536a5e;
@@ -913,8 +932,8 @@ h2 {
 
 .order {
   display: grid;
-  gap: 8px;
-  padding: 10px 0;
+  gap: 6px;
+  padding: 8px 0;
   border-top: 1px solid rgba(32, 49, 43, 0.16);
 }
 
@@ -925,16 +944,17 @@ h2 {
 }
 
 .order .resource-amount {
-  padding: 4px 7px;
+  padding: 3px 6px;
   border-radius: 999px;
   background: #e5edd4;
-  gap: 6px;
+  gap: 5px;
+  font-size: 13px;
 }
 
 .order__reward {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .build-dock {

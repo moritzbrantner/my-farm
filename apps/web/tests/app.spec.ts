@@ -1220,6 +1220,10 @@ test("delivery board menu focuses delivery orders", async ({ page }, testInfo) =
   await mockFarmApi(page);
   await openFarm(page);
 
+  await expect(
+    page.locator(".panel-section").filter({ has: page.getByRole("heading", { name: "Delivery Orders" }) }),
+  ).toBeHidden();
+
   await page.getByLabel("Delivery Board structure").click({ button: "right" });
   await page
     .getByTestId("structure-context-menu")
@@ -1269,10 +1273,10 @@ test("farmers market buys and sells items through commands", async ({ page }) =>
 
   const market = page.getByRole("region", { name: "Farmers Market" });
   await expect(market).toBeVisible();
-  await expect(market.getByText("Delivery Orders stay below.")).toBeVisible();
+  await expect(market.getByText("Buy and sell unlocked goods.")).toBeVisible();
   await expect(
     page.locator(".panel-section").filter({ has: page.getByRole("heading", { name: "Delivery Orders" }) }),
-  ).toBeVisible();
+  ).toBeHidden();
 
   const wheat = market.getByTestId("market-item-wheat");
   await expect(wheat).toContainText("Wheat");

@@ -45,18 +45,25 @@ type GableRoofDimensions = {
   depth: number;
 };
 
-const arrivalRoadZ = 10.35;
+const arrivalRoadZ = 9.52;
 const arrivalRoadStartX = -10.4;
 const arrivalRoadEndX = 2.4;
 const arrivalPathCenterX = 0;
 const arrivalPathCenterZ = 5.12;
+const roadTraffic = [
+  { id: "red", color: "#d84d45", roofColor: "#f1d2a4", laneZ: -0.22, phase: 0.08, direction: 1 },
+  { id: "blue", color: "#4879b8", roofColor: "#dbe8f0", laneZ: 0.22, phase: 0.52, direction: -1 },
+  { id: "green", color: "#5f9c64", roofColor: "#eee0b7", laneZ: -0.22, phase: 0.78, direction: 1 },
+] as const;
 
 export function FarmArrivalEnvironment() {
   return (
     <group>
       <RoadSurface />
       <DirtPath />
-      <MovingCar />
+      {roadTraffic.map((car, index) => (
+        <MovingCar key={car.id} car={car} marked={index === 0} />
+      ))}
     </group>
   );
 }
@@ -112,7 +119,13 @@ function DirtPath() {
   );
 }
 
-function MovingCar() {
+function MovingCar({
+  car,
+  marked,
+}: {
+  car: (typeof roadTraffic)[number];
+  marked: boolean;
+}) {
   const carRef = useRef<THREE.Group | null>(null);
   const reducedMotion = usePrefersReducedMotion();
 
@@ -121,19 +134,38 @@ function MovingCar() {
       return;
     }
     const travel = arrivalRoadEndX - arrivalRoadStartX;
-    const progress = (clock.getElapsedTime() * 0.1) % 1;
-    carRef.current.position.x = arrivalRoadStartX + progress * travel;
+    const progress = (clock.getElapsedTime() * 0.1 + car.phase) % 1;
+    carRef.current.position.x =
+      car.direction > 0
+        ? arrivalRoadStartX + progress * travel
+        : arrivalRoadEndX - progress * travel;
   });
 
   return (
-    <group ref={carRef} position={[arrivalRoadStartX + 1.2, 0.12, arrivalRoadZ]} rotation={[0, Math.PI / 2, 0]}>
+    <group
+      ref={carRef}
+      position={[
+        car.direction > 0 ? arrivalRoadStartX + 1.2 : arrivalRoadEndX - 1.2,
+        0.12,
+        arrivalRoadZ + car.laneZ,
+      ]}
+      rotation={[0, car.direction > 0 ? 0 : Math.PI, 0]}
+    >
       <mesh castShadow receiveShadow position={[0, 0.13, 0]}>
         <boxGeometry args={[0.58, 0.22, 0.34]} />
-        <meshStandardMaterial color="#d84d45" roughness={0.72} metalness={0.04} />
+        <meshStandardMaterial color={car.color} roughness={0.72} metalness={0.04} />
       </mesh>
       <mesh castShadow position={[0.02, 0.3, 0]}>
         <boxGeometry args={[0.32, 0.18, 0.28]} />
-        <meshStandardMaterial color="#f1d2a4" roughness={0.52} metalness={0.02} />
+        <meshStandardMaterial color={car.roofColor} roughness={0.52} metalness={0.02} />
+      </mesh>
+      <mesh castShadow position={[0.31, 0.16, 0]}>
+        <boxGeometry args={[0.035, 0.08, 0.22]} />
+        <meshStandardMaterial color="#f7e8a8" roughness={0.42} metalness={0.05} />
+      </mesh>
+      <mesh castShadow position={[-0.31, 0.15, 0]}>
+        <boxGeometry args={[0.035, 0.07, 0.2]} />
+        <meshStandardMaterial color="#672c2a" roughness={0.62} metalness={0.02} />
       </mesh>
       {[-0.22, 0.22].map((x) =>
         [-0.2, 0.2].map((z) => (
@@ -143,9 +175,11 @@ function MovingCar() {
           </mesh>
         )),
       )}
-      <Html position={[0, 0.54, 0]} center zIndexRange={[25, 0]} wrapperClass="farm-scene-marker-wrapper">
-        <div className="farm-scene-marker" data-testid="farm-scene-car" aria-label="Moving car on farm road" />
-      </Html>
+      {marked ? (
+        <Html position={[0, 0.54, 0]} center zIndexRange={[25, 0]} wrapperClass="farm-scene-marker-wrapper">
+          <div className="farm-scene-marker" data-testid="farm-scene-car" aria-label="Moving car on farm road" />
+        </Html>
+      ) : null}
     </group>
   );
 }
