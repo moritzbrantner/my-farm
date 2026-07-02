@@ -24,9 +24,13 @@ pub struct FarmState {
     pub level: u32,
     pub coins: u32,
     pub silo_capacity: u32,
+    #[serde(default = "default_storage_upgrade_tier")]
+    pub silo_upgrade_tier: u32,
     #[serde(default = "default_silo_tile")]
     pub silo_tile: Tile,
     pub barn_capacity: u32,
+    #[serde(default = "default_storage_upgrade_tier")]
+    pub barn_upgrade_tier: u32,
     #[serde(default = "default_barn_tile")]
     pub barn_tile: Tile,
     pub inventory: BTreeMap<String, u32>,
@@ -122,8 +126,10 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         level: 1,
         coins: 180,
         silo_capacity: 40,
+        silo_upgrade_tier: default_storage_upgrade_tier(),
         silo_tile: default_silo_tile(),
         barn_capacity: 30,
+        barn_upgrade_tier: default_storage_upgrade_tier(),
         barn_tile: default_barn_tile(),
         inventory,
         claimed_crop_unlocks: default_claimed_crop_unlocks(),
@@ -260,6 +266,10 @@ pub fn default_delivery_board_tile() -> Tile {
 
 pub fn default_silo_tile() -> Tile {
     Tile::new(14, 2)
+}
+
+pub fn default_storage_upgrade_tier() -> u32 {
+    0
 }
 
 pub fn default_claimed_crop_unlocks() -> Vec<String> {

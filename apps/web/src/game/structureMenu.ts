@@ -8,6 +8,7 @@ import type {
   ItemKind,
   ItemStack,
   MachineState,
+  StorageKind,
 } from "../types";
 import type { StructureSelection } from "./selectors";
 
@@ -40,14 +41,20 @@ export function buildStructureMenuModel(
     return {
       title: "Silo",
       subtitle: `${view.silo_used}/${view.silo_capacity} crops`,
-      items: [{ id: "move-structure", label: "Move", action: "move_structure" }],
+      items: [
+        { id: "move-structure", label: "Move", action: "move_structure" },
+        storageUpgradeItem(catalog, view, "silo", "Silo", view.silo_capacity, view.silo_upgrade_tier),
+      ],
     };
   }
   if (target.type === "barn") {
     return {
       title: "Barn",
       subtitle: `${view.barn_used}/${view.barn_capacity} goods`,
-      items: [{ id: "move-structure", label: "Move", action: "move_structure" }],
+      items: [
+        { id: "move-structure", label: "Move", action: "move_structure" },
+        storageUpgradeItem(catalog, view, "barn", "Barn", view.barn_capacity, view.barn_upgrade_tier),
+      ],
     };
   }
   if (target.type === "machine") {
@@ -305,6 +312,56 @@ function buildShelterMenu(
         action: "move_structure",
       },
     ],
+  };
+}
+
+function storageUpgradeItem(
+  catalog: CatalogDocument,
+  view: FarmView,
+  storageKind: StorageKind,
+  label: string,
+  currentCapacity: number,
+  currentTier: number,
+): StructureMenuItem {
+  const nextTier = currentTier + 1;
+  const next = catalog.storage_upgrades.find(
+    (upgrade) => upgrade.storage_kind === storageKind && upgrade.tier === nextTier,
+  );
+  if (!next) {
+    return {
+      id: `upgrade-${storageKind}`,
+      label: `Upgrade ${label}`,
+      disabled: true,
+      reason: "Fully upgraded",
+    };
+  }
+
+  if (view.level < next.unlock_level) {
+    return {
+      id: `upgrade-${storageKind}`,
+      label: `Upgrade ${label}`,
+      disabled: true,
+      reason: `Unlocks at level ${next.unlock_level}`,
+    };
+  }
+
+  if (view.coins < next.cost_coins) {
+    return {
+      id: `upgrade-${storageKind}`,
+      label: `Upgrade ${label}`,
+      disabled: true,
+      reason: `Need ${next.cost_coins - view.coins} coins`,
+    };
+  }
+
+  return {
+    id: `upgrade-${storageKind}`,
+    label: `Upgrade ${label}`,
+    reason: `${next.cost_coins} coins - Capacity ${currentCapacity} -> ${Math.max(
+      currentCapacity,
+      next.capacity,
+    )}`,
+    command: { type: "upgrade_storage", storage_kind: storageKind },
   };
 }
 

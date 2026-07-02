@@ -1,7 +1,8 @@
 use my_farm_core::{
-    AnimalState, CatalogDocument, FarmCommand, FarmEvent, ItemStack, MachineKind, ShelterKind,
-    StructureKind, StructureTarget, SweepHarvestMode, Tile, add_inventory, apply_command,
-    apply_elapsed, inventory_quantity, new_farm, scaled_duration_ms, update_level,
+    AnimalState, CatalogDocument, FarmCommand, FarmEvent, FarmState, ItemStack, MachineKind,
+    ShelterKind, StorageKind, StructureKind, StructureTarget, SweepHarvestMode, Tile,
+    add_inventory, apply_command, apply_elapsed, inventory_quantity, new_farm, scaled_duration_ms,
+    update_level,
 };
 
 #[test]
@@ -68,6 +69,154 @@ fn storage_capacity_blocks_harvest() {
         harvested.error.unwrap().message,
         "storage is full".to_owned()
     );
+}
+
+#[test]
+fn player_can_upgrade_silo_storage() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    update_level(&mut farm, &catalog);
+
+    let upgraded = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::UpgradeStorage {
+            storage_kind: StorageKind::Silo,
+        },
+        0,
+    );
+
+    assert!(upgraded.accepted);
+    assert_eq!(farm.coins, 120);
+    assert_eq!(farm.silo_upgrade_tier, 1);
+    assert_eq!(farm.silo_capacity, 60);
+    assert_eq!(
+        upgraded.events,
+        vec![FarmEvent::StorageUpgraded {
+            storage_kind: StorageKind::Silo,
+            tier: 1,
+            capacity: 60,
+        }]
+    );
+}
+
+#[test]
+fn player_can_upgrade_barn_storage() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    update_level(&mut farm, &catalog);
+
+    let upgraded = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::UpgradeStorage {
+            storage_kind: StorageKind::Barn,
+        },
+        0,
+    );
+
+    assert!(upgraded.accepted);
+    assert_eq!(farm.coins, 130);
+    assert_eq!(farm.barn_upgrade_tier, 1);
+    assert_eq!(farm.barn_capacity, 45);
+    assert_eq!(
+        upgraded.events,
+        vec![FarmEvent::StorageUpgraded {
+            storage_kind: StorageKind::Barn,
+            tier: 1,
+            capacity: 45,
+        }]
+    );
+}
+
+#[test]
+fn storage_upgrade_requires_unlock_level() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let upgraded = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::UpgradeStorage {
+            storage_kind: StorageKind::Silo,
+        },
+        0,
+    );
+
+    assert!(!upgraded.accepted);
+    assert_eq!(upgraded.error.unwrap().message, "requires level 2");
+    assert_eq!(farm.coins, 180);
+    assert_eq!(farm.silo_upgrade_tier, 0);
+    assert_eq!(farm.silo_capacity, 40);
+}
+
+#[test]
+fn storage_upgrade_requires_coins() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.coins = 59;
+    update_level(&mut farm, &catalog);
+
+    let upgraded = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::UpgradeStorage {
+            storage_kind: StorageKind::Silo,
+        },
+        0,
+    );
+
+    assert!(!upgraded.accepted);
+    assert_eq!(upgraded.error.unwrap().message, "not enough coins");
+    assert_eq!(farm.coins, 59);
+    assert_eq!(farm.silo_upgrade_tier, 0);
+    assert_eq!(farm.silo_capacity, 40);
+}
+
+#[test]
+fn storage_upgrade_rejects_when_fully_upgraded() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 90;
+    farm.coins = 1_000;
+    farm.silo_upgrade_tier = 3;
+    farm.silo_capacity = 115;
+    update_level(&mut farm, &catalog);
+
+    let upgraded = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::UpgradeStorage {
+            storage_kind: StorageKind::Silo,
+        },
+        0,
+    );
+
+    assert!(!upgraded.accepted);
+    assert_eq!(upgraded.error.unwrap().message, "storage fully upgraded");
+    assert_eq!(farm.coins, 1_000);
+    assert_eq!(farm.silo_upgrade_tier, 3);
+    assert_eq!(farm.silo_capacity, 115);
+}
+
+#[test]
+fn existing_state_defaults_storage_upgrade_tiers_to_zero() {
+    let catalog = CatalogDocument::default_catalog();
+    let farm = new_farm(0, &catalog);
+    let mut save_json = serde_json::to_value(&farm).unwrap();
+    let save = save_json.as_object_mut().unwrap();
+    save.remove("silo_upgrade_tier");
+    save.remove("barn_upgrade_tier");
+
+    let restored: FarmState = serde_json::from_value(save_json).unwrap();
+
+    assert_eq!(restored.silo_upgrade_tier, 0);
+    assert_eq!(restored.barn_upgrade_tier, 0);
+    assert_eq!(restored.silo_capacity, 40);
+    assert_eq!(restored.barn_capacity, 30);
 }
 
 #[test]

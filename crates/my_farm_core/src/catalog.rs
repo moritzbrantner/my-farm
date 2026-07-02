@@ -57,6 +57,15 @@ pub enum ShelterKind {
     CowPasture,
 }
 
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum StorageKind {
+    Silo,
+    Barn,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum StructureKind {
@@ -113,6 +122,15 @@ pub struct MarketItemDef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct StorageUpgradeDef {
+    pub storage_kind: StorageKind,
+    pub tier: u32,
+    pub unlock_level: u32,
+    pub cost_coins: u32,
+    pub capacity: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct BalanceConfig {
     pub time_scale: u32,
     pub max_orders: usize,
@@ -136,6 +154,7 @@ pub struct CatalogDocument {
     pub machines: Vec<MachineDef>,
     pub shelters: Vec<ShelterDef>,
     pub market_items: Vec<MarketItemDef>,
+    pub storage_upgrades: Vec<StorageUpgradeDef>,
     pub level_xp: Vec<u32>,
 }
 
@@ -307,6 +326,14 @@ impl CatalogDocument {
                 market_item("carrot_cake", None, Some(42), 6),
                 market_item("tomato_tart", None, Some(46), 7),
             ],
+            storage_upgrades: vec![
+                storage_upgrade(StorageKind::Silo, 1, 2, 60, 60),
+                storage_upgrade(StorageKind::Silo, 2, 4, 120, 85),
+                storage_upgrade(StorageKind::Silo, 3, 6, 220, 115),
+                storage_upgrade(StorageKind::Barn, 1, 2, 50, 45),
+                storage_upgrade(StorageKind::Barn, 2, 4, 100, 65),
+                storage_upgrade(StorageKind::Barn, 3, 6, 180, 90),
+            ],
             level_xp: vec![0, 0, 4, 14, 30, 55, 90, 140],
         }
     }
@@ -335,6 +362,16 @@ impl CatalogDocument {
         self.market_items
             .iter()
             .find(|market_item| market_item.item_id == item_id)
+    }
+
+    pub fn storage_upgrade(
+        &self,
+        storage_kind: StorageKind,
+        tier: u32,
+    ) -> Option<&StorageUpgradeDef> {
+        self.storage_upgrades
+            .iter()
+            .find(|upgrade| upgrade.storage_kind == storage_kind && upgrade.tier == tier)
     }
 
     pub fn item_kind(&self, item_id: &str) -> Option<&ItemKind> {
@@ -417,5 +454,21 @@ fn market_item(
         buy_price,
         sell_price,
         unlock_level,
+    }
+}
+
+fn storage_upgrade(
+    storage_kind: StorageKind,
+    tier: u32,
+    unlock_level: u32,
+    cost_coins: u32,
+    capacity: u32,
+) -> StorageUpgradeDef {
+    StorageUpgradeDef {
+        storage_kind,
+        tier,
+        unlock_level,
+        cost_coins,
+        capacity,
     }
 }

@@ -48,6 +48,10 @@ _Avoid_: Finished product
 A generated request for unlocked goods that pays coins and experience.
 _Avoid_: Truck order, shipment
 
+**Storage Upgrade**:
+An earned increase to Silo or Barn capacity purchased with coins after reaching its unlock level.
+_Avoid_: Storage expansion, capacity boost
+
 **Silo**:
 Crop storage.
 _Avoid_: Crop barn

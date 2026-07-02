@@ -34,6 +34,12 @@
         }
       ]
     },
+    "barn_upgrade_tier": {
+      "default": 0,
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
     "claimed_crop_unlocks": {
       "default": [
         "wheat",
@@ -124,6 +130,12 @@
           "$ref": "#/definitions/Tile"
         }
       ]
+    },
+    "silo_upgrade_tier": {
+      "default": 0,
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
     },
     "xp": {
       "type": "integer",

@@ -1044,6 +1044,10 @@ function MainMenu({
                 <strong>Run structures.</strong>
                 <span>Click a Machine or Shelter to queue recipes, feed animals, collect ready output, or move the structure.</span>
               </li>
+              <li>
+                <strong>Upgrade storage.</strong>
+                <span>Select the Silo or Barn to spend coins on capacity tiers as levels allow.</span>
+              </li>
             </ol>
             <button className="main-menu__primary" type="button" onClick={onContinue}>
               Start Farm
@@ -1068,6 +1072,10 @@ function MainMenu({
               <div>
                 <dt>Delivery Order</dt>
                 <dd>A request that pays coins and XP for goods.</dd>
+              </div>
+              <div>
+                <dt>Storage Upgrade</dt>
+                <dd>A coin purchase that raises Silo or Barn capacity after reaching its unlock level.</dd>
               </div>
             </dl>
           </MainMenuSubpanel>
@@ -1846,8 +1854,32 @@ function SelectionPanel({
   return (
     <section className="panel-section">
       <h2>Selection</h2>
-      {isSilo ? <p>Silo storage - {view.silo_used}/{view.silo_capacity} crops</p> : null}
-      {isBarn ? <p>Barn storage - {view.barn_used}/{view.barn_capacity} goods</p> : null}
+      {isSilo ? (
+        <StorageUpgradeStatus
+          catalog={catalog}
+          view={view}
+          storageKind="silo"
+          label="Silo"
+          used={view.silo_used}
+          capacity={view.silo_capacity}
+          tier={view.silo_upgrade_tier}
+          unit="crops"
+          send={send}
+        />
+      ) : null}
+      {isBarn ? (
+        <StorageUpgradeStatus
+          catalog={catalog}
+          view={view}
+          storageKind="barn"
+          label="Barn"
+          used={view.barn_used}
+          capacity={view.barn_capacity}
+          tier={view.barn_upgrade_tier}
+          unit="goods"
+          send={send}
+        />
+      ) : null}
       {plot ? <PlotActions catalog={catalog} view={view} plot={plot} nowMs={nowMs} send={send} /> : null}
       {machine ? (
         <MachineActions catalog={catalog} view={view} machine={machine} nowMs={nowMs} send={send} />
@@ -1860,6 +1892,56 @@ function SelectionPanel({
         <p>Select a field, machine, shelter, storage, or order board.</p>
       ) : null}
     </section>
+  );
+}
+
+function StorageUpgradeStatus({
+  catalog,
+  view,
+  storageKind,
+  label,
+  used,
+  capacity,
+  tier,
+  unit,
+  send,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  storageKind: "silo" | "barn";
+  label: string;
+  used: number;
+  capacity: number;
+  tier: number;
+  unit: string;
+  send: SendCommand;
+}) {
+  const tiers = catalog.storage_upgrades.filter((upgrade) => upgrade.storage_kind === storageKind);
+  const maxTier = tiers.reduce((max, upgrade) => Math.max(max, upgrade.tier), 0);
+  const next = tiers.find((upgrade) => upgrade.tier === tier + 1);
+  const nextCapacity = next ? Math.max(capacity, next.capacity) : null;
+  const lockedReason = next && view.level < next.unlock_level ? `Unlocks at level ${next.unlock_level}` : null;
+  const coinsReason = next && view.coins < next.cost_coins ? `Need ${next.cost_coins - view.coins} coins` : null;
+  const reason = !next ? "Fully upgraded" : lockedReason ?? coinsReason;
+  return (
+    <div className="action-stack">
+      <p>{label} storage - {used}/{capacity} {unit}</p>
+      <p>Tier {tier}/{maxTier}</p>
+      {next ? (
+        <p>Next upgrade - {next.cost_coins} coins, capacity {capacity} -&gt; {nextCapacity}</p>
+      ) : (
+        <p>Fully upgraded</p>
+      )}
+      <button
+        type="button"
+        disabled={Boolean(reason)}
+        title={reason ?? `Upgrade ${label}`}
+        onClick={() => send({ type: "upgrade_storage", storage_kind: storageKind })}
+      >
+        Upgrade {label}
+      </button>
+      {reason ? <small>{reason}</small> : null}
+    </div>
   );
 }
 

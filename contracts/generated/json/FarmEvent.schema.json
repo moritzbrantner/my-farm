@@ -83,6 +83,36 @@
     {
       "type": "object",
       "required": [
+        "capacity",
+        "storage_kind",
+        "tier",
+        "type"
+      ],
+      "properties": {
+        "capacity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "storage_kind": {
+          "$ref": "#/definitions/StorageKind"
+        },
+        "tier": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "storage_upgraded"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "target",
         "tile",
         "type"
@@ -316,6 +346,13 @@
     }
   ],
   "definitions": {
+    "StorageKind": {
+      "type": "string",
+      "enum": [
+        "silo",
+        "barn"
+      ]
+    },
     "StructureKind": {
       "type": "string",
       "enum": [

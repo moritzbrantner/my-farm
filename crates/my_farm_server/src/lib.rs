@@ -1,6 +1,6 @@
 use anyhow::Context;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::State;
+use axum::extract::rejection::JsonRejection;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};

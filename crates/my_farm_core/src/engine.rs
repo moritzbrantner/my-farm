@@ -1,8 +1,8 @@
 use crate::{
     AnimalShelterState, AnimalState, CatalogDocument, DeliveryOrder, FarmState, FieldPlot,
-    ItemKind, ItemStack, MachineJob, MachineKind, MachineState, ShelterKind, StructureKind, Tile,
-    add_inventory, add_shelter_animals, gain_xp, has_storage_room, next_id, remove_inventory,
-    scaled_duration_ms, update_level,
+    ItemKind, ItemStack, MachineJob, MachineKind, MachineState, ShelterKind, StorageKind,
+    StructureKind, Tile, add_inventory, add_shelter_animals, gain_xp, has_storage_room, next_id,
+    remove_inventory, scaled_duration_ms, update_level,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -47,6 +47,9 @@ pub enum FarmCommand {
     BuyStructure {
         structure_kind: StructureKind,
         tile: Tile,
+    },
+    UpgradeStorage {
+        storage_kind: StorageKind,
     },
     BuyFieldPlot {
         tile: Tile,
@@ -123,6 +126,11 @@ pub enum FarmEvent {
     },
     StructureBuilt {
         structure_kind: StructureKind,
+    },
+    StorageUpgraded {
+        storage_kind: StorageKind,
+        tier: u32,
+        capacity: u32,
     },
     StructureMoved {
         target: StructureTarget,
@@ -233,6 +241,9 @@ pub fn apply_command(
             structure_kind,
             tile,
         } => buy_structure(farm, catalog, structure_kind, tile),
+        FarmCommand::UpgradeStorage { storage_kind } => {
+            upgrade_storage(farm, catalog, storage_kind)
+        }
         FarmCommand::BuyFieldPlot { tile } => buy_field_plot(farm, tile),
         FarmCommand::MoveStructure { target, tile } => move_structure(farm, target, tile),
         FarmCommand::QueueRecipe {
@@ -586,6 +597,43 @@ fn buy_structure(
         }
     }
     Ok(vec![FarmEvent::StructureBuilt { structure_kind }])
+}
+
+fn upgrade_storage(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    storage_kind: StorageKind,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    let current_tier = match storage_kind {
+        StorageKind::Silo => farm.silo_upgrade_tier,
+        StorageKind::Barn => farm.barn_upgrade_tier,
+    };
+    let next_tier = current_tier + 1;
+    let upgrade = catalog
+        .storage_upgrade(storage_kind, next_tier)
+        .ok_or_else(|| CommandError::new("storage fully upgraded"))?;
+
+    require_level(farm, upgrade.unlock_level)?;
+    spend_coins(farm, upgrade.cost_coins)?;
+
+    let capacity = match storage_kind {
+        StorageKind::Silo => {
+            farm.silo_upgrade_tier = upgrade.tier;
+            farm.silo_capacity = farm.silo_capacity.max(upgrade.capacity);
+            farm.silo_capacity
+        }
+        StorageKind::Barn => {
+            farm.barn_upgrade_tier = upgrade.tier;
+            farm.barn_capacity = farm.barn_capacity.max(upgrade.capacity);
+            farm.barn_capacity
+        }
+    };
+
+    Ok(vec![FarmEvent::StorageUpgraded {
+        storage_kind,
+        tier: upgrade.tier,
+        capacity,
+    }])
 }
 
 fn move_structure(

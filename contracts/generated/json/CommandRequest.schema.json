@@ -141,6 +141,24 @@
         {
           "type": "object",
           "required": [
+            "storage_kind",
+            "type"
+          ],
+          "properties": {
+            "storage_kind": {
+              "$ref": "#/definitions/StorageKind"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "upgrade_storage"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "tile",
             "type"
           ],
@@ -370,6 +388,13 @@
             }
           }
         }
+      ]
+    },
+    "StorageKind": {
+      "type": "string",
+      "enum": [
+        "silo",
+        "barn"
       ]
     },
     "StructureKind": {

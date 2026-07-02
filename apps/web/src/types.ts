@@ -17,6 +17,8 @@ export type {
   MarketItemDef,
   RecipeDef,
   ShelterKind,
+  StorageKind,
+  StorageUpgradeDef,
   StructureKind,
   StructureTarget,
   SweepHarvestMode,

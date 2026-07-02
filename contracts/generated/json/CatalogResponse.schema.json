@@ -40,7 +40,8 @@
         "machines",
         "market_items",
         "recipes",
-        "shelters"
+        "shelters",
+        "storage_upgrades"
       ],
       "properties": {
         "balance": {
@@ -88,6 +89,12 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/ShelterDef"
+          }
+        },
+        "storage_upgrades": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/StorageUpgradeDef"
           }
         }
       }
@@ -365,6 +372,48 @@
         "chicken_coop",
         "cow_pasture"
       ]
+    },
+    "StorageKind": {
+      "type": "string",
+      "enum": [
+        "silo",
+        "barn"
+      ]
+    },
+    "StorageUpgradeDef": {
+      "type": "object",
+      "required": [
+        "capacity",
+        "cost_coins",
+        "storage_kind",
+        "tier",
+        "unlock_level"
+      ],
+      "properties": {
+        "capacity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "cost_coins": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "storage_kind": {
+          "$ref": "#/definitions/StorageKind"
+        },
+        "tier": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
     }
   }
 }

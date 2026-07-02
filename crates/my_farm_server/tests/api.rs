@@ -1,7 +1,8 @@
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
 use my_farm_core::{
-    CatalogResponse, CommandRequest, CommandResponse, FarmCommand, FarmEvent, FarmResponse,
+    CatalogDocument, CatalogResponse, CommandRequest, CommandResponse, FarmCommand, FarmEvent,
+    FarmResponse, FarmState, StorageKind, update_level,
 };
 use my_farm_server::{AppState, app, connect_database};
 use tower::ServiceExt;
@@ -146,6 +147,64 @@ async fn post_market_command_persists_state_and_journal_through_restart() {
 }
 
 #[tokio::test]
+async fn post_storage_upgrade_persists_state_and_journal_through_restart() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let url = format!("sqlite://{}", tempdir.path().join("farm.db").display());
+    let pool = connect_database(&url).await.unwrap();
+    let router = app(AppState::new(pool.clone()));
+    let initial = get_farm(router.clone()).await;
+
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = load_saved_farm(&pool).await;
+    farm.xp = 4;
+    update_level(&mut farm, &catalog);
+    save_test_farm(&pool, initial.version, &farm).await;
+
+    let upgraded = post_command(
+        router.clone(),
+        CommandRequest {
+            expected_version: initial.version,
+            command: FarmCommand::UpgradeStorage {
+                storage_kind: StorageKind::Silo,
+            },
+        },
+    )
+    .await;
+
+    assert!(upgraded.accepted);
+    assert_eq!(upgraded.version, 1);
+    assert_eq!(upgraded.view.silo_upgrade_tier, 1);
+    assert_eq!(upgraded.view.silo_capacity, 60);
+    assert_eq!(upgraded.view.coins, 120);
+    assert!(upgraded.events.contains(&FarmEvent::StorageUpgraded {
+        storage_kind: StorageKind::Silo,
+        tier: 1,
+        capacity: 60,
+    }));
+
+    let journal_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM command_journal WHERE command_json LIKE ?")
+            .bind("%upgrade_storage%")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(journal_count, 1);
+
+    drop(router);
+    pool.close().await;
+
+    let restarted_pool = connect_database(&url).await.unwrap();
+    let restarted_app = app(AppState::new(restarted_pool.clone()));
+    let reloaded = get_farm(restarted_app).await;
+
+    assert_eq!(reloaded.version, 1);
+    assert_eq!(reloaded.view.silo_upgrade_tier, 1);
+    assert_eq!(reloaded.view.silo_capacity, 60);
+    assert_eq!(reloaded.view.coins, 120);
+    restarted_pool.close().await;
+}
+
+#[tokio::test]
 async fn post_command_reports_invalid_command_json_as_json() {
     let app = test_app().await;
     let response = app
@@ -229,6 +288,26 @@ fn inventory_quantity_from_farm(response: &FarmResponse, item_id: &str) -> u32 {
         .find(|item| item.item_id == item_id)
         .map(|item| item.quantity)
         .unwrap_or(0)
+}
+
+async fn load_saved_farm(pool: &sqlx::SqlitePool) -> FarmState {
+    let state_json: String = sqlx::query_scalar("SELECT state_json FROM farm_save WHERE id = ?")
+        .bind("local-farm")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    serde_json::from_str(&state_json).unwrap()
+}
+
+async fn save_test_farm(pool: &sqlx::SqlitePool, version: u64, farm: &FarmState) {
+    let state_json = serde_json::to_string(farm).unwrap();
+    sqlx::query("UPDATE farm_save SET version = ?, state_json = ? WHERE id = ?")
+        .bind(version as i64)
+        .bind(state_json)
+        .bind("local-farm")
+        .execute(pool)
+        .await
+        .unwrap();
 }
 
 async fn json_body<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {

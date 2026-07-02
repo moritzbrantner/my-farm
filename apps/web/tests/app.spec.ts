@@ -246,6 +246,95 @@ test("barn and silo are preplaced storage structures", async ({ page }) => {
   await expect(menu.getByRole("menuitem", { name: "Move" })).toBeEnabled();
 });
 
+test("silo context menu shows available upgrade cost and sends command", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, farmView, catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  await page.getByLabel("Silo structure").click({ button: "right" });
+  const menu = page.getByTestId("structure-context-menu");
+  await expect(menu).toContainText("Silo");
+  const upgrade = menu.getByRole("menuitem", {
+    name: "Upgrade Silo 60 coins - Capacity 40 -> 60",
+  });
+  await expect(upgrade).toBeEnabled();
+
+  await upgrade.click();
+
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "upgrade_storage",
+    storage_kind: "silo",
+  });
+  await expect(menu).toBeHidden();
+});
+
+test("locked storage upgrade menu shows level reason", async ({ page }) => {
+  await mockFarmApi(page, { ...farmView, level: 1 });
+  await openFarm(page);
+
+  await page.getByLabel("Silo structure").click({ button: "right" });
+  await expect(
+    page.getByTestId("structure-context-menu").getByRole("menuitem", {
+      name: "Upgrade Silo Unlocks at level 2",
+    }),
+  ).toBeDisabled();
+});
+
+test("unaffordable storage upgrade menu shows coin shortfall", async ({ page }) => {
+  await mockFarmApi(page, { ...farmView, coins: 40 });
+  await openFarm(page);
+
+  await page.getByLabel("Barn structure").click({ button: "right" });
+  await expect(
+    page.getByTestId("structure-context-menu").getByRole("menuitem", {
+      name: "Upgrade Barn Need 10 coins",
+    }),
+  ).toBeDisabled();
+});
+
+test("maxed storage upgrade menu shows fully upgraded", async ({ page }) => {
+  await mockFarmApi(page, {
+    ...farmView,
+    level: 7,
+    silo_capacity: 115,
+    silo_upgrade_tier: 3,
+  });
+  await openFarm(page);
+
+  await page.getByLabel("Silo structure").click({ button: "right" });
+  await expect(
+    page.getByTestId("structure-context-menu").getByRole("menuitem", {
+      name: "Upgrade Silo Fully upgraded",
+    }),
+  ).toBeDisabled();
+});
+
+test("storage selection panel shows tier and upgrade details", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, farmView, catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  await page.getByLabel("Silo structure").click();
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+
+  await expect(selection.getByText("Silo storage - 2/40 crops")).toBeVisible();
+  await expect(selection.getByText("Tier 0/3")).toBeVisible();
+  await expect(selection.getByText("Next upgrade - 60 coins, capacity 40 -> 60")).toBeVisible();
+  await selection.getByRole("button", { name: "Upgrade Silo" }).click();
+
+  expect(commands).toHaveLength(1);
+  expect(commands[0].command).toEqual({
+    type: "upgrade_storage",
+    storage_kind: "silo",
+  });
+});
+
 test("storage selection can discard one item from the inventory list", async ({ page }) => {
   const commands: CommandRequest[] = [];
   await mockFarmApi(
@@ -1601,6 +1690,14 @@ const catalog: CatalogDocument = {
     { item_id: "carrot_cake", buy_price: null, sell_price: 42, unlock_level: 6 },
     { item_id: "tomato_tart", buy_price: null, sell_price: 46, unlock_level: 7 },
   ],
+  storage_upgrades: [
+    { storage_kind: "silo", tier: 1, unlock_level: 2, cost_coins: 60, capacity: 60 },
+    { storage_kind: "silo", tier: 2, unlock_level: 4, cost_coins: 120, capacity: 85 },
+    { storage_kind: "silo", tier: 3, unlock_level: 6, cost_coins: 220, capacity: 115 },
+    { storage_kind: "barn", tier: 1, unlock_level: 2, cost_coins: 50, capacity: 45 },
+    { storage_kind: "barn", tier: 2, unlock_level: 4, cost_coins: 100, capacity: 65 },
+    { storage_kind: "barn", tier: 3, unlock_level: 6, cost_coins: 180, capacity: 90 },
+  ],
   level_xp: [0, 0, 4, 14, 30, 55, 90, 140],
 };
 
@@ -1611,9 +1708,11 @@ const farmView: FarmView = {
   coins: 120,
   silo_used: 2,
   silo_capacity: 40,
+  silo_upgrade_tier: 0,
   silo_tile: { x: 14, y: 2 },
   barn_used: 0,
   barn_capacity: 30,
+  barn_upgrade_tier: 0,
   barn_tile: { x: 16, y: 2 },
   inventory: [{ item_id: "wheat", name: "Wheat", quantity: 2, kind: "crop" }],
   field_plots: [
