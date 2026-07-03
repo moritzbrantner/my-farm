@@ -1,8 +1,8 @@
 use my_farm_core::{
     AnimalState, CatalogDocument, FarmCommand, FarmEvent, FarmState, FarmhouseUpgradeKind,
-    ItemStack, MachineKind, RecipeTarget, ShelterKind, StorageKind, StructureKind, StructureTarget,
-    SweepHarvestMode, Tile, add_inventory, apply_command, apply_elapsed, farm_view,
-    inventory_quantity, new_farm, scaled_duration_ms, update_level,
+    ItemStack, MachineKind, RecipeTarget, Room, ShelterKind, StorageKind, StructureKind,
+    StructureTarget, SweepHarvestMode, Tile, add_inventory, apply_command, apply_elapsed,
+    farm_view, inventory_quantity, new_farm, scaled_duration_ms, update_level,
 };
 
 #[test]
@@ -72,6 +72,71 @@ fn catalog_and_new_farm_expose_unowned_farmhouse_oven_upgrade() {
     assert!(farm.owned_farmhouse_upgrades.is_empty());
     assert!(view.owned_farmhouse_upgrades.is_empty());
     assert_eq!(view.unlocks[1].label, "Oven, bread, and corn");
+}
+
+#[test]
+fn catalog_and_new_farm_expose_starter_house_interior() {
+    let catalog = CatalogDocument::default_catalog();
+    let farm = new_farm(0, &catalog);
+    let view = farm_view(&farm, &catalog);
+
+    assert_eq!(
+        catalog
+            .decorations
+            .iter()
+            .map(|decoration| decoration.id.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "bed",
+            "table",
+            "chair",
+            "sofa",
+            "rug",
+            "plant",
+            "cabinet",
+            "lamp",
+            "kitchen_counter"
+        ]
+    );
+    for decoration in &catalog.decorations {
+        assert!(decoration.footprint.width > 0);
+        assert!(decoration.footprint.height > 0);
+    }
+
+    assert_eq!(
+        farm.house_interior
+            .rooms
+            .iter()
+            .map(|room| room.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Living Room", "Kitchen", "Bedroom"]
+    );
+    for room in &farm.house_interior.rooms {
+        assert_eq!(room.width, 8);
+        assert_eq!(room.height, 6);
+        assert_eq!(room.tiles.len(), 48);
+        assert_eq!(room.decoration_placements.len(), 3);
+    }
+
+    assert_room_placements(&farm.house_interior.rooms[0], &["sofa", "rug", "plant"]);
+    assert_room_placements(
+        &farm.house_interior.rooms[1],
+        &["kitchen_counter", "table", "chair"],
+    );
+    assert_room_placements(&farm.house_interior.rooms[2], &["bed", "cabinet", "lamp"]);
+    assert_eq!(view.house_interior, farm.house_interior);
+}
+
+#[test]
+fn old_saves_without_house_interior_load_default_house_interior() {
+    let catalog = CatalogDocument::default_catalog();
+    let farm = new_farm(0, &catalog);
+    let mut json = serde_json::to_value(&farm).unwrap();
+    json.as_object_mut().unwrap().remove("house_interior");
+
+    let restored: FarmState = serde_json::from_value(json).unwrap();
+
+    assert_eq!(restored.house_interior, farm.house_interior);
 }
 
 #[test]
@@ -2738,4 +2803,14 @@ fn invalid_resident_commands_are_rejected_without_mutating_residents() {
         "resident name cannot exceed 20 characters"
     );
     assert_eq!(farm, before);
+}
+
+fn assert_room_placements(room: &Room, decoration_ids: &[&str]) {
+    assert_eq!(
+        room.decoration_placements
+            .iter()
+            .map(|placement| placement.decoration_id.as_str())
+            .collect::<Vec<_>>(),
+        decoration_ids
+    );
 }

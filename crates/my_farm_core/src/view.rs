@@ -30,6 +30,7 @@ pub struct FarmView {
     pub residents: Vec<crate::FarmResident>,
     pub selected_resident_id: String,
     pub resident_task_queues: std::collections::BTreeMap<String, Vec<crate::ResidentTask>>,
+    pub house_interior: crate::HouseInterior,
     pub unlocks: Vec<UnlockView>,
 }
 
@@ -88,6 +89,7 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
         residents: farm.residents.clone(),
         selected_resident_id: farm.selected_resident_id.clone(),
         resident_task_queues: farm.resident_task_queues.clone(),
+        house_interior: farm.house_interior.clone(),
         unlocks: vec![
             unlock(1, "Fields and wheat", farm.level),
             unlock(2, "Oven, bread, and corn", farm.level),

@@ -81,6 +81,695 @@
         "$ref": "#/definitions/FieldPlot"
       }
     },
+    "house_interior": {
+      "default": {
+        "rooms": [
+          {
+            "decoration_placements": [
+              {
+                "decoration_id": "sofa",
+                "id": "living-room-sofa",
+                "tile": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              {
+                "decoration_id": "rug",
+                "id": "living-room-rug",
+                "tile": {
+                  "x": 2,
+                  "y": 3
+                }
+              },
+              {
+                "decoration_id": "plant",
+                "id": "living-room-plant",
+                "tile": {
+                  "x": 6,
+                  "y": 1
+                }
+              }
+            ],
+            "height": 6,
+            "id": "living_room",
+            "name": "Living Room",
+            "tiles": [
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 1,
+                "y": 0
+              },
+              {
+                "x": 2,
+                "y": 0
+              },
+              {
+                "x": 3,
+                "y": 0
+              },
+              {
+                "x": 4,
+                "y": 0
+              },
+              {
+                "x": 5,
+                "y": 0
+              },
+              {
+                "x": 6,
+                "y": 0
+              },
+              {
+                "x": 7,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 1
+              },
+              {
+                "x": 1,
+                "y": 1
+              },
+              {
+                "x": 2,
+                "y": 1
+              },
+              {
+                "x": 3,
+                "y": 1
+              },
+              {
+                "x": 4,
+                "y": 1
+              },
+              {
+                "x": 5,
+                "y": 1
+              },
+              {
+                "x": 6,
+                "y": 1
+              },
+              {
+                "x": 7,
+                "y": 1
+              },
+              {
+                "x": 0,
+                "y": 2
+              },
+              {
+                "x": 1,
+                "y": 2
+              },
+              {
+                "x": 2,
+                "y": 2
+              },
+              {
+                "x": 3,
+                "y": 2
+              },
+              {
+                "x": 4,
+                "y": 2
+              },
+              {
+                "x": 5,
+                "y": 2
+              },
+              {
+                "x": 6,
+                "y": 2
+              },
+              {
+                "x": 7,
+                "y": 2
+              },
+              {
+                "x": 0,
+                "y": 3
+              },
+              {
+                "x": 1,
+                "y": 3
+              },
+              {
+                "x": 2,
+                "y": 3
+              },
+              {
+                "x": 3,
+                "y": 3
+              },
+              {
+                "x": 4,
+                "y": 3
+              },
+              {
+                "x": 5,
+                "y": 3
+              },
+              {
+                "x": 6,
+                "y": 3
+              },
+              {
+                "x": 7,
+                "y": 3
+              },
+              {
+                "x": 0,
+                "y": 4
+              },
+              {
+                "x": 1,
+                "y": 4
+              },
+              {
+                "x": 2,
+                "y": 4
+              },
+              {
+                "x": 3,
+                "y": 4
+              },
+              {
+                "x": 4,
+                "y": 4
+              },
+              {
+                "x": 5,
+                "y": 4
+              },
+              {
+                "x": 6,
+                "y": 4
+              },
+              {
+                "x": 7,
+                "y": 4
+              },
+              {
+                "x": 0,
+                "y": 5
+              },
+              {
+                "x": 1,
+                "y": 5
+              },
+              {
+                "x": 2,
+                "y": 5
+              },
+              {
+                "x": 3,
+                "y": 5
+              },
+              {
+                "x": 4,
+                "y": 5
+              },
+              {
+                "x": 5,
+                "y": 5
+              },
+              {
+                "x": 6,
+                "y": 5
+              },
+              {
+                "x": 7,
+                "y": 5
+              }
+            ],
+            "width": 8
+          },
+          {
+            "decoration_placements": [
+              {
+                "decoration_id": "kitchen_counter",
+                "id": "kitchen-counter",
+                "tile": {
+                  "x": 0,
+                  "y": 0
+                }
+              },
+              {
+                "decoration_id": "table",
+                "id": "kitchen-table",
+                "tile": {
+                  "x": 3,
+                  "y": 2
+                }
+              },
+              {
+                "decoration_id": "chair",
+                "id": "kitchen-chair",
+                "tile": {
+                  "x": 5,
+                  "y": 2
+                }
+              }
+            ],
+            "height": 6,
+            "id": "kitchen",
+            "name": "Kitchen",
+            "tiles": [
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 1,
+                "y": 0
+              },
+              {
+                "x": 2,
+                "y": 0
+              },
+              {
+                "x": 3,
+                "y": 0
+              },
+              {
+                "x": 4,
+                "y": 0
+              },
+              {
+                "x": 5,
+                "y": 0
+              },
+              {
+                "x": 6,
+                "y": 0
+              },
+              {
+                "x": 7,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 1
+              },
+              {
+                "x": 1,
+                "y": 1
+              },
+              {
+                "x": 2,
+                "y": 1
+              },
+              {
+                "x": 3,
+                "y": 1
+              },
+              {
+                "x": 4,
+                "y": 1
+              },
+              {
+                "x": 5,
+                "y": 1
+              },
+              {
+                "x": 6,
+                "y": 1
+              },
+              {
+                "x": 7,
+                "y": 1
+              },
+              {
+                "x": 0,
+                "y": 2
+              },
+              {
+                "x": 1,
+                "y": 2
+              },
+              {
+                "x": 2,
+                "y": 2
+              },
+              {
+                "x": 3,
+                "y": 2
+              },
+              {
+                "x": 4,
+                "y": 2
+              },
+              {
+                "x": 5,
+                "y": 2
+              },
+              {
+                "x": 6,
+                "y": 2
+              },
+              {
+                "x": 7,
+                "y": 2
+              },
+              {
+                "x": 0,
+                "y": 3
+              },
+              {
+                "x": 1,
+                "y": 3
+              },
+              {
+                "x": 2,
+                "y": 3
+              },
+              {
+                "x": 3,
+                "y": 3
+              },
+              {
+                "x": 4,
+                "y": 3
+              },
+              {
+                "x": 5,
+                "y": 3
+              },
+              {
+                "x": 6,
+                "y": 3
+              },
+              {
+                "x": 7,
+                "y": 3
+              },
+              {
+                "x": 0,
+                "y": 4
+              },
+              {
+                "x": 1,
+                "y": 4
+              },
+              {
+                "x": 2,
+                "y": 4
+              },
+              {
+                "x": 3,
+                "y": 4
+              },
+              {
+                "x": 4,
+                "y": 4
+              },
+              {
+                "x": 5,
+                "y": 4
+              },
+              {
+                "x": 6,
+                "y": 4
+              },
+              {
+                "x": 7,
+                "y": 4
+              },
+              {
+                "x": 0,
+                "y": 5
+              },
+              {
+                "x": 1,
+                "y": 5
+              },
+              {
+                "x": 2,
+                "y": 5
+              },
+              {
+                "x": 3,
+                "y": 5
+              },
+              {
+                "x": 4,
+                "y": 5
+              },
+              {
+                "x": 5,
+                "y": 5
+              },
+              {
+                "x": 6,
+                "y": 5
+              },
+              {
+                "x": 7,
+                "y": 5
+              }
+            ],
+            "width": 8
+          },
+          {
+            "decoration_placements": [
+              {
+                "decoration_id": "bed",
+                "id": "bedroom-bed",
+                "tile": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              {
+                "decoration_id": "cabinet",
+                "id": "bedroom-cabinet",
+                "tile": {
+                  "x": 5,
+                  "y": 0
+                }
+              },
+              {
+                "decoration_id": "lamp",
+                "id": "bedroom-lamp",
+                "tile": {
+                  "x": 6,
+                  "y": 2
+                }
+              }
+            ],
+            "height": 6,
+            "id": "bedroom",
+            "name": "Bedroom",
+            "tiles": [
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 1,
+                "y": 0
+              },
+              {
+                "x": 2,
+                "y": 0
+              },
+              {
+                "x": 3,
+                "y": 0
+              },
+              {
+                "x": 4,
+                "y": 0
+              },
+              {
+                "x": 5,
+                "y": 0
+              },
+              {
+                "x": 6,
+                "y": 0
+              },
+              {
+                "x": 7,
+                "y": 0
+              },
+              {
+                "x": 0,
+                "y": 1
+              },
+              {
+                "x": 1,
+                "y": 1
+              },
+              {
+                "x": 2,
+                "y": 1
+              },
+              {
+                "x": 3,
+                "y": 1
+              },
+              {
+                "x": 4,
+                "y": 1
+              },
+              {
+                "x": 5,
+                "y": 1
+              },
+              {
+                "x": 6,
+                "y": 1
+              },
+              {
+                "x": 7,
+                "y": 1
+              },
+              {
+                "x": 0,
+                "y": 2
+              },
+              {
+                "x": 1,
+                "y": 2
+              },
+              {
+                "x": 2,
+                "y": 2
+              },
+              {
+                "x": 3,
+                "y": 2
+              },
+              {
+                "x": 4,
+                "y": 2
+              },
+              {
+                "x": 5,
+                "y": 2
+              },
+              {
+                "x": 6,
+                "y": 2
+              },
+              {
+                "x": 7,
+                "y": 2
+              },
+              {
+                "x": 0,
+                "y": 3
+              },
+              {
+                "x": 1,
+                "y": 3
+              },
+              {
+                "x": 2,
+                "y": 3
+              },
+              {
+                "x": 3,
+                "y": 3
+              },
+              {
+                "x": 4,
+                "y": 3
+              },
+              {
+                "x": 5,
+                "y": 3
+              },
+              {
+                "x": 6,
+                "y": 3
+              },
+              {
+                "x": 7,
+                "y": 3
+              },
+              {
+                "x": 0,
+                "y": 4
+              },
+              {
+                "x": 1,
+                "y": 4
+              },
+              {
+                "x": 2,
+                "y": 4
+              },
+              {
+                "x": 3,
+                "y": 4
+              },
+              {
+                "x": 4,
+                "y": 4
+              },
+              {
+                "x": 5,
+                "y": 4
+              },
+              {
+                "x": 6,
+                "y": 4
+              },
+              {
+                "x": 7,
+                "y": 4
+              },
+              {
+                "x": 0,
+                "y": 5
+              },
+              {
+                "x": 1,
+                "y": 5
+              },
+              {
+                "x": 2,
+                "y": 5
+              },
+              {
+                "x": 3,
+                "y": 5
+              },
+              {
+                "x": 4,
+                "y": 5
+              },
+              {
+                "x": 5,
+                "y": 5
+              },
+              {
+                "x": 6,
+                "y": 5
+              },
+              {
+                "x": 7,
+                "y": 5
+              }
+            ],
+            "width": 8
+          }
+        ]
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/HouseInterior"
+        }
+      ]
+    },
     "inventory": {
       "type": "object",
       "additionalProperties": {
@@ -292,6 +981,25 @@
         }
       ]
     },
+    "DecorationPlacement": {
+      "type": "object",
+      "required": [
+        "decoration_id",
+        "id",
+        "tile"
+      ],
+      "properties": {
+        "decoration_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "tile": {
+          "$ref": "#/definitions/RoomTile"
+        }
+      }
+    },
     "DeliveryOrder": {
       "type": "object",
       "required": [
@@ -365,6 +1073,20 @@
         },
         "tile": {
           "$ref": "#/definitions/Tile"
+        }
+      }
+    },
+    "HouseInterior": {
+      "type": "object",
+      "required": [
+        "rooms"
+      ],
+      "properties": {
+        "rooms": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Room"
+          }
         }
       }
     },
@@ -763,6 +1485,66 @@
           }
         }
       ]
+    },
+    "Room": {
+      "type": "object",
+      "required": [
+        "decoration_placements",
+        "height",
+        "id",
+        "name",
+        "tiles",
+        "width"
+      ],
+      "properties": {
+        "decoration_placements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DecorationPlacement"
+          }
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoomTile"
+          }
+        },
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "RoomTile": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "y": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
     },
     "ShelterKind": {
       "type": "string",

@@ -2451,6 +2451,17 @@ const catalog: CatalogDocument = {
     { storage_kind: "barn", tier: 2, unlock_level: 4, cost_coins: 100, capacity: 65 },
     { storage_kind: "barn", tier: 3, unlock_level: 6, cost_coins: 180, capacity: 90 },
   ],
+  decorations: [
+    { id: "bed", name: "Bed", footprint: { width: 3, height: 2 } },
+    { id: "table", name: "Table", footprint: { width: 2, height: 2 } },
+    { id: "chair", name: "Chair", footprint: { width: 1, height: 1 } },
+    { id: "sofa", name: "Sofa", footprint: { width: 3, height: 1 } },
+    { id: "rug", name: "Rug", footprint: { width: 3, height: 2 } },
+    { id: "plant", name: "Plant", footprint: { width: 1, height: 1 } },
+    { id: "cabinet", name: "Cabinet", footprint: { width: 2, height: 1 } },
+    { id: "lamp", name: "Lamp", footprint: { width: 1, height: 1 } },
+    { id: "kitchen_counter", name: "Kitchen Counter", footprint: { width: 3, height: 1 } },
+  ],
   level_xp: [0, 0, 4, 14, 30, 55, 90, 140],
 };
 
@@ -2506,6 +2517,46 @@ const farmView: FarmView = {
   resident_task_queues: {
     woman: [],
     man: [],
+  },
+  house_interior: {
+    rooms: [
+      {
+        id: "living_room",
+        name: "Living Room",
+        width: 8,
+        height: 6,
+        tiles: [],
+        decoration_placements: [
+          { id: "living-room-sofa", decoration_id: "sofa", tile: { x: 1, y: 1 } },
+          { id: "living-room-rug", decoration_id: "rug", tile: { x: 2, y: 3 } },
+          { id: "living-room-plant", decoration_id: "plant", tile: { x: 6, y: 1 } },
+        ],
+      },
+      {
+        id: "kitchen",
+        name: "Kitchen",
+        width: 8,
+        height: 6,
+        tiles: [],
+        decoration_placements: [
+          { id: "kitchen-counter", decoration_id: "kitchen_counter", tile: { x: 0, y: 0 } },
+          { id: "kitchen-table", decoration_id: "table", tile: { x: 3, y: 2 } },
+          { id: "kitchen-chair", decoration_id: "chair", tile: { x: 5, y: 2 } },
+        ],
+      },
+      {
+        id: "bedroom",
+        name: "Bedroom",
+        width: 8,
+        height: 6,
+        tiles: [],
+        decoration_placements: [
+          { id: "bedroom-bed", decoration_id: "bed", tile: { x: 1, y: 1 } },
+          { id: "bedroom-cabinet", decoration_id: "cabinet", tile: { x: 5, y: 0 } },
+          { id: "bedroom-lamp", decoration_id: "lamp", tile: { x: 6, y: 2 } },
+        ],
+      },
+    ],
   },
   unlocks: [],
 };
