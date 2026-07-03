@@ -329,8 +329,18 @@ async fn websocket_elapsed_time_broadcasts_one_visible_ready_snapshot_to_all_cli
     });
     save_test_farm(&pool, initial.version, &farm).await;
 
-    let first_elapsed = websocket_farm_snapshot(&mut first_client).await;
-    let second_elapsed = websocket_farm_snapshot(&mut second_client).await;
+    let first_elapsed = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        websocket_farm_snapshot(&mut first_client),
+    )
+    .await
+    .unwrap();
+    let second_elapsed = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        websocket_farm_snapshot(&mut second_client),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(first_elapsed.version, 1);
     assert_eq!(second_elapsed.version, 1);
@@ -357,6 +367,77 @@ async fn websocket_elapsed_time_broadcasts_one_visible_ready_snapshot_to_all_cli
     )
     .await;
     assert!(no_duplicate.is_err());
+}
+
+#[tokio::test]
+async fn websocket_elapsed_time_persists_and_broadcasts_resident_task_completion() {
+    let (addr, _server, pool) = websocket_test_server().await;
+    let (mut first_client, initial) = connect_gameplay_websocket(addr).await;
+    let (mut second_client, _) = connect_gameplay_websocket(addr).await;
+
+    send_websocket_json(
+        &mut first_client,
+        &WebsocketClientMessage::SubmitCommand {
+            request_id: "plant-resident-task".to_owned(),
+            expected_version: initial.version,
+            command: FarmCommand::PlantCrop {
+                plot_id: "plot-1".to_owned(),
+                crop_id: "wheat".to_owned(),
+            },
+        },
+    )
+    .await;
+    let planted: WebsocketServerMessage = websocket_json(&mut first_client).await;
+    assert!(matches!(
+        planted,
+        WebsocketServerMessage::CommandResponse {
+            accepted: true,
+            version: 1,
+            ..
+        }
+    ));
+    let _ = websocket_farm_snapshot(&mut first_client).await;
+    let _ = websocket_farm_snapshot(&mut second_client).await;
+
+    let ready_at_ms = chrono::Utc::now().timestamp_millis() + 150;
+    let mut farm = load_saved_farm(&pool).await;
+    farm.last_update_ms = ready_at_ms - 1_000;
+    farm.resident_task_queues
+        .get_mut("woman")
+        .unwrap()
+        .first_mut()
+        .unwrap()
+        .ready_at_ms = ready_at_ms;
+    save_test_farm(&pool, 1, &farm).await;
+
+    let first_elapsed = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        websocket_farm_snapshot(&mut first_client),
+    )
+    .await
+    .unwrap();
+    let second_elapsed = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        websocket_farm_snapshot(&mut second_client),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(first_elapsed.version, 2);
+    assert_eq!(second_elapsed.version, 2);
+    assert_eq!(second_elapsed.view, first_elapsed.view);
+    assert!(first_elapsed.view.field_plots[0].crop.is_some());
+    assert!(first_elapsed.view.resident_task_queues["woman"].is_empty());
+
+    let saved_version: i64 =
+        sqlx::query_scalar("SELECT version FROM farm_save WHERE id = 'local-farm'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(saved_version, 2);
+    let saved = load_saved_farm(&pool).await;
+    assert!(saved.field_plots[0].crop.is_some());
+    assert!(saved.resident_task_queues["woman"].is_empty());
 }
 
 #[tokio::test]

@@ -45,6 +45,90 @@ fn demo_runtime_persists_a_local_save() {
 }
 
 #[test]
+fn demo_runtime_ticks_completed_resident_tasks_and_preserves_save_state() {
+    let mut runtime = DemoFarmRuntime::new(None, 1_000.0);
+
+    command(
+        &mut runtime,
+        0,
+        FarmCommand::RenameResident {
+            resident_id: "woman".to_owned(),
+            display_name: "Ada".to_owned(),
+        },
+        1_000.0,
+    );
+    command(
+        &mut runtime,
+        1,
+        FarmCommand::SelectResident {
+            resident_id: "man".to_owned(),
+        },
+        1_000.0,
+    );
+    command(
+        &mut runtime,
+        2,
+        FarmCommand::SweepPlant {
+            crop_id: "wheat".to_owned(),
+            plot_ids: vec!["plot-1".to_owned(), "plot-2".to_owned()],
+        },
+        1_000.0,
+    );
+
+    let queued = farm(&mut runtime, 2_000.0);
+    assert_eq!(queued.version, 3);
+    assert_eq!(queued.view.selected_resident_id, "man");
+    assert_eq!(queued.view.resident_task_queues["man"].len(), 1);
+    assert_eq!(queued.view.resident_task_queues["man"][0].steps.len(), 2);
+
+    let ticked = farm(&mut runtime, 3_000.0);
+    assert_eq!(ticked.version, 4);
+    assert!(ticked.view.field_plots[0].crop.is_some());
+    assert_eq!(ticked.view.resident_task_queues["man"][0].steps.len(), 1);
+
+    let save = runtime.save_json();
+    let mut restored = DemoFarmRuntime::new(Some(save), 3_500.0);
+    let restored_farm = farm(&mut restored, 3_500.0);
+
+    assert_eq!(restored_farm.version, 4);
+    assert_eq!(restored_farm.view.selected_resident_id, "man");
+    assert_eq!(restored_farm.view.residents[0].display_name, "Ada");
+    assert!(restored_farm.view.field_plots[0].crop.is_some());
+    assert_eq!(
+        restored_farm.view.resident_task_queues["man"][0]
+            .steps
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn demo_runtime_loads_old_saves_with_default_residents_and_empty_queues() {
+    let runtime = DemoFarmRuntime::new(None, 1_000.0);
+    let mut save: serde_json::Value = serde_json::from_str(&runtime.save_json()).unwrap();
+    let farm_json = save["farm"].as_object_mut().unwrap();
+    farm_json.remove("residents");
+    farm_json.remove("selected_resident_id");
+    farm_json.remove("resident_task_queues");
+
+    let mut restored = DemoFarmRuntime::new(Some(save.to_string()), 2_000.0);
+    let restored_farm = farm(&mut restored, 2_000.0);
+
+    assert_eq!(restored_farm.view.selected_resident_id, "woman");
+    assert_eq!(
+        restored_farm
+            .view
+            .residents
+            .iter()
+            .map(|resident| resident.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["woman", "man"]
+    );
+    assert!(restored_farm.view.resident_task_queues["woman"].is_empty());
+    assert!(restored_farm.view.resident_task_queues["man"].is_empty());
+}
+
+#[test]
 fn demo_runtime_supports_crop_and_bakery_loop() {
     let mut runtime = DemoFarmRuntime::new(None, 1_000.0);
 

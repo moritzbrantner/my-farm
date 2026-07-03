@@ -49,7 +49,7 @@ impl DemoFarmRuntime {
 
     pub fn farm_json(&mut self, now_ms: f64) -> String {
         let now_ms = now_ms_to_i64(now_ms);
-        apply_elapsed(&mut self.farm, &self.catalog, now_ms);
+        self.tick_elapsed(now_ms);
         serde_json::to_string(&FarmResponse {
             version: self.version,
             view: farm_view(&self.farm, &self.catalog),
@@ -112,6 +112,13 @@ impl DemoFarmRuntime {
 }
 
 impl DemoFarmRuntime {
+    fn tick_elapsed(&mut self, now_ms: i64) {
+        let events = apply_elapsed(&mut self.farm, &self.catalog, now_ms);
+        if !events.is_empty() {
+            self.version += 1;
+        }
+    }
+
     fn rejected_response(&self, message: &str) -> String {
         serde_json::to_string(&CommandResponse {
             accepted: false,
