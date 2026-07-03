@@ -1107,6 +1107,7 @@ export function App() {
             catalog={catalog}
             view={view}
             nowMs={nowMs}
+            visualClockPaused={gameplayPaused}
             selection={selection}
             activeFieldTool={activeFieldTool}
             buildPlacement={buildPlacement}

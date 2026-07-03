@@ -34,6 +34,7 @@ import {
 } from "../game/structureStatus";
 import {
   currentResidentScenePose,
+  hasActiveResidentWalk,
 } from "../game/residentTasks";
 
 const MOVE_TILE_BLOCKED_COLOR = "#a9333f";
@@ -47,6 +48,7 @@ type Props = {
   catalog: CatalogDocument;
   view: FarmView;
   nowMs: number;
+  visualClockPaused: boolean;
   selection: Selection;
   activeFieldTool: ActiveFieldTool;
   buildPlacement: BuildPlacementState;
@@ -70,6 +72,7 @@ export function FarmScene({
   catalog,
   view,
   nowMs,
+  visualClockPaused,
   selection,
   activeFieldTool,
   buildPlacement,
@@ -285,7 +288,7 @@ export function FarmScene({
             }}
           />
         ) : null}
-        <FarmResidents view={view} nowMs={nowMs} />
+        <FarmResidents view={view} nowMs={nowMs} visualClockPaused={visualClockPaused} />
         {movingStructure && hoverTile ? (
           <PlacementPreview
             tile={hoverTile}
@@ -312,9 +315,18 @@ export function FarmScene({
   );
 }
 
-function FarmResidents({ view, nowMs }: { view: FarmView; nowMs: number }) {
+function FarmResidents({
+  view,
+  nowMs,
+  visualClockPaused,
+}: {
+  view: FarmView;
+  nowMs: number;
+  visualClockPaused: boolean;
+}) {
+  const residentNowMs = useResidentVisualNowMs(view, nowMs, visualClockPaused);
   const residents = view.residents.slice(0, 2).map((resident, index): FarmResidentPresentation => {
-    const pose = currentResidentScenePose(view, resident.id, nowMs);
+    const pose = currentResidentScenePose(view, resident.id, residentNowMs);
     const offset = residentVisualOffset(index, pose.state);
     const position: [number, number, number] = [
       tileToWorld(pose.tile.x) + offset[0],
@@ -339,6 +351,39 @@ function FarmResidents({ view, nowMs }: { view: FarmView; nowMs: number }) {
       ))}
     </group>
   );
+}
+
+function useResidentVisualNowMs(view: FarmView, nowMs: number, paused: boolean) {
+  const [visualNowMs, setVisualNowMs] = useState(nowMs);
+
+  useEffect(() => {
+    setVisualNowMs(paused ? nowMs : Date.now());
+  }, [nowMs, paused, view]);
+
+  useEffect(() => {
+    if (paused) {
+      return;
+    }
+
+    let frame = 0;
+
+    const tick = () => {
+      const nextNowMs = Date.now();
+      setVisualNowMs(nextNowMs);
+      if (hasActiveResidentWalk(view, nextNowMs)) {
+        frame = window.requestAnimationFrame(tick);
+      }
+    };
+
+    if (!hasActiveResidentWalk(view, Date.now())) {
+      return;
+    }
+
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [paused, view]);
+
+  return visualNowMs;
 }
 
 function StaticFarmHouse({

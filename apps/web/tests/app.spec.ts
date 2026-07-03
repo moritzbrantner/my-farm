@@ -457,32 +457,33 @@ test("renders both farm residents idle near the Farmhouse", async ({ page }) => 
 });
 
 test("moves a resident toward the current task target over authoritative task time", async ({ page }) => {
-  const now = Date.now();
+  const startedAt = Date.now() + 1_500;
   const view: FarmView = {
     ...farmView,
     resident_locations: {
       ...farmView.resident_locations,
-      woman: { x: 0, y: 2 },
+      woman: { x: 0, y: 3 },
     },
     resident_task_queues: {
       woman: [
         {
           id: "task-1",
           kind: { type: "field_work" },
-          started_at_ms: now - 400,
-          ready_at_ms: now + 2_000,
+          started_at_ms: startedAt,
+          ready_at_ms: startedAt + 10_000,
           steps: [
             taskStep({
               reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
               work: { type: "plant_crop", crop_id: "wheat" },
               approach_tile: { x: 0, y: 0 },
               walk_path: [
+                { x: 0, y: 2 },
                 { x: 0, y: 1 },
                 { x: 0, y: 0 },
               ],
-              walk_duration_ms: 2_400,
-              work_duration_ms: 0,
-              duration_ms: 2_400,
+              walk_duration_ms: 8_000,
+              work_duration_ms: 2_000,
+              duration_ms: 10_000,
             }),
           ],
         },
@@ -496,6 +497,20 @@ test("moves a resident toward the current task target over authoritative task ti
   const resident = page.getByTestId("farm-scene-resident-woman");
   await expect(resident).toHaveAttribute("data-resident-state", "walking");
   await expect(resident).toHaveAttribute("data-resident-target", "field:plot-1");
+  await page.waitForTimeout(Math.max(0, startedAt + 500 - Date.now()));
+
+  const firstCenter = await elementCenter(resident);
+  await page.waitForTimeout(700);
+  const secondCenter = await elementCenter(resident);
+  expect(distanceBetween(firstCenter, secondCenter)).toBeGreaterThan(3);
+
+  await page.waitForTimeout(700);
+  const thirdCenter = await elementCenter(resident);
+  expect(distanceBetween(secondCenter, thirdCenter)).toBeGreaterThan(3);
+  await expect(resident).toHaveAttribute("data-resident-state", "walking");
+
+  await page.waitForTimeout(Math.max(0, startedAt + 8_200 - Date.now()));
+  await expect(resident).toHaveAttribute("data-resident-state", "working");
 });
 
 test("renders resident as working after walking to the approach tile", async ({ page }) => {

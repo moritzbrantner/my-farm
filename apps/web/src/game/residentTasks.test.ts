@@ -2,7 +2,7 @@
 
 import { expect, test } from "bun:test";
 import type { FarmView, ResidentTask } from "../types";
-import { currentResidentScenePose, interpolatePath } from "./residentTasks";
+import { currentResidentScenePose, hasActiveResidentWalk, interpolatePath } from "./residentTasks";
 
 test("interpolates resident walking along stored path", () => {
   const view = farmViewWithTask({
@@ -77,6 +77,75 @@ test("path interpolation clamps to endpoints", () => {
 
   expect(interpolatePath({ x: 0, y: 0 }, path, -1)).toEqual({ x: 0, y: 0 });
   expect(interpolatePath({ x: 0, y: 0 }, path, 1.5)).toEqual({ x: 2, y: 0 });
+});
+
+test("detects active resident walking while a path step is in progress", () => {
+  const view = farmViewWithTask({
+    id: "task-1",
+    kind: { type: "field_work" },
+    started_at_ms: 1_000,
+    ready_at_ms: 4_000,
+    steps: [
+      {
+        reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+        work: { type: "plant_crop", crop_id: "wheat" },
+        approach_tile: { x: 10, y: 10 },
+        walk_path: [{ x: 10, y: 10 }],
+        walk_duration_ms: 1_000,
+        work_duration_ms: 2_000,
+        duration_ms: 3_000,
+      },
+    ],
+  });
+
+  expect(hasActiveResidentWalk(view, 1_500)).toBe(true);
+});
+
+test("does not report active resident walking after the walk phase ends", () => {
+  const view = farmViewWithTask({
+    id: "task-1",
+    kind: { type: "field_work" },
+    started_at_ms: 1_000,
+    ready_at_ms: 4_000,
+    steps: [
+      {
+        reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+        work: { type: "plant_crop", crop_id: "wheat" },
+        approach_tile: { x: 10, y: 10 },
+        walk_path: [{ x: 10, y: 10 }],
+        walk_duration_ms: 1_000,
+        work_duration_ms: 2_000,
+        duration_ms: 3_000,
+      },
+    ],
+  });
+
+  expect(hasActiveResidentWalk(view, 2_000)).toBe(false);
+});
+
+test("does not report active resident walking for legacy steps without paths", () => {
+  const view = farmViewWithTask({
+    id: "task-1",
+    kind: { type: "field_work" },
+    started_at_ms: 1_000,
+    ready_at_ms: 4_000,
+    steps: [
+      {
+        reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+        work: { type: "plant_crop", crop_id: "wheat" },
+        walk_path: [],
+        walk_duration_ms: 0,
+        work_duration_ms: 3_000,
+        duration_ms: 3_000,
+      },
+    ],
+  });
+
+  expect(hasActiveResidentWalk(view, 1_500)).toBe(false);
+});
+
+test("does not report active resident walking while residents are idle", () => {
+  expect(hasActiveResidentWalk(farmViewWithTask(null), 1_500)).toBe(false);
 });
 
 function farmViewWithTask(task: ResidentTask | null): FarmView {

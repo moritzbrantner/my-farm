@@ -93,6 +93,18 @@ export function currentResidentScenePose(
   };
 }
 
+export function hasActiveResidentWalk(view: FarmView, nowMs: number): boolean {
+  return view.residents.slice(0, 2).some((resident) => {
+    const currentTask = view.resident_task_queues[resident.id]?.[0] ?? null;
+    const currentStep = currentTask?.steps[0] ?? null;
+    if (!currentTask || !currentStep || currentStep.walk_path.length === 0) {
+      return false;
+    }
+    const walkEndsAtMs = currentTask.started_at_ms + currentStep.walk_duration_ms;
+    return nowMs < walkEndsAtMs && nowMs < currentTask.ready_at_ms;
+  });
+}
+
 export function residentTaskProgress(task: ResidentTask, nowMs: number) {
   return progressBetween(task.started_at_ms, task.ready_at_ms, nowMs);
 }
