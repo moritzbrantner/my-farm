@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createFarmClient, type FarmConnectionStatus } from "./api";
 import { FarmScene } from "./components/FarmScene";
+import { HouseInteriorScene, type HouseRoomId } from "./components/HouseInteriorScene";
 import { ResourceIcon } from "./components/ResourceIcon";
 import {
   availableRecipes,
@@ -86,6 +87,7 @@ type StructureBuildCardMeta = {
 };
 type ActiveFieldTool = { type: "default" } | { type: "plant"; cropId: string } | { type: "harvest" };
 type GameScreen = "main_menu" | "playing";
+type PlayScene = "farm" | "house_interior";
 type MainMenuPanel = "home" | "settings" | "wiki" | "account";
 type MarketTradeMode = "buy" | "sell";
 type PlantSweepState = {
@@ -167,6 +169,8 @@ export function App() {
   const [harvestSweep, setHarvestSweep] = useState<HarvestSweepState>(null);
   const [harvestMode, setHarvestMode] = useState<SweepHarvestMode>("matching_crop");
   const [screen, setScreen] = useState<GameScreen>("main_menu");
+  const [playScene, setPlayScene] = useState<PlayScene>("farm");
+  const [selectedHouseRoom, setSelectedHouseRoom] = useState<HouseRoomId>("living_room");
   const [guidedTutorialStep, setGuidedTutorialStep] = useState<number | null>(null);
   const [marketOpen, setMarketOpen] = useState(false);
   const [message, setMessage] = useState(
@@ -592,6 +596,19 @@ export function App() {
     setMessage("Default tool");
   }, []);
 
+  const enterHouseInterior = useCallback(() => {
+    setSelection({ type: "farmhouse" });
+    setFieldMenu(null);
+    setStructureMenu(null);
+    setPlayScene("house_interior");
+    setMessage("Entered House Interior");
+  }, []);
+
+  const returnToFarmScene = useCallback(() => {
+    setPlayScene("farm");
+    setMessage("Returned to Farm");
+  }, []);
+
   const selectPlantFieldTool = useCallback(
     (cropId: string) => {
       setActiveFieldTool({ type: "plant", cropId });
@@ -930,85 +947,96 @@ export function App() {
   return (
     <main className={`app ${appToolClass}`}>
       <div className="gameplay-surface" {...(gameplayPaused ? { inert: "" } : {})}>
-        <FarmScene
-          catalog={catalog}
-          view={view}
-          nowMs={nowMs}
-          selection={selection}
-          activeFieldTool={activeFieldTool}
-          buildPlacement={buildPlacement}
-          movingStructure={movingStructure}
-          plantSweep={plantSweep}
-          harvestSweep={harvestSweep}
-          onSelect={select}
-          onOpenFieldMenu={openFieldMenu}
-          onOpenStructureMenu={openStructureMenu}
-          onPlaceNewStructure={placeNewStructure}
-          onPlaceStructure={placeMovingStructure}
-          onStartPlantSweep={startPlantSweep}
-          onEnterPlantSweepPlot={enterPlantSweepPlot}
-          onStartHarvestSweep={startHarvestSweep}
-          onEnterHarvestSweepPlot={enterHarvestSweepPlot}
-          onCancelFieldToolAction={cancelFieldToolAction}
-        />
+        {screen === "playing" && playScene === "house_interior" ? (
+          <HouseInteriorScene
+            selectedRoom={selectedHouseRoom}
+            onSelectRoom={setSelectedHouseRoom}
+            onBackToFarm={returnToFarmScene}
+          />
+        ) : (
+          <FarmScene
+            catalog={catalog}
+            view={view}
+            nowMs={nowMs}
+            selection={selection}
+            activeFieldTool={activeFieldTool}
+            buildPlacement={buildPlacement}
+            movingStructure={movingStructure}
+            plantSweep={plantSweep}
+            harvestSweep={harvestSweep}
+            onSelect={select}
+            onOpenFieldMenu={openFieldMenu}
+            onOpenStructureMenu={openStructureMenu}
+            onPlaceNewStructure={placeNewStructure}
+            onPlaceStructure={placeMovingStructure}
+            onStartPlantSweep={startPlantSweep}
+            onEnterPlantSweepPlot={enterPlantSweepPlot}
+            onStartHarvestSweep={startHarvestSweep}
+            onEnterHarvestSweepPlot={enterHarvestSweepPlot}
+            onCancelFieldToolAction={cancelFieldToolAction}
+            onEnterHouseInterior={enterHouseInterior}
+          />
+        )}
         {screen === "playing" ? (
-          <>
-            <TopBar
-              view={view}
-              message={message}
-              connectionStatus={connectionStatus}
-              onOpenMenu={openMainMenu}
-            />
-            <aside className="side-panel">
-              <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
-              <ResidentSelector catalog={catalog} view={view} nowMs={nowMs} send={send} />
-              <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
-              {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
-              <FieldTools
-                catalog={catalog}
+          playScene === "farm" ? (
+            <>
+              <TopBar
                 view={view}
-                activeFieldTool={activeFieldTool}
-                buildToolSelected={buildToolSelected}
-                harvestMode={harvestMode}
-                plantSweep={plantSweep}
-                onDefault={selectDefaultFieldTool}
-                onPlant={selectPlantFieldTool}
-                onHarvest={selectHarvestFieldTool}
-                onHarvestMode={selectHarvestMode}
-                onBuild={selectBuildTool}
+                message={message}
+                connectionStatus={connectionStatus}
+                onOpenMenu={openMainMenu}
               />
-              <SelectionPanel
-                catalog={catalog}
-                view={view}
-                selection={selection}
-                nowMs={nowMs}
-                send={send}
-                demoMode={demoMode}
-              />
-              {!demoMode && selection?.type === "delivery_board" ? (
-                <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
+              <aside className="side-panel">
+                <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
+                <ResidentSelector catalog={catalog} view={view} nowMs={nowMs} send={send} />
+                <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
+                {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
+                <FieldTools
+                  catalog={catalog}
+                  view={view}
+                  activeFieldTool={activeFieldTool}
+                  buildToolSelected={buildToolSelected}
+                  harvestMode={harvestMode}
+                  plantSweep={plantSweep}
+                  onDefault={selectDefaultFieldTool}
+                  onPlant={selectPlantFieldTool}
+                  onHarvest={selectHarvestFieldTool}
+                  onHarvestMode={selectHarvestMode}
+                  onBuild={selectBuildTool}
+                />
+                <SelectionPanel
+                  catalog={catalog}
+                  view={view}
+                  selection={selection}
+                  nowMs={nowMs}
+                  send={send}
+                  demoMode={demoMode}
+                />
+                {!demoMode && selection?.type === "delivery_board" ? (
+                  <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
+                ) : null}
+              </aside>
+              {!demoMode && marketOpen ? (
+                <FarmersMarket
+                  catalog={catalog}
+                  view={view}
+                  send={send}
+                  onClose={() => setMarketOpen(false)}
+                />
               ) : null}
-            </aside>
-            {!demoMode && marketOpen ? (
-              <FarmersMarket
-                catalog={catalog}
-                view={view}
-                send={send}
-                onClose={() => setMarketOpen(false)}
-              />
-            ) : null}
-            {buildToolSelected ? (
-              <BuildTray
-                catalog={catalog}
-                view={view}
-                selectedKind={selectedBuildKind}
-                buildPlacement={buildPlacement}
-                demoMode={demoMode}
-                onInspectKind={inspectBuildKind}
-                onSelectKind={selectBuildKind}
-              />
-            ) : null}
-          </>
+              {buildToolSelected ? (
+                <BuildTray
+                  catalog={catalog}
+                  view={view}
+                  selectedKind={selectedBuildKind}
+                  buildPlacement={buildPlacement}
+                  demoMode={demoMode}
+                  onInspectKind={inspectBuildKind}
+                  onSelectKind={selectBuildKind}
+                />
+              ) : null}
+            </>
+          ) : null
         ) : (
           <MainMenu
             view={view}

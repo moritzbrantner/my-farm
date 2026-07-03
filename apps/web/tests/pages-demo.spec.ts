@@ -39,7 +39,7 @@ test("pages demo persists a Farmhouse Oven production save in localStorage", asy
   await expect(page.getByRole("region", { name: "Main menu" })).toBeVisible();
   await page.getByRole("button", { name: "Start Farm" }).click();
 
-  await expect(page.getByText(/Level 2/)).toBeVisible();
+  await expect(page.locator(".top-bar").getByText(/Level \d+/)).toBeVisible();
   await expect(page.getByText("Bread")).toBeVisible();
   await expect(page.getByLabel("Farmhouse structure")).toBeVisible();
 
