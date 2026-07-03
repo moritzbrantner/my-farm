@@ -123,10 +123,10 @@ async fn websocket_command_persists_journal_and_broadcasts_snapshot_to_connected
     assert!(accepted);
     assert_eq!(version, 1);
     assert!(error.is_none());
-    assert!(events.contains(&FarmEvent::CropPlanted {
-        crop_id: "wheat".to_owned(),
-    }));
+    assert!(events.is_empty());
     assert_eq!(inventory_quantity_from_view(&view, "wheat"), 5);
+    assert!(view.field_plots[0].crop.is_none());
+    assert_eq!(view.resident_task_queues["woman"].len(), 1);
 
     let first_broadcast = websocket_farm_snapshot(&mut first_client).await;
     let second_broadcast = websocket_farm_snapshot(&mut second_client).await;

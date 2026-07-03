@@ -21,8 +21,19 @@ fn player_can_plant_and_harvest_wheat() {
     );
     assert!(planted.accepted);
     assert_eq!(inventory_quantity(&farm, "wheat"), 5);
+    assert!(farm.field_plots[0].crop.is_none());
+    assert_eq!(farm.resident_task_queues["woman"].len(), 1);
 
-    let ready_at = scaled_duration_ms(120, catalog.balance.time_scale);
+    apply_elapsed(&mut farm, &catalog, 1_999);
+    assert!(farm.field_plots[0].crop.is_none());
+
+    apply_elapsed(&mut farm, &catalog, 2_000);
+    assert_eq!(
+        farm.field_plots[0].crop.as_ref().unwrap().item_id,
+        "wheat".to_owned()
+    );
+
+    let ready_at = 2_000 + scaled_duration_ms(120, catalog.balance.time_scale);
     let harvested = apply_command(
         &mut farm,
         &catalog,
@@ -32,18 +43,23 @@ fn player_can_plant_and_harvest_wheat() {
         ready_at,
     );
     assert!(harvested.accepted);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 5);
+    assert!(farm.field_plots[0].crop.is_some());
+
+    apply_elapsed(&mut farm, &catalog, ready_at + 1_999);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 5);
+    assert!(farm.field_plots[0].crop.is_some());
+
+    apply_elapsed(&mut farm, &catalog, ready_at + 2_000);
     assert_eq!(inventory_quantity(&farm, "wheat"), 7);
-    assert!(harvested.events.contains(&FarmEvent::CropHarvested {
-        crop_id: "wheat".to_owned(),
-        quantity: 2,
-    }));
+    assert!(farm.field_plots[0].crop.is_none());
+    assert!(harvested.events.is_empty());
 }
 
 #[test]
-fn storage_capacity_blocks_harvest() {
+fn field_plot_tasks_reserve_targets_and_storage_until_completion() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
-    farm.silo_capacity = 6;
 
     let planted = apply_command(
         &mut farm,
@@ -56,6 +72,330 @@ fn storage_capacity_blocks_harvest() {
     );
     assert!(planted.accepted);
 
+    let duplicate_plant = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(!duplicate_plant.accepted);
+    assert_eq!(
+        duplicate_plant.error.unwrap().message,
+        "field plot is reserved"
+    );
+
+    apply_elapsed(&mut farm, &catalog, 2_000);
+    let ready_at = 2_000 + scaled_duration_ms(120, catalog.balance.time_scale);
+    farm.silo_capacity = 10;
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::HarvestCrop {
+            plot_id: "plot-1".to_owned(),
+        },
+        ready_at,
+    );
+    assert!(harvested.accepted);
+
+    let duplicate_harvest = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::HarvestCrop {
+            plot_id: "plot-1".to_owned(),
+        },
+        ready_at,
+    );
+    assert!(!duplicate_harvest.accepted);
+    assert_eq!(
+        duplicate_harvest.error.unwrap().message,
+        "field plot is reserved"
+    );
+
+    let bought = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyMarketItem {
+            item_id: "wheat".to_owned(),
+            quantity: 1,
+        },
+        ready_at,
+    );
+    assert!(!bought.accepted);
+    assert_eq!(bought.error.unwrap().message, "storage is full");
+}
+
+#[test]
+fn sweep_field_work_queues_one_ordered_batch_per_selected_resident() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let planted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepPlant {
+            crop_id: "wheat".to_owned(),
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+            ],
+        },
+        0,
+    );
+    assert!(planted.accepted);
+    assert_eq!(farm.resident_task_queues["woman"].len(), 1);
+    assert_eq!(farm.resident_task_queues["woman"][0].steps.len(), 3);
+    assert!(farm.field_plots[0].crop.is_none());
+    assert!(farm.field_plots[1].crop.is_none());
+
+    apply_elapsed(&mut farm, &catalog, 2_000);
+    assert!(farm.field_plots[0].crop.is_some());
+    assert!(farm.field_plots[1].crop.is_none());
+    assert_eq!(farm.resident_task_queues["woman"][0].steps.len(), 2);
+
+    let selected = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SelectResident {
+            resident_id: "man".to_owned(),
+        },
+        2_000,
+    );
+    assert!(selected.accepted);
+    let queued_for_man = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-4".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        2_000,
+    );
+    assert!(queued_for_man.accepted);
+    assert_eq!(farm.resident_task_queues["woman"].len(), 1);
+    assert_eq!(farm.resident_task_queues["man"].len(), 1);
+
+    apply_elapsed(&mut farm, &catalog, 4_000);
+    assert!(farm.field_plots[1].crop.is_some());
+    assert!(farm.field_plots[2].crop.is_none());
+    assert!(farm.field_plots[3].crop.is_some());
+
+    apply_elapsed(&mut farm, &catalog, 6_000);
+    assert!(farm.field_plots[2].crop.is_some());
+
+    let ready_at = 6_000 + scaled_duration_ms(120, catalog.balance.time_scale);
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepHarvest {
+            harvest_mode: Some(SweepHarvestMode::MatchingCrop),
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+            ],
+        },
+        ready_at,
+    );
+    assert!(harvested.accepted);
+    assert_eq!(farm.resident_task_queues["man"].len(), 1);
+    assert_eq!(farm.resident_task_queues["man"][0].steps.len(), 3);
+    assert!(farm.field_plots[0].crop.is_some());
+
+    apply_elapsed(&mut farm, &catalog, ready_at + 2_000);
+    assert!(farm.field_plots[0].crop.is_none());
+    assert!(farm.field_plots[1].crop.is_some());
+    apply_elapsed(&mut farm, &catalog, ready_at + 6_000);
+    assert!(farm.field_plots[1].crop.is_none());
+    assert!(farm.field_plots[2].crop.is_none());
+    assert!(farm.resident_task_queues["man"].is_empty());
+    assert_eq!(inventory_quantity(&farm, "wheat"), 8);
+}
+
+#[test]
+fn busy_resident_accepts_more_field_work_without_overlapping_fifo_tasks() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let first = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(first.accepted);
+
+    let second = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-2".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(second.accepted);
+    assert_eq!(farm.resident_task_queues["woman"].len(), 2);
+
+    apply_elapsed(&mut farm, &catalog, 2_000);
+    assert!(farm.field_plots[0].crop.is_some());
+    assert!(farm.field_plots[1].crop.is_none());
+    assert_eq!(farm.resident_task_queues["woman"].len(), 1);
+
+    apply_elapsed(&mut farm, &catalog, 4_000);
+    assert!(farm.field_plots[1].crop.is_some());
+    assert!(farm.resident_task_queues["woman"].is_empty());
+}
+
+#[test]
+fn queued_sweep_harvest_keeps_matching_and_all_crops_validation() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+
+    for (plot_id, crop_id) in [
+        ("plot-1", "wheat"),
+        ("plot-2", "corn"),
+        ("plot-3", "wheat"),
+        ("plot-4", "corn"),
+    ] {
+        let planted = apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::PlantCrop {
+                plot_id: plot_id.to_owned(),
+                crop_id: crop_id.to_owned(),
+            },
+            0,
+        );
+        assert!(planted.accepted);
+    }
+    apply_elapsed(&mut farm, &catalog, 8_000);
+    let ready_at = 8_000 + scaled_duration_ms(300, catalog.balance.time_scale);
+    farm.field_plots[3].crop.as_mut().unwrap().ready_at_ms = ready_at + 1;
+
+    let matching = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepHarvest {
+            harvest_mode: Some(SweepHarvestMode::MatchingCrop),
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+                "plot-4".to_owned(),
+            ],
+        },
+        ready_at,
+    );
+    assert!(matching.accepted);
+    assert_eq!(farm.resident_task_queues["woman"][0].steps.len(), 2);
+
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+    for (plot_id, crop_id) in [
+        ("plot-1", "wheat"),
+        ("plot-2", "corn"),
+        ("plot-3", "wheat"),
+        ("plot-4", "corn"),
+    ] {
+        let planted = apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::PlantCrop {
+                plot_id: plot_id.to_owned(),
+                crop_id: crop_id.to_owned(),
+            },
+            0,
+        );
+        assert!(planted.accepted);
+    }
+    apply_elapsed(&mut farm, &catalog, 8_000);
+    let ready_at = 8_000 + scaled_duration_ms(300, catalog.balance.time_scale);
+    farm.field_plots[3].crop.as_mut().unwrap().ready_at_ms = ready_at + 1;
+
+    let all_crops = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SweepHarvest {
+            harvest_mode: Some(SweepHarvestMode::AllCrops),
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+                "plot-4".to_owned(),
+            ],
+        },
+        ready_at,
+    );
+    assert!(all_crops.accepted);
+    assert_eq!(farm.resident_task_queues["woman"][0].steps.len(), 3);
+}
+
+#[test]
+fn apply_elapsed_returns_field_task_completion_events() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let planted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(planted.accepted);
+
+    let events = apply_elapsed(&mut farm, &catalog, 2_000);
+    assert_eq!(
+        events,
+        vec![FarmEvent::CropPlanted {
+            crop_id: "wheat".to_owned(),
+        }]
+    );
+
+    let ready_at = 2_000 + scaled_duration_ms(120, catalog.balance.time_scale);
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::HarvestCrop {
+            plot_id: "plot-1".to_owned(),
+        },
+        ready_at,
+    );
+    assert!(harvested.accepted);
+
+    let events = apply_elapsed(&mut farm, &catalog, ready_at + 2_000);
+    assert_eq!(
+        events,
+        vec![FarmEvent::CropHarvested {
+            crop_id: "wheat".to_owned(),
+            quantity: 2,
+        }]
+    );
+}
+
+#[test]
+fn crop_growth_timers_still_advance_independently_of_resident_tasks() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    farm.field_plots[0].crop = Some(my_farm_core::PlantedCrop {
+        item_id: "wheat".to_owned(),
+        planted_at_ms: 0,
+        ready_at_ms: scaled_duration_ms(120, catalog.balance.time_scale),
+    });
+
     let harvested = apply_command(
         &mut farm,
         &catalog,
@@ -63,6 +403,63 @@ fn storage_capacity_blocks_harvest() {
             plot_id: "plot-1".to_owned(),
         },
         scaled_duration_ms(120, catalog.balance.time_scale),
+    );
+    assert!(harvested.accepted);
+
+    apply_elapsed(
+        &mut farm,
+        &catalog,
+        scaled_duration_ms(120, catalog.balance.time_scale) + 2_000,
+    );
+    assert_eq!(inventory_quantity(&farm, "wheat"), 8);
+}
+
+#[test]
+fn queued_harvest_completion_emits_crop_harvested_event() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    farm.field_plots[0].crop = Some(my_farm_core::PlantedCrop {
+        item_id: "wheat".to_owned(),
+        planted_at_ms: 0,
+        ready_at_ms: 0,
+    });
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::HarvestCrop {
+            plot_id: "plot-1".to_owned(),
+        },
+        0,
+    );
+    assert!(harvested.accepted);
+
+    let events = apply_elapsed(&mut farm, &catalog, 2_000);
+    assert!(events.contains(&FarmEvent::CropHarvested {
+        crop_id: "wheat".to_owned(),
+        quantity: 2,
+    }));
+}
+
+#[test]
+fn storage_capacity_blocks_harvest() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.silo_capacity = 6;
+    farm.field_plots[0].crop = Some(my_farm_core::PlantedCrop {
+        item_id: "wheat".to_owned(),
+        planted_at_ms: 0,
+        ready_at_ms: 0,
+    });
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::HarvestCrop {
+            plot_id: "plot-1".to_owned(),
+        },
+        0,
     );
     assert!(!harvested.accepted);
     assert_eq!(
@@ -224,17 +621,12 @@ fn player_can_sweep_harvest_ready_wheat() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
 
-    for plot_id in ["plot-1", "plot-2", "plot-3"] {
-        let planted = apply_command(
-            &mut farm,
-            &catalog,
-            FarmCommand::PlantCrop {
-                plot_id: plot_id.to_owned(),
-                crop_id: "wheat".to_owned(),
-            },
-            0,
-        );
-        assert!(planted.accepted);
+    for plot_index in 0..3 {
+        farm.field_plots[plot_index].crop = Some(my_farm_core::PlantedCrop {
+            item_id: "wheat".to_owned(),
+            planted_at_ms: 0,
+            ready_at_ms: 0,
+        });
     }
 
     let harvested = apply_command(
@@ -248,31 +640,20 @@ fn player_can_sweep_harvest_ready_wheat() {
                 "plot-3".to_owned(),
             ],
         },
-        scaled_duration_ms(120, catalog.balance.time_scale),
+        0,
     );
 
     assert!(harvested.accepted);
-    assert_eq!(inventory_quantity(&farm, "wheat"), 9);
+    assert_eq!(farm.resident_task_queues["woman"].len(), 1);
+    assert_eq!(farm.resident_task_queues["woman"][0].steps.len(), 3);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 6);
+    assert!(farm.field_plots[0].crop.is_some());
+    apply_elapsed(&mut farm, &catalog, 6_000);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 12);
     assert!(farm.field_plots[0].crop.is_none());
     assert!(farm.field_plots[1].crop.is_none());
     assert!(farm.field_plots[2].crop.is_none());
-    assert_eq!(
-        harvested.events,
-        vec![
-            FarmEvent::CropHarvested {
-                crop_id: "wheat".to_owned(),
-                quantity: 2,
-            },
-            FarmEvent::CropHarvested {
-                crop_id: "wheat".to_owned(),
-                quantity: 2,
-            },
-            FarmEvent::CropHarvested {
-                crop_id: "wheat".to_owned(),
-                quantity: 2,
-            },
-        ]
-    );
+    assert!(harvested.events.is_empty());
 }
 
 #[test]
@@ -440,10 +821,17 @@ fn player_can_sweep_plant_empty_field_plots() {
 
     assert!(planted.accepted);
     assert_eq!(inventory_quantity(&farm, "wheat"), 3);
+    assert!(farm.field_plots[0].crop.is_none());
+    assert!(farm.field_plots[1].crop.is_none());
+    assert!(farm.field_plots[2].crop.is_none());
+    assert_eq!(farm.resident_task_queues["woman"].len(), 1);
+    assert_eq!(farm.resident_task_queues["woman"][0].steps.len(), 3);
+    assert!(planted.events.is_empty());
+
+    apply_elapsed(&mut farm, &catalog, 6_000);
     assert!(farm.field_plots[0].crop.is_some());
     assert!(farm.field_plots[1].crop.is_some());
     assert!(farm.field_plots[2].crop.is_some());
-    assert_eq!(planted.events.len(), 3);
 }
 
 #[test]
@@ -463,6 +851,7 @@ fn sweep_plant_skips_planted_fields_and_stops_when_seed_runs_out() {
         0,
     );
     assert!(planted_first.accepted);
+    apply_elapsed(&mut farm, &catalog, 2_000);
 
     let planted = apply_command(
         &mut farm,
@@ -482,6 +871,9 @@ fn sweep_plant_skips_planted_fields_and_stops_when_seed_runs_out() {
 
     assert!(planted.accepted);
     assert_eq!(inventory_quantity(&farm, "corn"), 0);
+    assert_eq!(farm.resident_task_queues["woman"].len(), 1);
+    assert_eq!(farm.resident_task_queues["woman"][0].steps.len(), 3);
+    apply_elapsed(&mut farm, &catalog, 8_000);
     assert_eq!(
         farm.field_plots[0].crop.as_ref().unwrap().item_id,
         "wheat".to_owned()
@@ -499,7 +891,7 @@ fn sweep_plant_skips_planted_fields_and_stops_when_seed_runs_out() {
         "corn".to_owned()
     );
     assert!(farm.field_plots[4].crop.is_none());
-    assert_eq!(planted.events.len(), 3);
+    assert!(planted.events.is_empty());
 }
 
 #[test]
@@ -530,25 +922,14 @@ fn sweep_harvest_only_harvests_matching_ready_crop() {
     farm.xp = 4;
     farm.level = 2;
 
-    for (plot_id, crop_id) in [
-        ("plot-1", "wheat"),
-        ("plot-2", "corn"),
-        ("plot-3", "wheat"),
-        ("plot-4", "wheat"),
-    ] {
-        let planted = apply_command(
-            &mut farm,
-            &catalog,
-            FarmCommand::PlantCrop {
-                plot_id: plot_id.to_owned(),
-                crop_id: crop_id.to_owned(),
-            },
-            0,
-        );
-        assert!(planted.accepted);
+    for (plot_index, crop_id) in [(0, "wheat"), (1, "corn"), (2, "wheat"), (3, "wheat")] {
+        farm.field_plots[plot_index].crop = Some(my_farm_core::PlantedCrop {
+            item_id: crop_id.to_owned(),
+            planted_at_ms: 0,
+            ready_at_ms: 0,
+        });
     }
-    farm.field_plots[3].crop.as_mut().unwrap().ready_at_ms =
-        scaled_duration_ms(120, catalog.balance.time_scale) + 1;
+    farm.field_plots[3].crop.as_mut().unwrap().ready_at_ms = 1;
 
     let harvested = apply_command(
         &mut farm,
@@ -562,16 +943,18 @@ fn sweep_harvest_only_harvests_matching_ready_crop() {
                 "plot-4".to_owned(),
             ],
         },
-        scaled_duration_ms(120, catalog.balance.time_scale),
+        0,
     );
 
     assert!(harvested.accepted);
+    assert_eq!(farm.resident_task_queues["woman"][0].steps.len(), 2);
+    apply_elapsed(&mut farm, &catalog, 4_000);
     assert!(farm.field_plots[0].crop.is_none());
     assert!(farm.field_plots[1].crop.is_some());
     assert!(farm.field_plots[2].crop.is_none());
     assert!(farm.field_plots[3].crop.is_some());
-    assert_eq!(inventory_quantity(&farm, "wheat"), 7);
-    assert_eq!(inventory_quantity(&farm, "corn"), 2);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 10);
+    assert_eq!(inventory_quantity(&farm, "corn"), 3);
 }
 
 #[test]
@@ -581,25 +964,14 @@ fn sweep_harvest_all_crops_harvests_mixed_ready_crops() {
     farm.xp = 4;
     farm.level = 2;
 
-    for (plot_id, crop_id) in [
-        ("plot-1", "wheat"),
-        ("plot-2", "corn"),
-        ("plot-3", "wheat"),
-        ("plot-4", "corn"),
-    ] {
-        let planted = apply_command(
-            &mut farm,
-            &catalog,
-            FarmCommand::PlantCrop {
-                plot_id: plot_id.to_owned(),
-                crop_id: crop_id.to_owned(),
-            },
-            0,
-        );
-        assert!(planted.accepted);
+    for (plot_index, crop_id) in [(0, "wheat"), (1, "corn"), (2, "wheat"), (3, "corn")] {
+        farm.field_plots[plot_index].crop = Some(my_farm_core::PlantedCrop {
+            item_id: crop_id.to_owned(),
+            planted_at_ms: 0,
+            ready_at_ms: 0,
+        });
     }
-    farm.field_plots[3].crop.as_mut().unwrap().ready_at_ms =
-        scaled_duration_ms(300, catalog.balance.time_scale) + 1;
+    farm.field_plots[3].crop.as_mut().unwrap().ready_at_ms = 1;
 
     let harvested = apply_command(
         &mut farm,
@@ -613,33 +985,19 @@ fn sweep_harvest_all_crops_harvests_mixed_ready_crops() {
                 "plot-4".to_owned(),
             ],
         },
-        scaled_duration_ms(300, catalog.balance.time_scale),
+        0,
     );
 
     assert!(harvested.accepted);
+    assert_eq!(farm.resident_task_queues["woman"][0].steps.len(), 3);
+    apply_elapsed(&mut farm, &catalog, 6_000);
     assert!(farm.field_plots[0].crop.is_none());
     assert!(farm.field_plots[1].crop.is_none());
     assert!(farm.field_plots[2].crop.is_none());
     assert!(farm.field_plots[3].crop.is_some());
-    assert_eq!(inventory_quantity(&farm, "wheat"), 8);
-    assert_eq!(inventory_quantity(&farm, "corn"), 3);
-    assert_eq!(
-        harvested.events,
-        vec![
-            FarmEvent::CropHarvested {
-                crop_id: "wheat".to_owned(),
-                quantity: 2,
-            },
-            FarmEvent::CropHarvested {
-                crop_id: "corn".to_owned(),
-                quantity: 2,
-            },
-            FarmEvent::CropHarvested {
-                crop_id: "wheat".to_owned(),
-                quantity: 2,
-            },
-        ]
-    );
+    assert_eq!(inventory_quantity(&farm, "wheat"), 10);
+    assert_eq!(inventory_quantity(&farm, "corn"), 5);
+    assert!(harvested.events.is_empty());
 }
 
 #[test]
@@ -647,18 +1005,14 @@ fn sweep_harvest_harvests_until_silo_full() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
 
-    for plot_id in ["plot-1", "plot-2", "plot-3"] {
-        let planted = apply_command(
-            &mut farm,
-            &catalog,
-            FarmCommand::PlantCrop {
-                plot_id: plot_id.to_owned(),
-                crop_id: "wheat".to_owned(),
-            },
-            0,
-        );
-        assert!(planted.accepted);
+    for plot_index in 0..3 {
+        farm.field_plots[plot_index].crop = Some(my_farm_core::PlantedCrop {
+            item_id: "wheat".to_owned(),
+            planted_at_ms: 0,
+            ready_at_ms: 0,
+        });
     }
+    farm.inventory.insert("wheat".to_owned(), 3);
     farm.silo_capacity = 9;
 
     let harvested = apply_command(
@@ -672,15 +1026,18 @@ fn sweep_harvest_harvests_until_silo_full() {
                 "plot-3".to_owned(),
             ],
         },
-        scaled_duration_ms(120, catalog.balance.time_scale),
+        0,
     );
 
     assert!(harvested.accepted);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 3);
+    assert_eq!(farm.resident_task_queues["woman"][0].steps.len(), 1);
+    apply_elapsed(&mut farm, &catalog, 2_000);
     assert_eq!(inventory_quantity(&farm, "wheat"), 5);
     assert!(farm.field_plots[0].crop.is_none());
     assert!(farm.field_plots[1].crop.is_some());
     assert!(farm.field_plots[2].crop.is_some());
-    assert_eq!(harvested.events.len(), 1);
+    assert!(harvested.events.is_empty());
 }
 
 #[test]
@@ -688,17 +1045,11 @@ fn sweep_harvest_rejects_when_no_swept_plot_fits() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
     farm.silo_capacity = 6;
-
-    let planted = apply_command(
-        &mut farm,
-        &catalog,
-        FarmCommand::PlantCrop {
-            plot_id: "plot-1".to_owned(),
-            crop_id: "wheat".to_owned(),
-        },
-        0,
-    );
-    assert!(planted.accepted);
+    farm.field_plots[0].crop = Some(my_farm_core::PlantedCrop {
+        item_id: "wheat".to_owned(),
+        planted_at_ms: 0,
+        ready_at_ms: 0,
+    });
 
     let harvested = apply_command(
         &mut farm,
@@ -707,7 +1058,7 @@ fn sweep_harvest_rejects_when_no_swept_plot_fits() {
             harvest_mode: Some(SweepHarvestMode::MatchingCrop),
             plot_ids: vec!["plot-1".to_owned()],
         },
-        scaled_duration_ms(120, catalog.balance.time_scale),
+        0,
     );
 
     assert!(!harvested.accepted);
@@ -757,6 +1108,7 @@ fn crop_unlocks_grant_starter_stock_when_silo_has_room() {
         0,
     );
     assert!(planted.accepted);
+    apply_elapsed(&mut farm, &catalog, 2_000);
 
     let harvested = apply_command(
         &mut farm,
@@ -764,21 +1116,22 @@ fn crop_unlocks_grant_starter_stock_when_silo_has_room() {
         FarmCommand::HarvestCrop {
             plot_id: "plot-1".to_owned(),
         },
-        scaled_duration_ms(120, catalog.balance.time_scale),
+        2_000 + scaled_duration_ms(120, catalog.balance.time_scale),
     );
 
     assert!(harvested.accepted);
-    assert!(
-        harvested
-            .events
-            .contains(&FarmEvent::LevelChanged { level: 3 })
+    let events = apply_elapsed(
+        &mut farm,
+        &catalog,
+        4_000 + scaled_duration_ms(120, catalog.balance.time_scale),
     );
+    assert!(events.contains(&FarmEvent::LevelChanged { level: 3 }));
     assert_eq!(inventory_quantity(&farm, "soybean"), 2);
 
     apply_elapsed(
         &mut farm,
         &catalog,
-        scaled_duration_ms(120, catalog.balance.time_scale) + 1,
+        4_000 + scaled_duration_ms(120, catalog.balance.time_scale) + 1,
     );
     assert_eq!(inventory_quantity(&farm, "soybean"), 2);
 }
@@ -801,6 +1154,7 @@ fn crop_unlock_starter_stock_retries_after_silo_space_opens() {
         0,
     );
     assert!(planted_wheat.accepted);
+    apply_elapsed(&mut farm, &catalog, 2_000);
 
     let harvested_wheat = apply_command(
         &mut farm,
@@ -808,9 +1162,14 @@ fn crop_unlock_starter_stock_retries_after_silo_space_opens() {
         FarmCommand::HarvestCrop {
             plot_id: "plot-1".to_owned(),
         },
-        scaled_duration_ms(120, catalog.balance.time_scale),
+        2_000 + scaled_duration_ms(120, catalog.balance.time_scale),
     );
     assert!(harvested_wheat.accepted);
+    apply_elapsed(
+        &mut farm,
+        &catalog,
+        4_000 + scaled_duration_ms(120, catalog.balance.time_scale),
+    );
     assert_eq!(farm.level, 3);
     assert_eq!(inventory_quantity(&farm, "soybean"), 0);
 
@@ -821,7 +1180,7 @@ fn crop_unlock_starter_stock_retries_after_silo_space_opens() {
             plot_id: "plot-2".to_owned(),
             crop_id: "corn".to_owned(),
         },
-        scaled_duration_ms(120, catalog.balance.time_scale) + 1,
+        4_000 + scaled_duration_ms(120, catalog.balance.time_scale) + 1,
     );
     assert!(planted_corn.accepted);
     assert_eq!(inventory_quantity(&farm, "soybean"), 2);

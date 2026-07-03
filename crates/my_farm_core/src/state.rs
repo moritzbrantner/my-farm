@@ -131,11 +131,31 @@ pub struct FarmResident {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct ResidentTask {
     pub id: String,
-    pub reserved_work_target: ReservedWorkTarget,
+    pub kind: ResidentTaskKind,
+    pub steps: Vec<ResidentTaskStep>,
     #[ts(type = "number")]
     pub started_at_ms: i64,
     #[ts(type = "number")]
     pub ready_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResidentTaskKind {
+    FieldWork,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct ResidentTaskStep {
+    pub reserved_work_target: ReservedWorkTarget,
+    pub work: ResidentTaskStepWork,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResidentTaskStepWork {
+    PlantCrop { crop_id: String },
+    HarvestCrop { crop_id: String, quantity: u32 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
