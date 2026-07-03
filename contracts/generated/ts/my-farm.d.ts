@@ -75,7 +75,9 @@ export type CommandResponse = { accepted: boolean, version: number, events: Arra
 
 export type FarmResponse = { version: number, view: FarmView, };
 
+export type WebsocketClientMessage = { "type": "submit_command", request_id: string, expected_version: number, command: FarmCommand, } | { "type": "reset_farm", request_id: string, };
+
 export type WebsocketError = { code: string, message: string, };
 
-export type WebsocketServerMessage = { "type": "catalog", catalog: CatalogDocument, } | { "type": "farm_snapshot", version: number, view: FarmView, } | { "type": "error", error: WebsocketError, };
+export type WebsocketServerMessage = { "type": "catalog", catalog: CatalogDocument, } | { "type": "farm_snapshot", version: number, view: FarmView, } | { "type": "command_response", request_id: string, accepted: boolean, version: number, events: Array<FarmEvent>, view: FarmView, error: string | null, } | { "type": "error", error: WebsocketError, };
 

@@ -7,13 +7,15 @@ use axum::routing::{get, post};
 use axum::{Json, Router, response::IntoResponse};
 use my_farm_core::{
     CatalogDocument, CatalogResponse, CommandRequest, CommandResponse, FarmResponse, FarmState,
-    HealthResponse, WebsocketError, WebsocketServerMessage, apply_command, apply_elapsed,
-    farm_view, new_farm,
+    FarmView, HealthResponse, WebsocketClientMessage, WebsocketError, WebsocketServerMessage,
+    apply_command, apply_elapsed, farm_view, new_farm,
 };
 use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 use std::str::FromStr;
+use std::sync::Arc;
+use tokio::sync::{Mutex, broadcast};
 use tower_http::cors::CorsLayer;
 
 const FARM_ID: &str = "local-farm";
@@ -22,6 +24,8 @@ const FARM_ID: &str = "local-farm";
 pub struct AppState {
     pool: SqlitePool,
     catalog: CatalogDocument,
+    farm_updates: broadcast::Sender<WebsocketServerMessage>,
+    mutation_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -31,9 +35,12 @@ pub struct ApiError {
 
 impl AppState {
     pub fn new(pool: SqlitePool) -> Self {
+        let (farm_updates, _) = broadcast::channel(32);
         Self {
             pool,
             catalog: CatalogDocument::default_catalog(),
+            farm_updates,
+            mutation_lock: Arc::new(Mutex::new(())),
         }
     }
 }
@@ -100,6 +107,7 @@ async fn gameplay_websocket(
 }
 
 async fn gameplay_session(mut socket: WebSocket, state: AppState) {
+    let mut farm_updates = state.farm_updates.subscribe();
     if let Err(error) = send_bootstrap(&mut socket, &state).await {
         let _ = send_websocket_message(
             &mut socket,
@@ -114,9 +122,128 @@ async fn gameplay_session(mut socket: WebSocket, state: AppState) {
         return;
     }
 
-    while socket.recv().await.is_some() {
-        // Command and reset messages are added by later websocket transport slices.
+    loop {
+        tokio::select! {
+            message = socket.recv() => {
+                let Some(message) = message else {
+                    break;
+                };
+                let Ok(message) = message else {
+                    break;
+                };
+                if matches!(message, Message::Close(_)) {
+                    break;
+                }
+                if let Err(error) = handle_websocket_client_message(&mut socket, &state, message).await {
+                    let _ = send_websocket_message(
+                        &mut socket,
+                        &WebsocketServerMessage::Error {
+                            error: WebsocketError {
+                                code: "client_message_failed".to_owned(),
+                                message: error.error,
+                            },
+                        },
+                    )
+                    .await;
+                }
+            }
+            update = farm_updates.recv() => {
+                match update {
+                    Ok(message) => {
+                        if send_websocket_message(&mut socket, &message).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        if let Err(error) = send_current_farm_snapshot(&mut socket, &state).await {
+                            let _ = send_websocket_message(
+                                &mut socket,
+                                &WebsocketServerMessage::Error {
+                                    error: WebsocketError {
+                                        code: "resync_failed".to_owned(),
+                                        message: error.error,
+                                    },
+                                },
+                            )
+                            .await;
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        }
     }
+}
+
+async fn handle_websocket_client_message(
+    socket: &mut WebSocket,
+    state: &AppState,
+    message: Message,
+) -> Result<(), ApiError> {
+    let Message::Text(payload) = message else {
+        return Ok(());
+    };
+    let message: WebsocketClientMessage =
+        serde_json::from_str(&payload).map_err(|error| ApiError {
+            error: format!("invalid websocket client message: {error}"),
+        })?;
+
+    match message {
+        WebsocketClientMessage::SubmitCommand {
+            request_id,
+            expected_version,
+            command,
+        } => {
+            let request = CommandRequest {
+                expected_version,
+                command,
+            };
+            let response = apply_command_request(state, &request)
+                .await
+                .map_err(api_error)?;
+            send_websocket_message(
+                socket,
+                &WebsocketServerMessage::CommandResponse {
+                    request_id,
+                    accepted: response.accepted,
+                    version: response.version,
+                    events: response.events,
+                    view: response.view.clone(),
+                    error: response.error,
+                },
+            )
+            .await?;
+            if response.accepted {
+                let _ = state
+                    .farm_updates
+                    .send(WebsocketServerMessage::FarmSnapshot {
+                        version: response.version,
+                        view: response.view,
+                    });
+            }
+        }
+        WebsocketClientMessage::ResetFarm { request_id } => {
+            let (version, view) = reset_farm_state(state).await.map_err(api_error)?;
+            send_websocket_message(
+                socket,
+                &WebsocketServerMessage::CommandResponse {
+                    request_id,
+                    accepted: true,
+                    version,
+                    events: Vec::new(),
+                    view: view.clone(),
+                    error: None,
+                },
+            )
+            .await?;
+            let _ = state
+                .farm_updates
+                .send(WebsocketServerMessage::FarmSnapshot { version, view });
+        }
+    }
+
+    Ok(())
 }
 
 async fn send_bootstrap(socket: &mut WebSocket, state: &AppState) -> Result<(), ApiError> {
@@ -144,6 +271,25 @@ async fn send_bootstrap(socket: &mut WebSocket, state: &AppState) -> Result<(), 
     Ok(())
 }
 
+async fn send_current_farm_snapshot(
+    socket: &mut WebSocket,
+    state: &AppState,
+) -> Result<(), ApiError> {
+    let now_ms = now_ms();
+    let (version, mut farm) = load_or_create_farm(state, now_ms)
+        .await
+        .map_err(api_error)?;
+    apply_elapsed(&mut farm, &state.catalog, now_ms);
+    send_websocket_message(
+        socket,
+        &WebsocketServerMessage::FarmSnapshot {
+            version,
+            view: farm_view(&farm, &state.catalog),
+        },
+    )
+    .await
+}
+
 async fn send_websocket_message(
     socket: &mut WebSocket,
     message: &WebsocketServerMessage,
@@ -162,13 +308,8 @@ async fn send_websocket_message(
 async fn reset_farm(
     State(state): State<AppState>,
 ) -> Result<Json<FarmResponse>, (StatusCode, Json<ApiError>)> {
-    let now_ms = now_ms();
-    let farm = new_farm(now_ms, &state.catalog);
-    save_farm(&state.pool, 0, &farm, now_ms).await?;
-    Ok(Json(FarmResponse {
-        version: 0,
-        view: farm_view(&farm, &state.catalog),
-    }))
+    let (version, view) = reset_farm_state(&state).await?;
+    Ok(Json(FarmResponse { version, view }))
 }
 
 async fn post_command(
@@ -176,12 +317,20 @@ async fn post_command(
     request: Result<Json<CommandRequest>, JsonRejection>,
 ) -> Result<Json<CommandResponse>, (StatusCode, Json<ApiError>)> {
     let Json(request) = request.map_err(json_rejection)?;
+    Ok(Json(apply_command_request(&state, &request).await?))
+}
+
+async fn apply_command_request(
+    state: &AppState,
+    request: &CommandRequest,
+) -> Result<CommandResponse, (StatusCode, Json<ApiError>)> {
+    let _lock = state.mutation_lock.lock().await;
     let now_ms = now_ms();
     let (version, mut farm) = load_or_create_farm(&state, now_ms).await?;
 
     if request.expected_version != version {
         apply_elapsed(&mut farm, &state.catalog, now_ms);
-        return Ok(Json(CommandResponse {
+        return Ok(CommandResponse {
             accepted: false,
             version,
             events: Vec::new(),
@@ -190,7 +339,7 @@ async fn post_command(
                 "version mismatch: expected {}, found {}",
                 request.expected_version, version
             )),
-        }));
+        });
     }
 
     let outcome = apply_command(&mut farm, &state.catalog, request.command.clone(), now_ms);
@@ -210,13 +359,23 @@ async fn post_command(
         version
     };
 
-    Ok(Json(CommandResponse {
+    Ok(CommandResponse {
         accepted: outcome.accepted,
         version: next_version,
         events: outcome.events,
         view: farm_view(&farm, &state.catalog),
         error: outcome.error.map(|error| error.message),
-    }))
+    })
+}
+
+async fn reset_farm_state(
+    state: &AppState,
+) -> Result<(u64, FarmView), (StatusCode, Json<ApiError>)> {
+    let _lock = state.mutation_lock.lock().await;
+    let now_ms = now_ms();
+    let farm = new_farm(now_ms, &state.catalog);
+    save_farm(&state.pool, 0, &farm, now_ms).await?;
+    Ok((0, farm_view(&farm, &state.catalog)))
 }
 
 async fn load_or_create_farm(

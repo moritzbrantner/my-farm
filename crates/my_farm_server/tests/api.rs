@@ -1,12 +1,18 @@
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use my_farm_core::{
     CatalogDocument, CatalogResponse, CommandRequest, CommandResponse, FarmCommand, FarmEvent,
-    FarmResponse, FarmState, StorageKind, WebsocketServerMessage, update_level,
+    FarmResponse, FarmState, StorageKind, WebsocketClientMessage, WebsocketServerMessage,
+    update_level,
 };
 use my_farm_server::{AppState, app, connect_database};
+use std::net::SocketAddr;
+use tokio_tungstenite::tungstenite::Message as ClientMessage;
 use tower::ServiceExt;
+
+type TestWebSocket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 #[tokio::test]
 async fn health_endpoint_remains_available() {
@@ -77,6 +83,210 @@ async fn gameplay_websocket_bootstraps_catalog_and_farm_snapshot() {
     assert_eq!(view.field_plots.len(), 6);
 
     server.abort();
+}
+
+#[tokio::test]
+async fn websocket_command_persists_journal_and_broadcasts_snapshot_to_connected_clients() {
+    let (addr, _server, pool) = websocket_test_server().await;
+    let (mut first_client, first_snapshot) = connect_gameplay_websocket(addr).await;
+    let (mut second_client, second_snapshot) = connect_gameplay_websocket(addr).await;
+    assert_eq!(first_snapshot.version, 0);
+    assert_eq!(second_snapshot.version, 0);
+
+    send_websocket_json(
+        &mut first_client,
+        &WebsocketClientMessage::SubmitCommand {
+            request_id: "plant-1".to_owned(),
+            expected_version: first_snapshot.version,
+            command: FarmCommand::PlantCrop {
+                plot_id: "plot-1".to_owned(),
+                crop_id: "wheat".to_owned(),
+            },
+        },
+    )
+    .await;
+
+    let response: WebsocketServerMessage = websocket_json(&mut first_client).await;
+    let WebsocketServerMessage::CommandResponse {
+        request_id,
+        accepted,
+        version,
+        events,
+        view,
+        error,
+    } = response
+    else {
+        panic!("expected command response");
+    };
+    assert_eq!(request_id, "plant-1");
+    assert!(accepted);
+    assert_eq!(version, 1);
+    assert!(error.is_none());
+    assert!(events.contains(&FarmEvent::CropPlanted {
+        crop_id: "wheat".to_owned(),
+    }));
+    assert_eq!(inventory_quantity_from_view(&view, "wheat"), 5);
+
+    let first_broadcast = websocket_farm_snapshot(&mut first_client).await;
+    let second_broadcast = websocket_farm_snapshot(&mut second_client).await;
+    assert_eq!(first_broadcast.version, 1);
+    assert_eq!(second_broadcast.version, 1);
+    assert_eq!(
+        inventory_quantity_from_view(&first_broadcast.view, "wheat"),
+        5
+    );
+    assert_eq!(
+        inventory_quantity_from_view(&second_broadcast.view, "wheat"),
+        5
+    );
+
+    let saved_version: i64 =
+        sqlx::query_scalar("SELECT version FROM farm_save WHERE id = 'local-farm'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(saved_version, 1);
+    let journal_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM command_journal")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(journal_count, 1);
+}
+
+#[tokio::test]
+async fn websocket_stale_command_returns_authoritative_view_without_writing_journal() {
+    let (addr, _server, pool) = websocket_test_server().await;
+    let (mut client, snapshot) = connect_gameplay_websocket(addr).await;
+    assert_eq!(snapshot.version, 0);
+
+    send_websocket_json(
+        &mut client,
+        &WebsocketClientMessage::SubmitCommand {
+            request_id: "stale-1".to_owned(),
+            expected_version: 9,
+            command: FarmCommand::PlantCrop {
+                plot_id: "plot-1".to_owned(),
+                crop_id: "wheat".to_owned(),
+            },
+        },
+    )
+    .await;
+
+    let response: WebsocketServerMessage = websocket_json(&mut client).await;
+    let WebsocketServerMessage::CommandResponse {
+        request_id,
+        accepted,
+        version,
+        events,
+        view,
+        error,
+    } = response
+    else {
+        panic!("expected command response");
+    };
+    assert_eq!(request_id, "stale-1");
+    assert!(!accepted);
+    assert_eq!(version, 0);
+    assert!(events.is_empty());
+    assert_eq!(inventory_quantity_from_view(&view, "wheat"), 6);
+    assert!(error.unwrap().contains("version mismatch"));
+
+    let no_broadcast = tokio::time::timeout(
+        std::time::Duration::from_millis(50),
+        websocket_json::<WebsocketServerMessage>(&mut client),
+    )
+    .await;
+    assert!(no_broadcast.is_err());
+
+    let saved_version: i64 =
+        sqlx::query_scalar("SELECT version FROM farm_save WHERE id = 'local-farm'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(saved_version, 0);
+    let journal_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM command_journal")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(journal_count, 0);
+}
+
+#[tokio::test]
+async fn websocket_reset_persists_version_zero_and_broadcasts_new_farm() {
+    let (addr, _server, pool) = websocket_test_server().await;
+    let (mut first_client, snapshot) = connect_gameplay_websocket(addr).await;
+    let (mut second_client, _) = connect_gameplay_websocket(addr).await;
+
+    send_websocket_json(
+        &mut first_client,
+        &WebsocketClientMessage::SubmitCommand {
+            request_id: "plant-before-reset".to_owned(),
+            expected_version: snapshot.version,
+            command: FarmCommand::PlantCrop {
+                plot_id: "plot-1".to_owned(),
+                crop_id: "wheat".to_owned(),
+            },
+        },
+    )
+    .await;
+    let planted: WebsocketServerMessage = websocket_json(&mut first_client).await;
+    assert!(matches!(
+        planted,
+        WebsocketServerMessage::CommandResponse {
+            accepted: true,
+            version: 1,
+            ..
+        }
+    ));
+    let _ = websocket_farm_snapshot(&mut first_client).await;
+    let _ = websocket_farm_snapshot(&mut second_client).await;
+
+    send_websocket_json(
+        &mut first_client,
+        &WebsocketClientMessage::ResetFarm {
+            request_id: "reset-1".to_owned(),
+        },
+    )
+    .await;
+
+    let response: WebsocketServerMessage = websocket_json(&mut first_client).await;
+    let WebsocketServerMessage::CommandResponse {
+        request_id,
+        accepted,
+        version,
+        events,
+        view,
+        error,
+    } = response
+    else {
+        panic!("expected reset response");
+    };
+    assert_eq!(request_id, "reset-1");
+    assert!(accepted);
+    assert_eq!(version, 0);
+    assert!(events.is_empty());
+    assert!(error.is_none());
+    assert_eq!(inventory_quantity_from_view(&view, "wheat"), 6);
+
+    let first_broadcast = websocket_farm_snapshot(&mut first_client).await;
+    let second_broadcast = websocket_farm_snapshot(&mut second_client).await;
+    assert_eq!(first_broadcast.version, 0);
+    assert_eq!(second_broadcast.version, 0);
+    assert_eq!(
+        inventory_quantity_from_view(&first_broadcast.view, "wheat"),
+        6
+    );
+    assert_eq!(
+        inventory_quantity_from_view(&second_broadcast.view, "wheat"),
+        6
+    );
+
+    let saved_version: i64 =
+        sqlx::query_scalar("SELECT version FROM farm_save WHERE id = 'local-farm'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(saved_version, 0);
 }
 
 #[tokio::test]
@@ -343,6 +553,14 @@ fn inventory_quantity_from_farm(response: &FarmResponse, item_id: &str) -> u32 {
         .unwrap_or(0)
 }
 
+fn inventory_quantity_from_view(view: &my_farm_core::FarmView, item_id: &str) -> u32 {
+    view.inventory
+        .iter()
+        .find(|item| item.item_id == item_id)
+        .map(|item| item.quantity)
+        .unwrap_or(0)
+}
+
 async fn load_saved_farm(pool: &sqlx::SqlitePool) -> FarmState {
     let state_json: String = sqlx::query_scalar("SELECT state_json FROM farm_save WHERE id = ?")
         .bind("local-farm")
@@ -368,14 +586,64 @@ async fn json_body<T: serde::de::DeserializeOwned>(response: axum::response::Res
     serde_json::from_slice(&body).unwrap()
 }
 
-async fn websocket_json<T>(
-    socket: &mut tokio_tungstenite::WebSocketStream<
-        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-    >,
-) -> T
+async fn websocket_json<T>(socket: &mut TestWebSocket) -> T
 where
     T: serde::de::DeserializeOwned,
 {
     let message = socket.next().await.unwrap().unwrap();
     serde_json::from_str(message.to_text().unwrap()).unwrap()
+}
+
+async fn websocket_test_server() -> (SocketAddr, tokio::task::JoinHandle<()>, sqlx::SqlitePool) {
+    let url = format!(
+        "sqlite://{}",
+        tempfile::NamedTempFile::new().unwrap().path().display()
+    );
+    let pool = connect_database(&url).await.unwrap();
+    let router = app(AppState::new(pool.clone()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    (addr, server, pool)
+}
+
+async fn connect_gameplay_websocket(addr: SocketAddr) -> (TestWebSocket, FarmResponse) {
+    let (mut socket, response) =
+        tokio_tungstenite::connect_async(format!("ws://{addr}/api/gameplay"))
+            .await
+            .unwrap();
+    assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
+
+    let catalog_message: WebsocketServerMessage = websocket_json(&mut socket).await;
+    assert!(matches!(
+        catalog_message,
+        WebsocketServerMessage::Catalog { .. }
+    ));
+    let snapshot = websocket_farm_snapshot(&mut socket).await;
+    (
+        socket,
+        FarmResponse {
+            version: snapshot.version,
+            view: snapshot.view,
+        },
+    )
+}
+
+async fn websocket_farm_snapshot(socket: &mut TestWebSocket) -> FarmResponse {
+    let message: WebsocketServerMessage = websocket_json(socket).await;
+    let WebsocketServerMessage::FarmSnapshot { version, view } = message else {
+        panic!("expected farm snapshot");
+    };
+    FarmResponse { version, view }
+}
+
+async fn send_websocket_json<T: serde::Serialize>(socket: &mut TestWebSocket, message: &T) {
+    socket
+        .send(ClientMessage::Text(
+            serde_json::to_string(message).unwrap().into(),
+        ))
+        .await
+        .unwrap();
 }
