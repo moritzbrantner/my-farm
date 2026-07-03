@@ -17,6 +17,10 @@ test("pages demo runs from WASM without server API calls", async ({ page }) => {
   await page.getByRole("button", { name: "Start Farm" }).click();
 
   await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
+  const residents = page.getByLabel("Farm Residents");
+  await expect(residents.getByText("Selected Resident")).toBeVisible();
+  await expect(residents.getByRole("textbox", { name: "Woman display name", exact: true })).toBeVisible();
+  await expect(residents.getByRole("textbox", { name: "Man display name", exact: true })).toBeVisible();
   await expect(page.getByText("Farmers Market")).toHaveCount(0);
   await page.locator(".field-tools").getByRole("button", { name: "Build" }).click();
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Field Plot/ })).toBeVisible();
@@ -106,6 +110,7 @@ async function seedBreadSave(page: Page) {
   await page.evaluate(async (key) => {
     type WasmRuntime = {
       command_json(requestJson: string, nowMs: number): string;
+      farm_json(nowMs: number): string;
       save_json(): string;
     };
     type WasmModule = {
@@ -116,17 +121,22 @@ async function seedBreadSave(page: Page) {
     const wasm = (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
     await wasm.default();
     const runtime = new wasm.DemoFarmRuntime(undefined, 1_000);
-    const send = (expectedVersion: number, command: unknown, nowMs: number) => {
+    let version = 0;
+    const send = (command: unknown, nowMs: number) => {
       const response = JSON.parse(
-        runtime.command_json(JSON.stringify({ expected_version: expectedVersion, command }), nowMs),
-      ) as { accepted: boolean; error: string | null };
+        runtime.command_json(JSON.stringify({ expected_version: version, command }), nowMs),
+      ) as { accepted: boolean; error: string | null; version: number; view: { machines: Array<{ id: string; kind: string }> } };
       if (!response.accepted) {
         throw new Error(response.error ?? "command rejected");
       }
+      version = response.version;
+      return response;
+    };
+    const tick = (nowMs: number) => {
+      version = (JSON.parse(runtime.farm_json(nowMs)) as { version: number }).version;
     };
 
     send(
-      0,
       {
         type: "sweep_plant",
         crop_id: "wheat",
@@ -135,16 +145,21 @@ async function seedBreadSave(page: Page) {
       1_000,
     );
     send(
-      1,
       {
         type: "sweep_harvest",
         plot_ids: ["plot-1", "plot-2", "plot-3", "plot-4"],
       },
-      14_000,
+      40_000,
     );
-    send(2, { type: "buy_structure", structure_kind: "bakery", tile: { x: 8, y: 2 } }, 14_000);
-    send(3, { type: "queue_recipe", machine_id: "machine-1", recipe_id: "bread" }, 14_000);
-    send(4, { type: "collect_machine_job", machine_id: "machine-1" }, 45_000);
+    tick(65_000);
+    const buildResponse = send({ type: "buy_structure", structure_kind: "bakery", tile: { x: 8, y: 2 } }, 65_000);
+    const bakeryId = buildResponse.view.machines.find((machine) => machine.kind === "bakery")?.id;
+    if (!bakeryId) {
+      throw new Error("bakery was not built");
+    }
+    send({ type: "queue_recipe", machine_id: bakeryId, recipe_id: "bread" }, 65_000);
+    send({ type: "collect_machine_job", machine_id: bakeryId }, 100_000);
+    tick(110_000);
     window.localStorage.setItem(key, runtime.save_json());
   }, demoSaveKey);
 }

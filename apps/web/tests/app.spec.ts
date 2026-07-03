@@ -192,6 +192,207 @@ test("reconnect reloads catalog and farm snapshot from the gameplay websocket", 
   await expect(page.locator(".top-bar").getByText("Level 2")).toBeVisible();
 });
 
+test("resident selector shows both residents and sends selected resident commands", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, farmView, catalog, (command) => commands.push(command));
+
+  await openFarm(page);
+
+  const residents = page.getByLabel("Farm Residents");
+  await expect(residents.getByText("Selected Resident")).toBeVisible();
+  await expect(residents.getByRole("textbox", { name: "Mara display name" })).toBeVisible();
+  await expect(residents.getByRole("textbox", { name: "Jon display name" })).toBeVisible();
+
+  await residents.locator(".resident-card").nth(1).getByRole("button", { name: "Select" }).click();
+
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "select_resident",
+    resident_id: "man",
+  });
+});
+
+test("resident selector trims successful renames and shows rejected rename errors", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  const renamedView: FarmView = {
+    ...farmView,
+    residents: [
+      { id: "woman", display_name: "Ada" },
+      farmView.residents[1],
+    ],
+  };
+  await installMockGameplayWebSocket(
+    page,
+    [{ version: 1, view: farmView, catalog }],
+    {
+      commandResponses: [
+        { accepted: true, version: 2, view: renamedView },
+        { accepted: false, version: 3, view: renamedView, error: "Display name cannot be blank" },
+      ],
+      messageHandlerName: "__recordResidentCommand",
+    },
+  );
+  await page.exposeFunction("__recordResidentCommand", (message: import("../../../contracts/generated/ts/my-farm").WebsocketClientMessage) => {
+    if (message.type === "submit_command") {
+      commands.push({ expected_version: message.expected_version, command: message.command });
+    }
+    return null;
+  });
+
+  await openFarm(page);
+
+  const residents = page.getByLabel("Farm Residents");
+  await residents.getByLabel("Mara display name").fill("  Ada  ");
+  await residents.getByRole("button", { name: "Rename" }).first().click();
+  await expect(residents.getByRole("textbox", { name: "Ada display name" })).toBeVisible();
+  expect(commands.at(-1)?.command).toEqual({
+    type: "rename_resident",
+    resident_id: "woman",
+    display_name: "Ada",
+  });
+
+  await residents.getByLabel("Ada display name").fill("   ");
+  await residents.getByRole("button", { name: "Rename" }).first().click();
+  await expect(residents.getByText("Display name cannot be blank")).toBeVisible();
+  await expect(residents.getByRole("textbox", { name: "Ada display name" })).toBeVisible();
+  expect(commands.at(-1)?.command).toEqual({
+    type: "rename_resident",
+    resident_id: "woman",
+    display_name: "",
+  });
+});
+
+test("resident selector shows queue counts and live task progress", async ({ page }) => {
+  const now = Date.now();
+  const view: FarmView = {
+    ...farmView,
+    resident_task_queues: {
+      woman: [
+        {
+          id: "task-1",
+          kind: { type: "field_work" },
+          started_at_ms: now - 10_000,
+          ready_at_ms: now + 10_000,
+          steps: [
+            {
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "plant_crop", crop_id: "wheat" },
+            },
+          ],
+        },
+        {
+          id: "task-2",
+          kind: { type: "field_work" },
+          started_at_ms: now + 10_000,
+          ready_at_ms: now + 20_000,
+          steps: [
+            {
+              reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
+              work: { type: "harvest_crop", crop_id: "corn", quantity: 2 },
+            },
+          ],
+        },
+      ],
+      man: [],
+    },
+  };
+  await mockFarmApi(page, view);
+
+  await openFarm(page);
+
+  const maraCard = page.getByLabel("Farm Residents").locator(".resident-card").first();
+  await expect(maraCard.getByText("Plant Wheat")).toBeVisible();
+  await expect(maraCard.getByText("Queued tasks")).toBeVisible();
+  await expect(maraCard.getByText("2", { exact: true })).toBeVisible();
+  const progress = maraCard.getByLabel("Mara task progress");
+  await expect(progress).toBeVisible();
+  const initialProgress = Number(await progress.getAttribute("value"));
+  await expect.poll(async () => Number(await progress.getAttribute("value")), { timeout: 4_000 }).toBeGreaterThan(initialProgress);
+});
+
+test("reserved work targets disable direct actions with a pending reason", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop selection panel is covered here.");
+  const now = Date.now();
+  const view: FarmView = {
+    ...farmView,
+    field_plots: [
+      {
+        id: "plot-1",
+        tile: { x: 0, y: 0 },
+        crop: { item_id: "wheat", planted_at_ms: now - 20_000, ready_at_ms: now - 1_000 },
+      },
+      farmView.field_plots[1],
+    ],
+    machines: [
+      {
+        id: "machine-1",
+        kind: "bakery",
+        tile: { x: 8, y: 2 },
+        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 20_000, ready_at_ms: now - 1_000 }],
+      },
+      farmView.machines[1],
+    ],
+    resident_task_queues: {
+      woman: [
+        {
+          id: "field-task",
+          kind: { type: "field_work" },
+          started_at_ms: now - 5_000,
+          ready_at_ms: now + 5_000,
+          steps: [
+            {
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "harvest_crop", crop_id: "wheat", quantity: 2 },
+            },
+          ],
+        },
+        {
+          id: "machine-task",
+          kind: { type: "production_work" },
+          started_at_ms: now - 5_000,
+          ready_at_ms: now + 5_000,
+          steps: [
+            {
+              reserved_work_target: { type: "machine", machine_id: "machine-1" },
+              work: { type: "collect_machine_job", job_id: "job-1", recipe_id: "bread" },
+            },
+          ],
+        },
+        {
+          id: "animal-task",
+          kind: { type: "production_work" },
+          started_at_ms: now - 5_000,
+          ready_at_ms: now + 5_000,
+          steps: [
+            {
+              reserved_work_target: { type: "animal", shelter_id: "shelter-1", animal_slot: "animal-2" },
+              work: { type: "collect_animal_product", item_id: "egg", quantity: 1 },
+            },
+          ],
+        },
+      ],
+      man: [],
+    },
+  };
+  await mockFarmApi(page, view);
+  await openFarm(page);
+
+  await page.getByLabel("Field Plot plot-1").click({ force: true });
+  let selection = page.locator(".panel-section").filter({ has: page.getByRole("heading", { name: "Selection" }) });
+  await expect(selection.getByRole("button", { name: "Harvest" })).toBeDisabled();
+  await expect(selection.getByText("Reserved for Mara's task")).toBeVisible();
+
+  await page.getByLabel("Bakery structure").click({ force: true });
+  selection = page.locator(".panel-section").filter({ has: page.getByRole("heading", { name: "Selection" }) });
+  await expect(selection.getByRole("button", { name: /Collect Bread/ })).toBeDisabled();
+  await expect(selection.getByRole("button", { name: "Make Bread" })).toBeDisabled();
+  await expect(selection.getByText("Reserved for Mara's task")).toBeVisible();
+
+  await page.getByLabel("Chicken Coop structure").click({ force: true });
+  selection = page.locator(".panel-section").filter({ has: page.getByRole("heading", { name: "Selection" }) });
+  await expect(selection.getByRole("button", { name: "Collect animal 2" })).toBeDisabled();
+  await expect(selection.getByText("Reserved for Mara's task")).toBeVisible();
+});
+
 test("frames the 3d farm scene inside the viewport", async ({ page }) => {
   await mockFarmApi(page);
   await openFarm(page);
@@ -2053,6 +2254,15 @@ const farmView: FarmView = {
       reward_xp: 2,
     },
   ],
+  residents: [
+    { id: "woman", display_name: "Mara" },
+    { id: "man", display_name: "Jon" },
+  ],
+  selected_resident_id: "woman",
+  resident_task_queues: {
+    woman: [],
+    man: [],
+  },
   unlocks: [],
 };
 

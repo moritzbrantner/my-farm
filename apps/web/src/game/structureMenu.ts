@@ -1,4 +1,5 @@
 import { itemName, recipeName, secondsRemaining, structureLabel } from "./selectors";
+import { reservedAnimalReason, reservedFieldReason, reservedMachineReason } from "./residentTasks";
 import type {
   AnimalShelterState,
   CatalogDocument,
@@ -82,6 +83,7 @@ export function buildFieldMenuModel(
   plot: FieldPlot,
   nowMs: number,
 ): StructureMenuModel {
+  const reservedReason = reservedFieldReason(view, plot.id);
   if (!plot.crop) {
     return {
       title: "Field Plot",
@@ -89,7 +91,7 @@ export function buildFieldMenuModel(
         .filter((crop) => crop.unlock_level <= view.level)
         .map((crop) => {
           const missing = missingItems(catalog, view, [{ item_id: crop.item_id, quantity: 1 }]);
-          const reason = missing.length > 0 ? `Need ${itemName(catalog, crop.item_id)}` : undefined;
+          const reason = reservedReason ?? (missing.length > 0 ? `Need ${itemName(catalog, crop.item_id)}` : undefined);
           return {
             id: `plant-${crop.item_id}`,
             label: itemName(catalog, crop.item_id),
@@ -124,6 +126,7 @@ export function buildFieldMenuModel(
   const cropDef = catalog.crops.find((crop) => crop.item_id === plot.crop?.item_id);
   const outputs = cropDef ? [{ item_id: plot.crop.item_id, quantity: cropDef.harvest_quantity }] : [];
   const storageFull = !hasStorageRoom(catalog, view, outputs);
+  const reason = reservedReason ?? (storageFull ? "Storage full" : undefined);
   return {
     title: cropName,
     items: [
@@ -131,9 +134,9 @@ export function buildFieldMenuModel(
         id: "harvest",
         label: "Harvest",
         icon: itemIcon(catalog, plot.crop.item_id),
-        disabled: storageFull,
-        reason: storageFull ? "Storage full" : undefined,
-        command: storageFull ? undefined : { type: "harvest_crop", plot_id: plot.id },
+        disabled: Boolean(reason),
+        reason,
+        command: reason ? undefined : { type: "harvest_crop", plot_id: plot.id },
       },
     ],
   };
@@ -193,22 +196,21 @@ function buildMachineMenu(
   const queueLimit = machineDef?.queue_limit ?? 0;
   const items: StructureMenuItem[] = [];
   const first = machine.queue[0];
+  const reservedReason = reservedMachineReason(view, machine.id);
 
   if (first) {
     const recipe = catalog.recipes.find((entry) => entry.id === first.recipe_id);
     const remaining = secondsRemaining(first.ready_at_ms, nowMs);
     const outputs = recipe?.outputs ?? [];
     const storageFull = remaining === 0 && !hasStorageRoom(catalog, view, outputs);
+    const reason = reservedReason ?? (remaining > 0 ? `${remaining}s` : storageFull ? "Storage full" : undefined);
     items.push({
       id: `collect-${first.id}`,
       label: `Collect ${recipeName(catalog, first.recipe_id)}`,
       icon: outputs[0] ? itemIcon(catalog, outputs[0].item_id) : undefined,
-      disabled: remaining > 0 || storageFull,
-      reason: remaining > 0 ? `${remaining}s` : storageFull ? "Storage full" : undefined,
-      command:
-        remaining === 0 && !storageFull
-          ? { type: "collect_machine_job", machine_id: machine.id }
-          : undefined,
+      disabled: Boolean(reason),
+      reason,
+      command: reason ? undefined : { type: "collect_machine_job", machine_id: machine.id },
     });
   } else {
     items.push({ id: "queue-empty", label: "Queue empty", disabled: true });
@@ -220,7 +222,9 @@ function buildMachineMenu(
     const locked = recipe.unlock_level > view.level;
     const reason = locked
       ? `Unlocks at level ${recipe.unlock_level}`
-      : queueFull
+      : reservedReason
+        ? reservedReason
+        : queueFull
         ? "Queue full"
         : missing.length > 0
           ? `Need ${missing.join(", ")}`
@@ -264,10 +268,11 @@ function buildShelterMenu(
   const productStack = shelterDef ? [{ item_id: shelterDef.product_item_id, quantity: 1 }] : [];
   const animalItems: StructureMenuItem[] = shelter.animals.map((animal, index) => {
     const labelIndex = index + 1;
+    const reservedReason = reservedAnimalReason(view, shelter.id, animal.id);
     if (animal.state.type === "idle") {
       const feedStack = shelterDef ? [{ item_id: shelterDef.feed_item_id, quantity: 1 }] : [];
       const missing = shelterDef ? missingItems(catalog, view, feedStack) : ["feed"];
-      const reason = missing.length > 0 ? `Need ${missing.join(", ")}` : undefined;
+      const reason = reservedReason ?? (missing.length > 0 ? `Need ${missing.join(", ")}` : undefined);
       return {
         id: `feed-${animal.id}`,
         label: `Feed ${animalName} ${labelIndex}`,
@@ -281,15 +286,14 @@ function buildShelterMenu(
     }
     if (animal.state.type === "ready") {
       const storageFull = !hasStorageRoom(catalog, view, productStack);
+      const reason = reservedReason ?? (storageFull ? "Storage full" : undefined);
       return {
         id: `collect-${animal.id}`,
         label: `Collect ${productName} from ${animalName} ${labelIndex}`,
         icon: shelterDef ? itemIcon(catalog, shelterDef.product_item_id) : undefined,
-        disabled: storageFull,
-        reason: storageFull ? "Storage full" : undefined,
-        command: storageFull
-          ? undefined
-          : { type: "collect_animal_product", shelter_id: shelter.id, animal_slot: animal.id },
+        disabled: Boolean(reason),
+        reason,
+        command: reason ? undefined : { type: "collect_animal_product", shelter_id: shelter.id, animal_slot: animal.id },
       };
     }
     return {

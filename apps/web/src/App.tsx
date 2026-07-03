@@ -37,10 +37,17 @@ import {
   type StructureMenuItem,
   type StructureMenuModel,
 } from "./game/structureMenu";
+import {
+  reservedAnimalReason,
+  reservedFieldReason,
+  reservedMachineReason,
+  residentTaskStatus,
+} from "./game/residentTasks";
 import type {
   AnimalShelterState,
   CatalogDocument,
   FarmCommand,
+  FarmResident,
   FarmView,
   FieldPlot,
   InventoryItemView,
@@ -66,7 +73,8 @@ const buildKinds: BuildableKind[] = [
   "cow_pasture",
 ];
 
-type SendCommand = (command: FarmCommand) => Promise<boolean>;
+type CommandResult = { accepted: boolean; error: string | null };
+type SendCommand = (command: FarmCommand) => Promise<CommandResult>;
 type BuildPlacementState = {
   kind: BuildableKind;
 } | null;
@@ -412,9 +420,9 @@ export function App() {
   }, []);
 
   const send = useCallback(
-    async (command: FarmCommand): Promise<boolean> => {
+    async (command: FarmCommand): Promise<CommandResult> => {
       if (gameplayPaused) {
-        return false;
+        return { accepted: false, error: "Gameplay is paused" };
       }
       try {
         let response = await client.command({ expected_version: versionRef.current, command });
@@ -424,10 +432,11 @@ export function App() {
         }
         applyFarmSnapshot(response.version, response.view);
         setMessage(response.accepted ? "Command accepted" : response.error ?? "Command rejected");
-        return response.accepted;
+        return { accepted: response.accepted, error: response.error };
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : "Command failed");
-        return false;
+        const errorMessage = error instanceof Error ? error.message : "Command failed";
+        setMessage(errorMessage);
+        return { accepted: false, error: errorMessage };
       }
     },
     [applyFarmSnapshot, gameplayPaused],
@@ -529,7 +538,7 @@ export function App() {
         return;
       }
       const accepted = await send({ type: "move_structure", target: movingStructure, tile });
-      if (accepted) {
+      if (accepted.accepted) {
         setMovingStructure(null);
       }
     },
@@ -547,7 +556,7 @@ export function App() {
           return;
         }
         const accepted = await send({ type: "buy_field_plot", tile });
-        if (accepted) {
+        if (accepted.accepted) {
           setBuildPlacement(null);
         }
         return;
@@ -561,7 +570,7 @@ export function App() {
         structure_kind: buildPlacement.kind,
         tile,
       });
-      if (accepted) {
+      if (accepted.accepted) {
         setBuildPlacement(null);
       }
     },
@@ -666,6 +675,11 @@ export function App() {
       }
       const plot = view.field_plots.find((entry) => entry.id === plotId);
       const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+      const reservedReason = reservedFieldReason(view, plotId);
+      if (reservedReason) {
+        setMessage(reservedReason);
+        return;
+      }
       if (plot?.crop || (inventory.get(activeFieldTool.cropId) ?? 0) < 1) {
         return;
       }
@@ -712,7 +726,7 @@ export function App() {
         }
         const plot = view.field_plots.find((entry) => entry.id === plotId);
         const inventory = view.inventory.find((item) => item.item_id === current.cropId)?.quantity ?? 0;
-        if (plot?.crop || current.plotIds.length >= inventory) {
+        if (plot?.crop || reservedFieldReason(view, plotId) || current.plotIds.length >= inventory) {
           plantSweepRef.current = current;
           return current;
         }
@@ -733,7 +747,7 @@ export function App() {
     plantSweepRef.current = null;
     setPlantSweep(null);
     const accepted = await send({ type: "sweep_plant", crop_id: cropId, plot_ids: plotIds });
-    if (accepted) {
+    if (accepted.accepted) {
       setSelection({ type: "plot", id: plotIds[0] });
       setFieldMenu(null);
       setStructureMenu(null);
@@ -748,6 +762,11 @@ export function App() {
         return;
       }
       const plot = view.field_plots.find((entry) => entry.id === plotId);
+      const reservedReason = reservedFieldReason(view, plotId);
+      if (reservedReason) {
+        setMessage(reservedReason);
+        return;
+      }
       if (!plot?.crop || plot.crop.ready_at_ms > nowMs) {
         return;
       }
@@ -798,6 +817,7 @@ export function App() {
         const plot = view.field_plots.find((entry) => entry.id === plotId);
         if (
           !plot?.crop ||
+          reservedFieldReason(view, plotId) ||
           plot.crop.ready_at_ms > nowMs ||
           (current.harvestMode === "matching_crop" && plot.crop.item_id !== current.cropId)
         ) {
@@ -821,7 +841,7 @@ export function App() {
     harvestSweepRef.current = null;
     setHarvestSweep(null);
     const accepted = await send({ type: "sweep_harvest", harvest_mode: harvestMode, plot_ids: plotIds });
-    if (accepted) {
+    if (accepted.accepted) {
       setSelection({ type: "plot", id: plotIds[0] });
       setFieldMenu(null);
       setStructureMenu(null);
@@ -940,6 +960,7 @@ export function App() {
             />
             <aside className="side-panel">
               <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
+              <ResidentSelector catalog={catalog} view={view} nowMs={nowMs} send={send} />
               <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
               {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
               <FieldTools
@@ -1008,7 +1029,7 @@ export function App() {
             }}
             onCommand={async (command) => {
               const accepted = await send(command);
-              if (accepted) {
+              if (accepted.accepted) {
                 setFieldMenu(null);
                 setStructureMenu(null);
               }
@@ -1340,6 +1361,154 @@ function MarketLauncher({
         Open
       </button>
     </section>
+  );
+}
+
+function ResidentSelector({
+  catalog,
+  view,
+  nowMs,
+  send,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  nowMs: number;
+  send: SendCommand;
+}) {
+  const residents = view.residents.slice(0, 2);
+
+  return (
+    <section className="panel-section resident-selector" aria-label="Farm Residents">
+      <h2>Farm Residents</h2>
+      <div className="resident-selector__list">
+        {residents.map((resident) => (
+          <ResidentCard
+            key={resident.id}
+            catalog={catalog}
+            view={view}
+            resident={resident}
+            selected={resident.id === view.selected_resident_id}
+            nowMs={nowMs}
+            send={send}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ResidentCard({
+  catalog,
+  view,
+  resident,
+  selected,
+  nowMs,
+  send,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  resident: FarmResident;
+  selected: boolean;
+  nowMs: number;
+  send: SendCommand;
+}) {
+  const [draftName, setDraftName] = useState(resident.display_name);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const status = residentTaskStatus(catalog, view, resident.id, nowMs);
+
+  useEffect(() => {
+    setDraftName(resident.display_name);
+    setRenameError(null);
+  }, [resident.display_name]);
+
+  const submitRename = async () => {
+    const trimmed = draftName.trim();
+    if (trimmed === resident.display_name) {
+      setDraftName(resident.display_name);
+      setRenameError(null);
+      return;
+    }
+    const result = await send({
+      type: "rename_resident",
+      resident_id: resident.id,
+      display_name: trimmed,
+    });
+    if (!result.accepted) {
+      setDraftName(resident.display_name);
+      setRenameError(result.error ?? "Rename rejected");
+      return;
+    }
+    setRenameError(null);
+  };
+
+  const selectResident = async () => {
+    if (selected) {
+      return;
+    }
+    await send({ type: "select_resident", resident_id: resident.id });
+  };
+
+  return (
+    <article className={selected ? "resident-card resident-card--selected" : "resident-card"}>
+      <div className="resident-card__topline">
+        <strong>{selected ? "Selected Resident" : "Farm Resident"}</strong>
+        <button type="button" disabled={selected} onClick={selectResident}>
+          {selected ? "Selected" : "Select"}
+        </button>
+      </div>
+      <label className="resident-card__name">
+        <span>Display name</span>
+        <input
+          aria-label={`${resident.display_name} display name`}
+          value={draftName}
+          onChange={(event) => {
+            setDraftName(event.target.value);
+            setRenameError(null);
+          }}
+          onBlur={() => {
+            void submitRename();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+            if (event.key === "Escape") {
+              setDraftName(resident.display_name);
+              setRenameError(null);
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      </label>
+      <button
+        className="resident-card__rename"
+        type="button"
+        disabled={draftName.trim() === resident.display_name}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          void submitRename();
+        }}
+      >
+        Rename
+      </button>
+      {renameError ? <small className="resident-card__error">{renameError}</small> : null}
+      <dl className="resident-card__status">
+        <div>
+          <dt>Current task</dt>
+          <dd>{status.label}</dd>
+        </div>
+        <div>
+          <dt>Queued tasks</dt>
+          <dd>{status.queuedCount}</dd>
+        </div>
+      </dl>
+      {status.currentTask ? (
+        <div className="resident-task-progress">
+          <progress value={status.progress} max={1} aria-label={`${resident.display_name} task progress`} />
+          <span>{Math.round(status.progress * 100)}%</span>
+        </div>
+      ) : null}
+    </article>
   );
 }
 
@@ -2040,7 +2209,7 @@ function SelectionPanel({
         <MachineActions catalog={catalog} view={view} machine={machine} nowMs={nowMs} send={send} />
       ) : null}
       {shelter ? (
-        <ShelterActions catalog={catalog} shelter={shelter} nowMs={nowMs} send={send} />
+        <ShelterActions catalog={catalog} view={view} shelter={shelter} nowMs={nowMs} send={send} />
       ) : null}
       {!demoMode && selection?.type === "delivery_board" ? <p>Use delivery orders below.</p> : null}
       {!plot && !machine && !shelter && !isSilo && !isBarn && selection?.type !== "delivery_board" ? (
@@ -2135,6 +2304,7 @@ function PlotActions({
   nowMs: number;
   send: SendCommand;
 }) {
+  const reservedReason = reservedFieldReason(view, plot.id);
   if (plot.crop) {
     const remaining = secondsRemaining(plot.crop.ready_at_ms, nowMs);
     return (
@@ -2142,11 +2312,13 @@ function PlotActions({
         <p>{itemName(catalog, plot.crop.item_id)} - {remaining === 0 ? "ready" : `${remaining}s`}</p>
         <button
           type="button"
-          disabled={remaining > 0}
+          disabled={remaining > 0 || Boolean(reservedReason)}
+          title={reservedReason ?? undefined}
           onClick={() => send({ type: "harvest_crop", plot_id: plot.id })}
         >
           Harvest
         </button>
+        {reservedReason ? <small>{reservedReason}</small> : null}
       </div>
     );
   }
@@ -2159,12 +2331,14 @@ function PlotActions({
           <button
             type="button"
             key={crop.item_id}
-            disabled={(inventory.get(crop.item_id) ?? 0) < 1}
+            disabled={Boolean(reservedReason) || (inventory.get(crop.item_id) ?? 0) < 1}
+            title={reservedReason ?? undefined}
             onClick={() => send({ type: "plant_crop", plot_id: plot.id, crop_id: crop.item_id })}
           >
             Plant {itemName(catalog, crop.item_id)}
           </button>
         ))}
+      {reservedReason ? <small>{reservedReason}</small> : null}
     </div>
   );
 }
@@ -2188,13 +2362,15 @@ function MachineActions({
     catalog.machines.find((entry) => entry.kind === machine.kind)?.queue_limit ?? 2;
   const queueFull = machine.queue.length >= queueLimit;
   const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  const reservedReason = reservedMachineReason(view, machine.id);
   return (
     <div className="action-stack">
       <p>{machine.kind === "bakery" ? "Bakery" : "Feed Mill"} - queue {machine.queue.length}/{queueLimit}</p>
       {first ? (
         <button
           type="button"
-          disabled={remaining > 0}
+          disabled={remaining > 0 || Boolean(reservedReason)}
+          title={reservedReason ?? undefined}
           onClick={() => send({ type: "collect_machine_job", machine_id: machine.id })}
         >
           Collect {recipeName(catalog, first.recipe_id)} {remaining > 0 ? `(${remaining}s)` : ""}
@@ -2203,10 +2379,10 @@ function MachineActions({
       <div className="recipe-list">
         {availableRecipes(catalog, machine, view.level).map((recipe) => {
           const missingInputs = missingRecipeInputs(recipe.inputs, inventory);
-          const canQueue = !queueFull && missingInputs.length === 0;
+          const canQueue = !reservedReason && !queueFull && missingInputs.length === 0;
           const disabledReason = queueFull
             ? "Queue full"
-            : missingInputs.map((stack) => `Need ${stack.quantity} ${itemName(catalog, stack.item_id)}`).join(", ");
+            : reservedReason ?? missingInputs.map((stack) => `Need ${stack.quantity} ${itemName(catalog, stack.item_id)}`).join(", ");
           return (
             <div className="recipe-card" data-testid={`recipe-card-${recipe.id}`} key={recipe.id}>
               <div className="recipe-card__header">
@@ -2240,6 +2416,7 @@ function MachineActions({
           );
         })}
       </div>
+      {reservedReason ? <small>{reservedReason}</small> : null}
     </div>
   );
 }
@@ -2277,11 +2454,13 @@ function missingRecipeInputs(inputs: ItemStack[], inventory: Map<string, number>
 
 function ShelterActions({
   catalog,
+  view,
   shelter,
   nowMs,
   send,
 }: {
   catalog: CatalogDocument;
+  view: FarmView;
   shelter: AnimalShelterState;
   nowMs: number;
   send: SendCommand;
@@ -2291,34 +2470,43 @@ function ShelterActions({
     <div className="action-stack">
       <p>{label}</p>
       {shelter.animals.map((animal, index) => {
+        const reservedReason = reservedAnimalReason(view, shelter.id, animal.id);
         if (animal.state.type === "idle") {
           return (
-            <button
-              type="button"
-              key={animal.id}
-              onClick={() =>
-                send({ type: "feed_animal", shelter_id: shelter.id, animal_slot: animal.id })
-              }
-            >
-              Feed animal {index + 1}
-            </button>
+            <span className="animal-action" key={animal.id}>
+              <button
+                type="button"
+                disabled={Boolean(reservedReason)}
+                title={reservedReason ?? undefined}
+                onClick={() =>
+                  send({ type: "feed_animal", shelter_id: shelter.id, animal_slot: animal.id })
+                }
+              >
+                Feed animal {index + 1}
+              </button>
+              {reservedReason ? <small>{reservedReason}</small> : null}
+            </span>
           );
         }
         if (animal.state.type === "ready") {
           return (
-            <button
-              type="button"
-              key={animal.id}
-              onClick={() =>
-                send({
-                  type: "collect_animal_product",
-                  shelter_id: shelter.id,
-                  animal_slot: animal.id,
-                })
-              }
-            >
-              Collect animal {index + 1}
-            </button>
+            <span className="animal-action" key={animal.id}>
+              <button
+                type="button"
+                disabled={Boolean(reservedReason)}
+                title={reservedReason ?? undefined}
+                onClick={() =>
+                  send({
+                    type: "collect_animal_product",
+                    shelter_id: shelter.id,
+                    animal_slot: animal.id,
+                  })
+                }
+              >
+                Collect animal {index + 1}
+              </button>
+              {reservedReason ? <small>{reservedReason}</small> : null}
+            </span>
           );
         }
         return (
