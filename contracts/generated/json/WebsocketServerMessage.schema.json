@@ -801,6 +801,7 @@
         "last_update_ms",
         "level",
         "machines",
+        "oven",
         "owned_farmhouse_upgrades",
         "resident_task_queues",
         "residents",
@@ -875,6 +876,9 @@
           "items": {
             "$ref": "#/definitions/MachineState"
           }
+        },
+        "oven": {
+          "$ref": "#/definitions/OvenState"
         },
         "owned_farmhouse_upgrades": {
           "type": "array",
@@ -1201,6 +1205,24 @@
         }
       }
     },
+    "OvenState": {
+      "type": "object",
+      "required": [
+        "id",
+        "queue"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "queue": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MachineJob"
+          }
+        }
+      }
+    },
     "PlantedCrop": {
       "type": "object",
       "required": [
@@ -1227,10 +1249,10 @@
       "required": [
         "id",
         "inputs",
-        "machine_kind",
         "name",
         "outputs",
         "reference_seconds",
+        "target",
         "unlock_level",
         "xp"
       ],
@@ -1243,9 +1265,6 @@
           "items": {
             "$ref": "#/definitions/ItemStack"
           }
-        },
-        "machine_kind": {
-          "$ref": "#/definitions/MachineKind"
         },
         "name": {
           "type": "string"
@@ -1261,6 +1280,9 @@
           "format": "uint32",
           "minimum": 0.0
         },
+        "target": {
+          "$ref": "#/definitions/RecipeTarget"
+        },
         "unlock_level": {
           "type": "integer",
           "format": "uint32",
@@ -1272,6 +1294,42 @@
           "minimum": 0.0
         }
       }
+    },
+    "RecipeTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "oven"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "machine_kind",
+            "type"
+          ],
+          "properties": {
+            "machine_kind": {
+              "$ref": "#/definitions/MachineKind"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "machine"
+              ]
+            }
+          }
+        }
+      ]
     },
     "ReservedWorkTarget": {
       "oneOf": [
@@ -1307,6 +1365,20 @@
               "type": "string",
               "enum": [
                 "machine"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "oven"
               ]
             }
           }
@@ -1476,6 +1548,28 @@
               "type": "string",
               "enum": [
                 "collect_machine_job"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "job_id",
+            "recipe_id",
+            "type"
+          ],
+          "properties": {
+            "job_id": {
+              "type": "string"
+            },
+            "recipe_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "collect_oven_job"
               ]
             }
           }

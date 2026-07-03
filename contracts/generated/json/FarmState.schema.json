@@ -109,6 +109,17 @@
       "format": "uint64",
       "minimum": 0.0
     },
+    "oven": {
+      "default": {
+        "id": "oven",
+        "queue": []
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/OvenState"
+        }
+      ]
+    },
     "owned_farmhouse_upgrades": {
       "default": [],
       "type": "array",
@@ -432,6 +443,24 @@
         }
       }
     },
+    "OvenState": {
+      "type": "object",
+      "required": [
+        "id",
+        "queue"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "queue": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MachineJob"
+          }
+        }
+      }
+    },
     "PlantedCrop": {
       "type": "object",
       "required": [
@@ -487,6 +516,20 @@
               "type": "string",
               "enum": [
                 "machine"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "oven"
               ]
             }
           }
@@ -656,6 +699,28 @@
               "type": "string",
               "enum": [
                 "collect_machine_job"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "job_id",
+            "recipe_id",
+            "type"
+          ],
+          "properties": {
+            "job_id": {
+              "type": "string"
+            },
+            "recipe_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "collect_oven_job"
               ]
             }
           }

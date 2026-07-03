@@ -54,6 +54,10 @@ export function reservedMachineReason(view: FarmView, machineId: string): string
   return reservedTargetReason(view, { type: "machine", machine_id: machineId });
 }
 
+export function reservedOvenReason(view: FarmView): string | null {
+  return reservedTargetReason(view, { type: "oven" });
+}
+
 export function reservedAnimalReason(view: FarmView, shelterId: string, animalSlot: string): string | null {
   return reservedTargetReason(view, { type: "animal", shelter_id: shelterId, animal_slot: animalSlot });
 }
@@ -95,6 +99,12 @@ function sceneTargetForReservedWorkTarget(
       label: `machine:${machine.id}`,
     };
   }
+  if (target.type === "oven") {
+    return {
+      tile: { x: 8.5, y: 8.5 },
+      label: "oven",
+    };
+  }
   const shelter = view.shelters.find((entry) => entry.id === target.shelter_id);
   if (!shelter) {
     return null;
@@ -125,6 +135,9 @@ function sameReservedTarget(left: ReservedWorkTarget, right: ReservedWorkTarget)
   if (left.type === "machine" && right.type === "machine") {
     return left.machine_id === right.machine_id;
   }
+  if (left.type === "oven" && right.type === "oven") {
+    return true;
+  }
   return (
     left.type === "animal" &&
     right.type === "animal" &&
@@ -144,6 +157,8 @@ function taskLabel(catalog: CatalogDocument, task: ResidentTask) {
     case "harvest_crop":
       return `Harvest ${itemName(catalog, firstWork.crop_id)}`;
     case "collect_machine_job":
+      return `Collect ${recipeName(catalog, firstWork.recipe_id)}`;
+    case "collect_oven_job":
       return `Collect ${recipeName(catalog, firstWork.recipe_id)}`;
     case "feed_animal":
       return "Feed animal";

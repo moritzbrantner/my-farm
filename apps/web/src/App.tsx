@@ -42,6 +42,7 @@ import {
   reservedAnimalReason,
   reservedFieldReason,
   reservedMachineReason,
+  reservedOvenReason,
   residentTaskStatus,
 } from "./game/residentTasks";
 import type {
@@ -2122,7 +2123,19 @@ function relevantItemIdsForSelection(
   const machine = selectedMachine(view, selection);
   if (machine) {
     const itemIds = new Set<string>();
-    for (const recipe of catalog.recipes.filter((entry) => entry.machine_kind === machine.kind)) {
+    for (const recipe of catalog.recipes.filter(
+      (entry) => entry.target.type === "machine" && entry.target.machine_kind === machine.kind,
+    )) {
+      for (const stack of [...recipe.inputs, ...recipe.outputs]) {
+        itemIds.add(stack.item_id);
+      }
+    }
+    return itemIds;
+  }
+
+  if (selection?.type === "farmhouse" && view.owned_farmhouse_upgrades.includes("oven")) {
+    const itemIds = new Set<string>();
+    for (const recipe of catalog.recipes.filter((entry) => entry.target.type === "oven")) {
       for (const stack of [...recipe.inputs, ...recipe.outputs]) {
         itemIds.add(stack.item_id);
       }
@@ -2211,7 +2224,7 @@ function SelectionPanel({
           />
         )
       ) : null}
-      {isFarmhouse ? <FarmhouseActions catalog={catalog} view={view} send={send} /> : null}
+      {isFarmhouse ? <FarmhouseActions catalog={catalog} view={view} nowMs={nowMs} send={send} /> : null}
       {plot ? <PlotActions catalog={catalog} view={view} plot={plot} nowMs={nowMs} send={send} /> : null}
       {machine ? (
         <MachineActions catalog={catalog} view={view} machine={machine} nowMs={nowMs} send={send} />
@@ -2234,31 +2247,99 @@ function SelectionPanel({
 function FarmhouseActions({
   catalog,
   view,
+  nowMs,
   send,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
+  nowMs: number;
   send: SendCommand;
 }) {
   const oven = catalog.farmhouse_upgrades.find((upgrade) => upgrade.kind === "oven");
   const reason = farmhouseOvenDisabledReason(catalog, view);
+  const ovenOwned = view.owned_farmhouse_upgrades.includes("oven");
+  const first = view.oven.queue[0];
+  const remaining = first ? secondsRemaining(first.ready_at_ms, nowMs) : 0;
+  const queueLimit = oven?.queue_limit ?? 2;
+  const queueFull = view.oven.queue.length >= queueLimit;
+  const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  const reservedReason = reservedOvenReason(view);
   return (
     <div className="action-stack">
       <p>Farmhouse</p>
-      {oven ? (
-        <p>Oven upgrade - {oven.cost_coins} coins, queue {oven.queue_limit}</p>
-      ) : (
+      {!oven ? (
         <p>Oven upgrade unavailable</p>
+      ) : ovenOwned ? (
+        <>
+          <p>Oven - queue {view.oven.queue.length}/{queueLimit}</p>
+          {first ? (
+            <button
+              type="button"
+              disabled={remaining > 0 || Boolean(reservedReason)}
+              title={reservedReason ?? undefined}
+              onClick={() => send({ type: "collect_oven_job" })}
+            >
+              Collect {recipeName(catalog, first.recipe_id)} {remaining > 0 ? `(${remaining}s)` : ""}
+            </button>
+          ) : null}
+          <div className="recipe-list">
+            {catalog.recipes
+              .filter((recipe) => recipe.target.type === "oven" && recipe.unlock_level <= view.level)
+              .map((recipe) => {
+                const missingInputs = missingRecipeInputs(recipe.inputs, inventory);
+                const canQueue = !reservedReason && !queueFull && missingInputs.length === 0;
+                const disabledReason = queueFull
+                  ? "Queue full"
+                  : reservedReason ?? missingInputs.map((stack) => `Need ${stack.quantity} ${itemName(catalog, stack.item_id)}`).join(", ");
+                return (
+                  <div className="recipe-card" data-testid={`recipe-card-${recipe.id}`} key={recipe.id}>
+                    <div className="recipe-card__header">
+                      <strong>{recipe.name}</strong>
+                      <button
+                        type="button"
+                        disabled={!canQueue}
+                        aria-label={`Make ${recipe.name}`}
+                        title={canQueue ? `Make ${recipe.name}` : disabledReason}
+                        onClick={() => send({ type: "queue_oven_recipe", recipe_id: recipe.id })}
+                      >
+                        Make
+                      </button>
+                    </div>
+                    <div className="recipe-card__inputs" aria-label={`${recipe.name} required resources`}>
+                      {recipe.inputs.map((stack) => {
+                        const available = inventory.get(stack.item_id) ?? 0;
+                        const missing = Math.max(0, stack.quantity - available);
+                        return (
+                          <RecipeInputAmount
+                            key={stack.item_id}
+                            catalog={catalog}
+                            stack={stack}
+                            available={available}
+                            missing={missing}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+          {reservedReason ? <small>{reservedReason}</small> : null}
+        </>
+      ) : (
+        <>
+          <p>Oven upgrade - {oven.cost_coins} coins, queue {oven.queue_limit}</p>
+          <button
+            type="button"
+            disabled={Boolean(reason)}
+            title={reason ?? "Buy Oven"}
+            onClick={() => send({ type: "buy_farmhouse_upgrade", upgrade_kind: "oven" })}
+          >
+            Buy Oven
+          </button>
+          {reason ? <small>{reason}</small> : null}
+        </>
       )}
-      <button
-        type="button"
-        disabled={Boolean(reason)}
-        title={reason ?? "Buy Oven"}
-        onClick={() => send({ type: "buy_farmhouse_upgrade", upgrade_kind: "oven" })}
-      >
-        Buy Oven
-      </button>
-      {reason ? <small>{reason}</small> : null}
     </div>
   );
 }

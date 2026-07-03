@@ -679,6 +679,89 @@ async fn post_farmhouse_oven_purchase_persists_state_and_journal_through_restart
 }
 
 #[tokio::test]
+async fn post_farmhouse_oven_queue_and_collect_persist_state_and_journal_through_restart() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let url = format!("sqlite://{}", tempdir.path().join("farm.db").display());
+    let pool = connect_database(&url).await.unwrap();
+    let router = app(AppState::new(pool.clone()));
+    let initial = get_farm(router.clone()).await;
+
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = load_saved_farm(&pool).await;
+    farm.xp = 4;
+    update_level(&mut farm, &catalog);
+    farm.owned_farmhouse_upgrades
+        .push(FarmhouseUpgradeKind::Oven);
+    save_test_farm(&pool, initial.version, &farm).await;
+
+    let queued = post_command(
+        router.clone(),
+        CommandRequest {
+            expected_version: initial.version,
+            command: FarmCommand::QueueOvenRecipe {
+                recipe_id: "bread".to_owned(),
+            },
+        },
+    )
+    .await;
+
+    assert!(queued.accepted);
+    assert_eq!(queued.version, 1);
+    assert_eq!(queued.view.oven.queue.len(), 1);
+    assert_eq!(queued.view.oven.queue[0].recipe_id, "bread");
+    assert_eq!(inventory_quantity(&queued, "wheat"), 3);
+
+    let mut ready_farm = load_saved_farm(&pool).await;
+    ready_farm.oven.queue[0].ready_at_ms = 0;
+    save_test_farm(&pool, queued.version, &ready_farm).await;
+
+    let collected = post_command(
+        router.clone(),
+        CommandRequest {
+            expected_version: queued.version,
+            command: FarmCommand::CollectOvenJob,
+        },
+    )
+    .await;
+
+    assert!(collected.accepted);
+    assert_eq!(collected.version, 2);
+    assert_eq!(collected.view.oven.queue.len(), 1);
+    assert_eq!(
+        collected.view.resident_task_queues["woman"][0].steps[0].reserved_work_target,
+        my_farm_core::ReservedWorkTarget::Oven
+    );
+
+    let journal_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM command_journal WHERE command_json LIKE ?")
+            .bind("%oven%")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(journal_count, 2);
+
+    drop(router);
+    pool.close().await;
+
+    let restarted_pool = connect_database(&url).await.unwrap();
+    let restarted_app = app(AppState::new(restarted_pool.clone()));
+    let reloaded = get_farm(restarted_app).await;
+
+    assert_eq!(reloaded.version, 2);
+    assert_eq!(reloaded.view.oven.queue.len(), 1);
+    assert_eq!(inventory_quantity_from_farm(&reloaded, "wheat"), 3);
+    assert_eq!(inventory_quantity_from_farm(&reloaded, "bread"), 0);
+    assert_eq!(
+        reloaded.view.resident_task_queues["woman"][0].steps[0].work,
+        my_farm_core::ResidentTaskStepWork::CollectOvenJob {
+            job_id: reloaded.view.oven.queue[0].id.clone(),
+            recipe_id: "bread".to_owned(),
+        }
+    );
+    restarted_pool.close().await;
+}
+
+#[tokio::test]
 async fn post_command_reports_invalid_command_json_as_json() {
     let app = test_app().await;
     let response = app

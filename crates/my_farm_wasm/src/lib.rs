@@ -1,6 +1,6 @@
 use my_farm_core::{
     CatalogDocument, CommandRequest, CommandResponse, FarmCommand, FarmResponse, FarmState,
-    MachineKind, StructureKind, StructureTarget, apply_command, apply_elapsed, farm_view, new_farm,
+    StructureTarget, apply_command, apply_elapsed, farm_view, new_farm,
 };
 use serde::{Deserialize, Serialize};
 #[cfg(target_arch = "wasm32")]
@@ -140,9 +140,7 @@ pub fn demo_catalog() -> CatalogDocument {
         .crops
         .retain(|crop| matches!(crop.item_id.as_str(), "wheat" | "corn"));
     catalog.recipes.retain(|recipe| recipe.id == "bread");
-    catalog
-        .machines
-        .retain(|machine| machine.kind == MachineKind::Bakery);
+    catalog.machines.clear();
     catalog.shelters.clear();
     catalog.market_items.clear();
     catalog.storage_upgrades.clear();
@@ -150,44 +148,30 @@ pub fn demo_catalog() -> CatalogDocument {
     catalog
 }
 
-fn unsupported_demo_command<'a>(farm: &FarmState, command: &'a FarmCommand) -> Option<&'a str> {
+fn unsupported_demo_command<'a>(_farm: &FarmState, command: &'a FarmCommand) -> Option<&'a str> {
     match command {
         FarmCommand::PlantCrop { .. }
         | FarmCommand::SweepPlant { .. }
         | FarmCommand::HarvestCrop { .. }
         | FarmCommand::SweepHarvest { .. }
         | FarmCommand::BuyFarmhouseUpgrade { .. }
+        | FarmCommand::QueueOvenRecipe { .. }
+        | FarmCommand::CollectOvenJob
         | FarmCommand::BuyFieldPlot { .. }
         | FarmCommand::SelectResident { .. }
         | FarmCommand::RenameResident { .. }
         | FarmCommand::CollectMachineJob { .. } => None,
-        FarmCommand::BuyStructure { structure_kind, .. } => {
-            if *structure_kind == StructureKind::Bakery {
-                None
-            } else {
-                Some("feature is not available in the demo")
-            }
-        }
+        FarmCommand::BuyStructure { .. } => Some("feature is not available in the demo"),
         FarmCommand::MoveStructure { target, .. } => match target {
             StructureTarget::Silo | StructureTarget::Barn => None,
-            StructureTarget::Machine { id } => {
-                let machine = farm.machines.iter().find(|machine| machine.id == *id);
-                if machine.is_none_or(|machine| machine.kind == MachineKind::Bakery) {
-                    None
-                } else {
-                    Some("feature is not available in the demo")
-                }
-            }
+            StructureTarget::Machine { .. } => Some("feature is not available in the demo"),
             StructureTarget::Shelter { .. } | StructureTarget::DeliveryBoard => {
                 Some("feature is not available in the demo")
             }
         },
         FarmCommand::QueueRecipe { recipe_id, .. } => {
-            if recipe_id == "bread" {
-                None
-            } else {
-                Some("feature is not available in the demo")
-            }
+            let _ = recipe_id;
+            Some("feature is not available in the demo")
         }
         FarmCommand::UpgradeStorage { .. }
         | FarmCommand::FeedAnimal { .. }
@@ -205,11 +189,7 @@ fn demo_save_is_compatible(save: &DemoSave, catalog: &CatalogDocument) -> bool {
         .inventory
         .keys()
         .all(|item_id| catalog.item(item_id).is_some())
-        && save
-            .farm
-            .machines
-            .iter()
-            .all(|machine| machine.kind == MachineKind::Bakery)
+        && save.farm.machines.is_empty()
         && save.farm.shelters.is_empty()
         && !save.farm.delivery_board_built
 }

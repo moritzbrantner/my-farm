@@ -1005,6 +1005,44 @@ test("farmhouse selection buys the oven upgrade when available", async ({ page }
   });
 });
 
+test("Farmhouse Oven actions queue and collect Bread", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  const now = Date.now();
+  await mockFarmApi(
+    page,
+    {
+      ...farmView,
+      level: 2,
+      owned_farmhouse_upgrades: ["oven"],
+      inventory: [{ item_id: "wheat", name: "Wheat", quantity: 3, kind: "crop" }],
+      oven: {
+        id: "oven",
+        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
+      },
+    },
+    catalog,
+    (request) => {
+      commands.push(request);
+    },
+  );
+  await openFarm(page);
+
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+
+  await expect(selection.getByText("Oven - queue 1/2")).toBeVisible();
+  await selection.getByRole("button", { name: "Collect Bread" }).click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({ type: "collect_oven_job" });
+
+  await selection.getByRole("button", { name: "Make Bread" }).click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "queue_oven_recipe",
+    recipe_id: "bread",
+  });
+});
+
 test("storage selection can discard one item from the inventory list", async ({ page }) => {
   const commands: CommandRequest[] = [];
   await mockFarmApi(
@@ -2225,7 +2263,7 @@ const catalog: CatalogDocument = {
     {
       id: "bread",
       name: "Bread",
-      machine_kind: "bakery",
+      target: { type: "oven" },
       inputs: [{ item_id: "wheat", quantity: 3 }],
       outputs: [{ item_id: "bread", quantity: 1 }],
       reference_seconds: 300,
@@ -2235,7 +2273,7 @@ const catalog: CatalogDocument = {
     {
       id: "corn_bread",
       name: "Corn Bread",
-      machine_kind: "bakery",
+      target: { type: "oven" },
       inputs: [
         { item_id: "corn", quantity: 2 },
         { item_id: "egg", quantity: 1 },
@@ -2248,7 +2286,7 @@ const catalog: CatalogDocument = {
     {
       id: "potato_bread",
       name: "Potato Bread",
-      machine_kind: "bakery",
+      target: { type: "oven" },
       inputs: [
         { item_id: "wheat", quantity: 2 },
         { item_id: "potato", quantity: 2 },
@@ -2261,7 +2299,7 @@ const catalog: CatalogDocument = {
     {
       id: "carrot_cake",
       name: "Carrot Cake",
-      machine_kind: "bakery",
+      target: { type: "oven" },
       inputs: [
         { item_id: "wheat", quantity: 2 },
         { item_id: "carrot", quantity: 2 },
@@ -2275,7 +2313,7 @@ const catalog: CatalogDocument = {
     {
       id: "tomato_tart",
       name: "Tomato Tart",
-      machine_kind: "bakery",
+      target: { type: "oven" },
       inputs: [
         { item_id: "wheat", quantity: 2 },
         { item_id: "tomato", quantity: 2 },
@@ -2289,7 +2327,7 @@ const catalog: CatalogDocument = {
     {
       id: "chicken_feed",
       name: "Chicken Feed",
-      machine_kind: "feed_mill",
+      target: { type: "machine", machine_kind: "feed_mill" },
       inputs: [
         { item_id: "wheat", quantity: 2 },
         { item_id: "corn", quantity: 1 },
@@ -2302,7 +2340,7 @@ const catalog: CatalogDocument = {
     {
       id: "cow_feed",
       name: "Cow Feed",
-      machine_kind: "feed_mill",
+      target: { type: "machine", machine_kind: "feed_mill" },
       inputs: [
         { item_id: "soybean", quantity: 2 },
         { item_id: "corn", quantity: 1 },
@@ -2397,6 +2435,7 @@ const farmView: FarmView = {
     { id: "machine-2", kind: "feed_mill", tile: { x: 10, y: 3 }, queue: [] },
   ],
   owned_farmhouse_upgrades: [],
+  oven: { id: "oven", queue: [] },
   shelters: [
     {
       id: "shelter-1",

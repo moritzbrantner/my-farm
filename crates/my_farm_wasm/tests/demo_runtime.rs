@@ -19,7 +19,7 @@ fn demo_catalog_is_limited_to_early_production() {
     assert_eq!(catalog.crops.len(), 2);
     assert_eq!(catalog.recipes.len(), 1);
     assert_eq!(catalog.recipes[0].id, "bread");
-    assert_eq!(catalog.machines.len(), 1);
+    assert!(catalog.machines.is_empty());
     assert!(catalog.shelters.is_empty());
     assert!(catalog.market_items.is_empty());
     assert!(catalog.storage_upgrades.is_empty());
@@ -186,7 +186,7 @@ fn demo_runtime_loads_old_saves_with_default_residents_and_empty_queues() {
 }
 
 #[test]
-fn demo_runtime_supports_crop_and_bakery_loop() {
+fn demo_runtime_supports_crop_and_farmhouse_oven_loop() {
     let mut runtime = DemoFarmRuntime::new(None, 1_000.0);
 
     command(
@@ -217,33 +217,23 @@ fn demo_runtime_supports_crop_and_bakery_loop() {
         },
         21_000.0,
     );
-    let built = command(
+    command(
         &mut runtime,
         2,
-        FarmCommand::BuyStructure {
-            structure_kind: StructureKind::Bakery,
-            tile: Tile { x: 8, y: 2 },
+        FarmCommand::BuyFarmhouseUpgrade {
+            upgrade_kind: FarmhouseUpgradeKind::Oven,
         },
         29_000.0,
     );
-    let bakery_id = built.view.machines[0].id.clone();
     command(
         &mut runtime,
         3,
-        FarmCommand::QueueRecipe {
-            machine_id: bakery_id.clone(),
+        FarmCommand::QueueOvenRecipe {
             recipe_id: "bread".to_owned(),
         },
         29_000.0,
     );
-    let response = command(
-        &mut runtime,
-        4,
-        FarmCommand::CollectMachineJob {
-            machine_id: bakery_id,
-        },
-        60_000.0,
-    );
+    let response = command(&mut runtime, 4, FarmCommand::CollectOvenJob, 60_000.0);
 
     assert!(response.accepted);
     assert_eq!(

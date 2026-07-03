@@ -43,6 +43,8 @@ pub struct FarmState {
     pub machines: Vec<MachineState>,
     #[serde(default)]
     pub owned_farmhouse_upgrades: Vec<FarmhouseUpgradeKind>,
+    #[serde(default = "default_oven_state")]
+    pub oven: OvenState,
     pub shelters: Vec<AnimalShelterState>,
     pub delivery_board_built: bool,
     #[serde(default = "default_delivery_board_tile")]
@@ -90,6 +92,12 @@ pub struct MachineJob {
     pub started_at_ms: i64,
     #[ts(type = "number")]
     pub ready_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct OvenState {
+    pub id: String,
+    pub queue: Vec<MachineJob>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -163,6 +171,7 @@ pub enum ResidentTaskStepWork {
     PlantCrop { crop_id: String },
     HarvestCrop { crop_id: String, quantity: u32 },
     CollectMachineJob { job_id: String, recipe_id: String },
+    CollectOvenJob { job_id: String, recipe_id: String },
     FeedAnimal,
     CollectAnimalProduct { item_id: String, quantity: u32 },
 }
@@ -176,6 +185,7 @@ pub enum ReservedWorkTarget {
     Machine {
         machine_id: String,
     },
+    Oven,
     Animal {
         shelter_id: String,
         animal_slot: String,
@@ -202,6 +212,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         field_plots: starting_plots(),
         machines: Vec::new(),
         owned_farmhouse_upgrades: Vec::new(),
+        oven: default_oven_state(),
         shelters: Vec::new(),
         delivery_board_built: false,
         delivery_board_tile: default_delivery_board_tile(),
@@ -372,4 +383,11 @@ pub fn default_resident_task_queues() -> BTreeMap<String, Vec<ResidentTask>> {
         ("woman".to_owned(), Vec::new()),
         ("man".to_owned(), Vec::new()),
     ])
+}
+
+pub fn default_oven_state() -> OvenState {
+    OvenState {
+        id: "oven".to_owned(),
+        queue: Vec::new(),
+    }
 }

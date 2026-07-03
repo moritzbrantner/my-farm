@@ -1,6 +1,6 @@
 use my_farm_core::{
     AnimalState, CatalogDocument, FarmCommand, FarmEvent, FarmState, FarmhouseUpgradeKind,
-    ItemStack, MachineKind, ShelterKind, StorageKind, StructureKind, StructureTarget,
+    ItemStack, MachineKind, RecipeTarget, ShelterKind, StorageKind, StructureKind, StructureTarget,
     SweepHarvestMode, Tile, add_inventory, apply_command, apply_elapsed, farm_view,
     inventory_quantity, new_farm, scaled_duration_ms, update_level,
 };
@@ -1325,23 +1325,23 @@ fn catalog_extends_late_crop_and_bakery_progression() {
 fn machine_recipes_consume_inputs_and_produce_outputs() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
-    farm.xp = 4;
-    farm.level = 2;
+    farm.xp = 14;
+    farm.level = 3;
 
     let built = apply_command(
         &mut farm,
         &catalog,
         FarmCommand::BuyStructure {
-            structure_kind: StructureKind::Bakery,
+            structure_kind: StructureKind::FeedMill,
             tile: Tile::new(4, 1),
         },
         0,
     );
     assert!(built.accepted);
-    let bakery_id = farm
+    let feed_mill_id = farm
         .machines
         .iter()
-        .find(|machine| machine.kind == MachineKind::Bakery)
+        .find(|machine| machine.kind == MachineKind::FeedMill)
         .unwrap()
         .id
         .clone();
@@ -1350,31 +1350,235 @@ fn machine_recipes_consume_inputs_and_produce_outputs() {
         &mut farm,
         &catalog,
         FarmCommand::QueueRecipe {
-            machine_id: bakery_id.clone(),
-            recipe_id: "bread".to_owned(),
+            machine_id: feed_mill_id.clone(),
+            recipe_id: "chicken_feed".to_owned(),
         },
         0,
     );
     assert!(queued.accepted);
-    assert_eq!(inventory_quantity(&farm, "wheat"), 3);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 4);
+    assert_eq!(inventory_quantity(&farm, "corn"), 2);
 
     let collected = apply_command(
         &mut farm,
         &catalog,
         FarmCommand::CollectMachineJob {
-            machine_id: bakery_id,
+            machine_id: feed_mill_id,
         },
         scaled_duration_ms(300, catalog.balance.time_scale),
     );
     assert!(collected.accepted);
-    assert_eq!(inventory_quantity(&farm, "bread"), 0);
+    assert_eq!(inventory_quantity(&farm, "chicken_feed"), 0);
 
     apply_elapsed(
         &mut farm,
         &catalog,
         scaled_duration_ms(300, catalog.balance.time_scale) + 2_000,
     );
+    assert_eq!(inventory_quantity(&farm, "chicken_feed"), 3);
+}
+
+#[test]
+fn bread_family_recipes_target_the_farmhouse_oven() {
+    let catalog = CatalogDocument::default_catalog();
+
+    for recipe_id in [
+        "bread",
+        "corn_bread",
+        "potato_bread",
+        "carrot_cake",
+        "tomato_tart",
+    ] {
+        let recipe = catalog.recipe(recipe_id).unwrap();
+        assert_eq!(recipe.target, RecipeTarget::Oven);
+    }
+
+    assert_eq!(
+        catalog.recipe("chicken_feed").unwrap().target,
+        RecipeTarget::Machine {
+            machine_kind: MachineKind::FeedMill
+        }
+    );
+}
+
+#[test]
+fn oven_recipes_require_ownership_and_queue_jobs_after_purchase() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+
+    let rejected = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueOvenRecipe {
+            recipe_id: "bread".to_owned(),
+        },
+        0,
+    );
+    assert!(!rejected.accepted);
+    assert_eq!(rejected.error.unwrap().message, "oven is not owned");
+    assert!(farm.oven.queue.is_empty());
+    assert_eq!(inventory_quantity(&farm, "wheat"), 6);
+
+    let bought = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyFarmhouseUpgrade {
+            upgrade_kind: FarmhouseUpgradeKind::Oven,
+        },
+        0,
+    );
+    assert!(bought.accepted);
+
+    let queued = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueOvenRecipe {
+            recipe_id: "bread".to_owned(),
+        },
+        0,
+    );
+    assert!(queued.accepted);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 3);
+    assert_eq!(farm.oven.queue.len(), 1);
+    assert_eq!(farm.oven.queue[0].recipe_id, "bread");
+    assert_eq!(
+        farm.oven.queue[0].ready_at_ms,
+        scaled_duration_ms(300, catalog.balance.time_scale)
+    );
+}
+
+#[test]
+fn oven_queue_capacity_is_enforced_at_two_jobs() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+    add_inventory(&mut farm, "wheat", 6);
+    farm.owned_farmhouse_upgrades
+        .push(FarmhouseUpgradeKind::Oven);
+
+    for _ in 0..2 {
+        let queued = apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::QueueOvenRecipe {
+                recipe_id: "bread".to_owned(),
+            },
+            0,
+        );
+        assert!(queued.accepted);
+    }
+
+    let rejected = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueOvenRecipe {
+            recipe_id: "bread".to_owned(),
+        },
+        0,
+    );
+    assert!(!rejected.accepted);
+    assert_eq!(rejected.error.unwrap().message, "oven queue is full");
+    assert_eq!(farm.oven.queue.len(), 2);
+}
+
+#[test]
+fn oven_jobs_collect_through_resident_work_and_respect_storage_capacity() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+    farm.owned_farmhouse_upgrades
+        .push(FarmhouseUpgradeKind::Oven);
+
+    let queued = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueOvenRecipe {
+            recipe_id: "bread".to_owned(),
+        },
+        0,
+    );
+    assert!(queued.accepted);
+    let ready_at = scaled_duration_ms(300, catalog.balance.time_scale);
+
+    farm.barn_capacity = 0;
+    let storage_full = apply_command(&mut farm, &catalog, FarmCommand::CollectOvenJob, ready_at);
+    assert!(!storage_full.accepted);
+    assert_eq!(storage_full.error.unwrap().message, "storage is full");
+    assert_eq!(farm.oven.queue.len(), 1);
+
+    farm.barn_capacity = 30;
+    let collected = apply_command(&mut farm, &catalog, FarmCommand::CollectOvenJob, ready_at);
+    assert!(collected.accepted);
+    assert!(collected.events.is_empty());
+    assert_eq!(farm.oven.queue.len(), 1);
+    assert_eq!(inventory_quantity(&farm, "bread"), 0);
+
+    let duplicate_collect =
+        apply_command(&mut farm, &catalog, FarmCommand::CollectOvenJob, ready_at);
+    assert!(!duplicate_collect.accepted);
+    assert_eq!(duplicate_collect.error.unwrap().message, "oven is reserved");
+
+    apply_elapsed(&mut farm, &catalog, ready_at + 1_999);
+    assert_eq!(farm.oven.queue.len(), 1);
+    assert_eq!(inventory_quantity(&farm, "bread"), 0);
+
+    let events = apply_elapsed(&mut farm, &catalog, ready_at + 2_000);
+    assert_eq!(farm.oven.queue.len(), 0);
     assert_eq!(inventory_quantity(&farm, "bread"), 1);
+    assert!(events.contains(&FarmEvent::MachineJobCollected {
+        recipe_id: "bread".to_owned(),
+    }));
+}
+
+#[test]
+fn feed_mill_still_uses_placed_machine_production() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    farm.level = 3;
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::FeedMill,
+            tile: Tile::new(10, 3),
+        },
+        0,
+    );
+    assert!(built.accepted);
+    let feed_mill_id = farm.machines[0].id.clone();
+
+    let queued = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueRecipe {
+            machine_id: feed_mill_id.clone(),
+            recipe_id: "chicken_feed".to_owned(),
+        },
+        0,
+    );
+    assert!(queued.accepted);
+    assert_eq!(farm.machines[0].queue.len(), 1);
+
+    let oven_rejected = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueRecipe {
+            machine_id: feed_mill_id,
+            recipe_id: "bread".to_owned(),
+        },
+        0,
+    );
+    assert!(!oven_rejected.accepted);
+    assert_eq!(
+        oven_rejected.error.unwrap().message,
+        "recipe does not belong to this machine"
+    );
 }
 
 #[test]
@@ -1388,20 +1592,20 @@ fn machine_collection_is_queued_and_reserves_job_and_barn_capacity() {
         &mut farm,
         &catalog,
         FarmCommand::BuyStructure {
-            structure_kind: StructureKind::Bakery,
+            structure_kind: StructureKind::FeedMill,
             tile: Tile::new(4, 1),
         },
         0,
     );
     assert!(built.accepted);
-    let bakery_id = farm.machines[0].id.clone();
+    let feed_mill_id = farm.machines[0].id.clone();
 
     let queued = apply_command(
         &mut farm,
         &catalog,
         FarmCommand::QueueRecipe {
-            machine_id: bakery_id.clone(),
-            recipe_id: "bread".to_owned(),
+            machine_id: feed_mill_id.clone(),
+            recipe_id: "chicken_feed".to_owned(),
         },
         0,
     );
@@ -1412,21 +1616,21 @@ fn machine_collection_is_queued_and_reserves_job_and_barn_capacity() {
         &mut farm,
         &catalog,
         FarmCommand::CollectMachineJob {
-            machine_id: bakery_id.clone(),
+            machine_id: feed_mill_id.clone(),
         },
         ready_at,
     );
     assert!(collected.accepted);
     assert!(collected.events.is_empty());
     assert_eq!(farm.machines[0].queue.len(), 1);
-    assert_eq!(inventory_quantity(&farm, "bread"), 0);
+    assert_eq!(inventory_quantity(&farm, "chicken_feed"), 0);
     assert_eq!(farm.xp, 14);
 
     let duplicate_collect = apply_command(
         &mut farm,
         &catalog,
         FarmCommand::CollectMachineJob {
-            machine_id: bakery_id,
+            machine_id: feed_mill_id,
         },
         ready_at,
     );
@@ -1451,14 +1655,14 @@ fn machine_collection_is_queued_and_reserves_job_and_barn_capacity() {
 
     apply_elapsed(&mut farm, &catalog, ready_at + 1_999);
     assert_eq!(farm.machines[0].queue.len(), 1);
-    assert_eq!(inventory_quantity(&farm, "bread"), 0);
+    assert_eq!(inventory_quantity(&farm, "chicken_feed"), 0);
 
     let events = apply_elapsed(&mut farm, &catalog, ready_at + 2_000);
     assert_eq!(farm.machines[0].queue.len(), 0);
-    assert_eq!(inventory_quantity(&farm, "bread"), 1);
-    assert_eq!(farm.xp, 18);
+    assert_eq!(inventory_quantity(&farm, "chicken_feed"), 3);
+    assert_eq!(farm.xp, 16);
     assert!(events.contains(&FarmEvent::MachineJobCollected {
-        recipe_id: "bread".to_owned(),
+        recipe_id: "chicken_feed".to_owned(),
     }));
 }
 
