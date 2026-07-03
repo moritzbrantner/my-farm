@@ -46,6 +46,7 @@ import {
   reservedOvenReason,
   residentTaskStatus,
 } from "./game/residentTasks";
+import { decorationPlacementStatus, type RoomTile } from "./game/houseInterior";
 import type {
   AnimalShelterState,
   CatalogDocument,
@@ -171,6 +172,7 @@ export function App() {
   const [screen, setScreen] = useState<GameScreen>("main_menu");
   const [playScene, setPlayScene] = useState<PlayScene>("farm");
   const [selectedHouseRoom, setSelectedHouseRoom] = useState<HouseRoomId>("living_room");
+  const [selectedDecorationId, setSelectedDecorationId] = useState<string | null>(null);
   const [guidedTutorialStep, setGuidedTutorialStep] = useState<number | null>(null);
   const [marketOpen, setMarketOpen] = useState(false);
   const [message, setMessage] = useState(
@@ -609,6 +611,43 @@ export function App() {
     setMessage("Returned to Farm");
   }, []);
 
+  const selectDecoration = useCallback(
+    (decorationId: string) => {
+      const decoration = catalog?.decorations.find((entry) => entry.id === decorationId);
+      setSelectedDecorationId(decorationId);
+      setMessage(decoration ? `Place ${decoration.name}` : "Place Decoration");
+    },
+    [catalog],
+  );
+
+  const placeDecoration = useCallback(
+    async (roomId: string, decorationId: string, tile: RoomTile) => {
+      if (!catalog || !view) {
+        return;
+      }
+      if (view.level < 5) {
+        setMessage("Decoration placement unlocks at Farm level 5");
+        return;
+      }
+      const room = view.house_interior.rooms.find((entry) => entry.id === roomId);
+      if (!room) {
+        setMessage("Room not found");
+        return;
+      }
+      const status = decorationPlacementStatus(catalog, room, decorationId, tile);
+      if (!status.fits) {
+        setMessage(
+          status.reason === "overlap"
+            ? "Decoration placement overlaps"
+            : "Decoration placement is out of bounds",
+        );
+        return;
+      }
+      await send({ type: "place_decoration", room_id: roomId, decoration_id: decorationId, tile });
+    },
+    [catalog, send, view],
+  );
+
   const selectPlantFieldTool = useCallback(
     (cropId: string) => {
       setActiveFieldTool({ type: "plant", cropId });
@@ -949,8 +988,13 @@ export function App() {
       <div className="gameplay-surface" {...(gameplayPaused ? { inert: "" } : {})}>
         {screen === "playing" && playScene === "house_interior" ? (
           <HouseInteriorScene
+            catalog={catalog}
+            view={view}
             selectedRoom={selectedHouseRoom}
+            selectedDecorationId={selectedDecorationId}
             onSelectRoom={setSelectedHouseRoom}
+            onSelectDecoration={selectDecoration}
+            onPlaceDecoration={placeDecoration}
             onBackToFarm={returnToFarmScene}
           />
         ) : (

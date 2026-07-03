@@ -158,6 +158,127 @@ button[aria-disabled="true"] {
   outline-offset: -2px;
 }
 
+.house-room-tiles {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(58vw, 520px);
+  aspect-ratio: 8 / 6;
+  display: grid;
+  gap: 1px;
+  transform: translate(-50%, -43%);
+  pointer-events: auto;
+}
+
+.house-room-tile {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid rgba(32, 49, 43, 0.08);
+  border-radius: 0;
+  background: rgba(255, 247, 208, 0.02);
+  box-shadow: none;
+}
+
+.house-room-tile:hover,
+.house-room-tile:focus-visible {
+  border-color: rgba(68, 109, 56, 0.65);
+  background: rgba(255, 247, 208, 0.24);
+  outline: 2px solid rgba(68, 109, 56, 0.35);
+  outline-offset: -2px;
+}
+
+.house-room-tile:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.decoration-dock {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 74px;
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 8px;
+  pointer-events: none;
+}
+
+.decoration-dock__status,
+.decoration-tray {
+  pointer-events: auto;
+  border: 1px solid rgba(32, 49, 43, 0.24);
+  border-radius: 8px;
+  background: rgba(247, 239, 221, 0.94);
+  box-shadow: 0 10px 24px rgba(32, 49, 43, 0.14);
+}
+
+.decoration-dock__status {
+  min-height: 72px;
+  display: grid;
+  align-items: center;
+  padding: 10px 12px;
+  color: #536a5e;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.decoration-tray {
+  display: flex;
+  gap: 8px;
+  padding: 9px;
+  overflow-x: auto;
+}
+
+.decoration-card {
+  width: 136px;
+  min-width: 136px;
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 4px 7px;
+  align-items: center;
+  padding: 8px;
+  text-align: left;
+  background: #fbf6e8;
+}
+
+.decoration-card--selected,
+.decoration-card:focus-visible {
+  background: #fff7d0;
+  outline: 2px solid rgba(68, 109, 56, 0.42);
+  outline-offset: 1px;
+}
+
+.decoration-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
+.decoration-card__swatch {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(32, 49, 43, 0.24);
+  border-radius: 6px;
+}
+
+.decoration-card span:not(.decoration-card__swatch) {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.decoration-card small {
+  grid-column: 1 / -1;
+  color: #536a5e;
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .gameplay-surface {
   display: contents;
 }

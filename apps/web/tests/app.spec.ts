@@ -1282,6 +1282,86 @@ test("enters the Farmhouse interior, switches rooms, and returns to the farm sce
   await expect(page.getByLabel("Farmhouse structure")).toBeVisible();
 });
 
+test("house interior decoration controls are locked before Farm level 5", async ({ page }) => {
+  await mockFarmApi(page, { ...farmView, level: 4 });
+  await openFarm(page);
+
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+
+  await expect(page.getByTestId("decoration-placement-status")).toContainText(
+    "Decoration placement unlocks at Farm level 5",
+  );
+  const decorations = page.getByRole("navigation", { name: "Decorations" });
+  await expect(decorations.getByRole("button", { name: /Sofa/ })).toBeDisabled();
+  await expect(page.getByLabel("Room Tile 0,0")).toBeDisabled();
+});
+
+test("places multiple copies of a selected house Decoration through the command path", async ({
+  page,
+}) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, { ...farmView, level: 5 }, catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await page.getByRole("navigation", { name: "Decorations" }).getByRole("button", { name: /Chair/ }).click();
+  await page.getByLabel("Room Tile 0,0").hover();
+  await expect(page.getByTestId("decoration-placement-status")).toContainText("Fits on Room Tile 0,0");
+
+  await page.getByLabel("Room Tile 0,0").click();
+  await page.getByLabel("Room Tile 0,1").click();
+
+  await expect.poll(() => commands.length).toBe(2);
+  expect(commands[0].command).toEqual({
+    type: "place_decoration",
+    room_id: "living_room",
+    decoration_id: "chair",
+    tile: { x: 0, y: 0 },
+  });
+  expect(commands[1].command).toEqual({
+    type: "place_decoration",
+    room_id: "living_room",
+    decoration_id: "chair",
+    tile: { x: 0, y: 1 },
+  });
+});
+
+test("house decoration preview blocks overlap and bounds failures before sending commands", async ({
+  page,
+}) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, { ...farmView, level: 5 }, catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  const decorations = page.getByRole("navigation", { name: "Decorations" });
+
+  await decorations.getByRole("button", { name: /Chair/ }).click();
+  await page.getByLabel("Room Tile 1,1").hover();
+  await expect(page.getByTestId("decoration-placement-status")).toContainText(
+    "Blocked: overlaps at Room Tile 1,1",
+  );
+  await page.getByLabel("Room Tile 1,1").click();
+  await expect(page.getByTestId("decoration-placement-status")).toContainText(
+    "Blocked: overlaps at Room Tile 1,1",
+  );
+
+  await decorations.getByRole("button", { name: /Rug/ }).click();
+  await page.getByLabel("Room Tile 6,5").hover();
+  await expect(page.getByTestId("decoration-placement-status")).toContainText(
+    "Blocked: out of bounds at Room Tile 6,5",
+  );
+  await page.getByLabel("Room Tile 6,5").click();
+  await expect(page.getByTestId("decoration-placement-status")).toContainText(
+    "Blocked: out of bounds at Room Tile 6,5",
+  );
+  expect(commands).toHaveLength(0);
+});
+
 test("escape cancels structure placement", async ({ page }) => {
   const commands: CommandRequest[] = [];
   await mockFarmApi(page, buildableFarmView(), catalog, (request) => {

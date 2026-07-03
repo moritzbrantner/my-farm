@@ -31,6 +31,21 @@ test("pages demo runs from WASM without server API calls", async ({ page }) => {
   expect(apiRequests).toEqual([]);
 });
 
+test("pages demo places a House Interior Decoration through the WASM runtime", async ({ page }) => {
+  await page.goto("/");
+  await seedLevelFiveSave(page);
+  await page.reload();
+  await page.getByRole("button", { name: "Start Farm" }).click();
+
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await page.getByRole("navigation", { name: "Decorations" }).getByRole("button", { name: /Chair/ }).click();
+  await page.getByLabel("Room Tile 0,0").hover();
+  await expect(page.getByTestId("decoration-placement-status")).toContainText("Fits on Room Tile 0,0");
+  await page.getByLabel("Room Tile 0,0").click();
+
+  await expect.poll(() => livingRoomPlacementCount(page)).toBe(4);
+});
+
 test("pages demo persists a Farmhouse Oven production save in localStorage", async ({ page }) => {
   await page.goto("/");
   await seedBreadSave(page);
@@ -120,6 +135,46 @@ async function closeGuidedTutorial(page: Page) {
     await dialog.getByRole("button", { name: "Got it" }).click();
   }
   await expect(dialog).toHaveCount(0);
+}
+
+async function livingRoomPlacementCount(page: Page) {
+  return page.evaluate((key) => {
+    const rawSave = window.localStorage.getItem(key);
+    if (!rawSave) {
+      return 0;
+    }
+    const save = JSON.parse(rawSave) as {
+      farm?: {
+        house_interior?: {
+          rooms?: Array<{ id: string; decoration_placements: unknown[] }>;
+        };
+      };
+    };
+    return (
+      save.farm?.house_interior?.rooms?.find((room) => room.id === "living_room")
+        ?.decoration_placements.length ?? 0
+    );
+  }, demoSaveKey);
+}
+
+async function seedLevelFiveSave(page: Page) {
+  await page.evaluate(async (key) => {
+    type WasmRuntime = {
+      save_json(): string;
+    };
+    type WasmModule = {
+      default(): Promise<unknown>;
+      DemoFarmRuntime: new (savedJson: string | undefined, nowMs: number) => WasmRuntime;
+    };
+
+    const wasm = (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
+    await wasm.default();
+    const runtime = new wasm.DemoFarmRuntime(undefined, 1_000);
+    const save = JSON.parse(runtime.save_json()) as { farm: { xp: number; level: number } };
+    save.farm.xp = 55;
+    save.farm.level = 5;
+    window.localStorage.setItem(key, JSON.stringify(save));
+  }, demoSaveKey);
 }
 
 async function seedBreadSave(page: Page) {

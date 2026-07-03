@@ -1,9 +1,17 @@
 import { Html, OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
+import { useMemo, useState } from "react";
+import {
+  decorationPlacementStatus,
+  type DecorationDefinition,
+  type HouseInteriorRoom,
+  type RoomTile,
+} from "../game/houseInterior";
+import type { CatalogDocument, FarmView } from "../types";
 
 export type HouseRoomId = "living_room" | "kitchen" | "bedroom";
 
-type HouseRoom = {
+type HouseRoomStyle = {
   id: HouseRoomId;
   label: string;
   floor: string;
@@ -12,12 +20,31 @@ type HouseRoom = {
 };
 
 type Props = {
+  catalog: CatalogDocument;
+  view: FarmView;
   selectedRoom: HouseRoomId;
+  selectedDecorationId: string | null;
   onSelectRoom: (room: HouseRoomId) => void;
+  onSelectDecoration: (decorationId: string) => void;
+  onPlaceDecoration: (roomId: string, decorationId: string, tile: RoomTile) => void;
   onBackToFarm: () => void;
 };
 
-export const houseRooms: HouseRoom[] = [
+const decorationEditingUnlockLevel = 5;
+const tileSize = 0.64;
+const decorationColors: Record<string, string> = {
+  bed: "#ead9cf",
+  table: "#d7c48a",
+  chair: "#9b6a43",
+  sofa: "#4f8f62",
+  rug: "#c89672",
+  plant: "#5f8f62",
+  cabinet: "#8a6742",
+  lamp: "#f0cb6b",
+  kitchen_counter: "#f2ead7",
+};
+
+export const houseRooms: HouseRoomStyle[] = [
   {
     id: "living_room",
     label: "Living Room",
@@ -41,8 +68,33 @@ export const houseRooms: HouseRoom[] = [
   },
 ];
 
-export function HouseInteriorScene({ selectedRoom, onSelectRoom, onBackToFarm }: Props) {
-  const room = houseRooms.find((entry) => entry.id === selectedRoom) ?? houseRooms[0];
+export function HouseInteriorScene({
+  catalog,
+  view,
+  selectedRoom,
+  selectedDecorationId,
+  onSelectRoom,
+  onSelectDecoration,
+  onPlaceDecoration,
+  onBackToFarm,
+}: Props) {
+  const [hoverTile, setHoverTile] = useState<RoomTile | null>(null);
+  const roomStyle = houseRooms.find((entry) => entry.id === selectedRoom) ?? houseRooms[0];
+  const room =
+    view.house_interior.rooms.find((entry) => entry.id === roomStyle.id) ??
+    view.house_interior.rooms[0];
+  const canEditDecorations = view.level >= decorationEditingUnlockLevel;
+  const selectedDecoration = selectedDecorationId
+    ? catalog.decorations.find((entry) => entry.id === selectedDecorationId) ?? null
+    : null;
+  const preview =
+    canEditDecorations && selectedDecoration && hoverTile
+      ? {
+          tile: hoverTile,
+          decoration: selectedDecoration,
+          status: decorationPlacementStatus(catalog, room, selectedDecoration.id, hoverTile),
+        }
+      : null;
 
   return (
     <section className="house-interior" aria-label="House Interior">
@@ -59,8 +111,15 @@ export function HouseInteriorScene({ selectedRoom, onSelectRoom, onBackToFarm }:
         <ambientLight intensity={0.5} />
         <directionalLight position={[5, 8, 5]} intensity={2.1} castShadow />
         <OrbitControls enableRotate={false} enablePan={false} enableZoom={false} target={[0, 0.3, 0]} />
-        <RoomSet room={room} />
+        <RoomSet catalog={catalog} room={room} roomStyle={roomStyle} preview={preview} />
       </Canvas>
+      <RoomTileGrid
+        room={room}
+        selectedDecoration={selectedDecoration}
+        canEditDecorations={canEditDecorations}
+        onHoverTile={setHoverTile}
+        onPlaceDecoration={onPlaceDecoration}
+      />
       <div className="house-interior__hud">
         <div className="house-interior__title">
           <span>Farmhouse</span>
@@ -82,118 +141,255 @@ export function HouseInteriorScene({ selectedRoom, onSelectRoom, onBackToFarm }:
           </button>
         ))}
       </nav>
+      <DecorationCatalogTray
+        catalog={catalog}
+        preview={preview}
+        selectedDecorationId={selectedDecorationId}
+        canEditDecorations={canEditDecorations}
+        onSelectDecoration={onSelectDecoration}
+      />
     </section>
   );
 }
 
-function RoomSet({ room }: { room: HouseRoom }) {
+function RoomSet({
+  catalog,
+  room,
+  roomStyle,
+  preview,
+}: {
+  catalog: CatalogDocument;
+  room: HouseInteriorRoom;
+  roomStyle: HouseRoomStyle;
+  preview: { tile: RoomTile; decoration: DecorationDefinition; status: ReturnType<typeof decorationPlacementStatus> } | null;
+}) {
   return (
     <group>
       <mesh receiveShadow position={[0, -0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[7.2, 7.2]} />
         <meshStandardMaterial color="#6d8b72" roughness={1} />
       </mesh>
-      <RoomShell room={room} />
-      {room.id === "living_room" ? <LivingRoom accent={room.accent} /> : null}
-      {room.id === "kitchen" ? <Kitchen accent={room.accent} /> : null}
-      {room.id === "bedroom" ? <Bedroom accent={room.accent} /> : null}
+      <RoomShell room={room} roomStyle={roomStyle} />
+      {room.decoration_placements.map((placement) => {
+        const decoration = catalog.decorations.find((entry) => entry.id === placement.decoration_id);
+        return decoration ? (
+          <DecorationObject
+            key={placement.id}
+            room={room}
+            decoration={decoration}
+            tile={placement.tile}
+            opacity={1}
+          />
+        ) : null;
+      })}
+      {preview ? (
+        <DecorationObject
+          room={room}
+          decoration={preview.decoration}
+          tile={preview.tile}
+          opacity={0.62}
+          invalid={!preview.status.fits}
+        />
+      ) : null}
       <Html position={[0, 1.1, 0]} center wrapperClass="farm-scene-marker-wrapper">
         <div
           className="farm-scene-marker"
           data-testid={`house-room-${room.id}`}
-          aria-label={`${room.label} room`}
+          aria-label={`${roomStyle.label} room`}
         />
       </Html>
     </group>
   );
 }
 
-function RoomShell({ room }: { room: HouseRoom }) {
+function RoomShell({ room, roomStyle }: { room: HouseInteriorRoom; roomStyle: HouseRoomStyle }) {
+  const floorWidth = room.width * tileSize;
+  const floorHeight = room.height * tileSize;
   return (
     <group>
       <mesh receiveShadow position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[5.2, 5.2]} />
-        <meshStandardMaterial color={room.floor} roughness={0.86} />
+        <planeGeometry args={[floorWidth, floorHeight]} />
+        <meshStandardMaterial color={roomStyle.floor} roughness={0.86} />
       </mesh>
-      {[-2, -1, 0, 1, 2].map((offset) => (
-        <mesh key={`floor-x-${offset}`} position={[offset, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.035, 5.05]} />
+      {Array.from({ length: room.width + 1 }, (_, index) => index).map((index) => (
+        <mesh
+          key={`floor-x-${index}`}
+          position={[(index - room.width / 2) * tileSize, 0.012, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <planeGeometry args={[0.026, floorHeight]} />
           <meshBasicMaterial color="#fff7d0" transparent opacity={0.2} depthWrite={false} />
         </mesh>
       ))}
-      {[-2, -1, 0, 1, 2].map((offset) => (
-        <mesh key={`floor-z-${offset}`} position={[0, 0.014, offset]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[5.05, 0.035]} />
+      {Array.from({ length: room.height + 1 }, (_, index) => index).map((index) => (
+        <mesh
+          key={`floor-z-${index}`}
+          position={[0, 0.014, (index - room.height / 2) * tileSize]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <planeGeometry args={[floorWidth, 0.026]} />
           <meshBasicMaterial color="#20312b" transparent opacity={0.08} depthWrite={false} />
         </mesh>
       ))}
-      <mesh castShadow receiveShadow position={[0, 0.9, -2.68]}>
-        <boxGeometry args={[5.4, 1.8, 0.22]} />
-        <meshStandardMaterial color={room.wall} roughness={0.92} />
+      <mesh castShadow receiveShadow position={[0, 0.9, -floorHeight / 2 - 0.14]}>
+        <boxGeometry args={[floorWidth + 0.28, 1.8, 0.22]} />
+        <meshStandardMaterial color={roomStyle.wall} roughness={0.92} />
       </mesh>
-      <mesh castShadow receiveShadow position={[-2.68, 0.9, 0]}>
-        <boxGeometry args={[0.22, 1.8, 5.4]} />
-        <meshStandardMaterial color={room.wall} roughness={0.92} />
+      <mesh castShadow receiveShadow position={[-floorWidth / 2 - 0.14, 0.9, 0]}>
+        <boxGeometry args={[0.22, 1.8, floorHeight + 0.28]} />
+        <meshStandardMaterial color={roomStyle.wall} roughness={0.92} />
       </mesh>
-      <mesh castShadow receiveShadow position={[0, 0.12, 2.72]}>
-        <boxGeometry args={[5.4, 0.24, 0.24]} />
+      <mesh castShadow receiveShadow position={[0, 0.12, floorHeight / 2 + 0.16]}>
+        <boxGeometry args={[floorWidth + 0.28, 0.24, 0.24]} />
         <meshStandardMaterial color="#8a6742" roughness={0.82} />
       </mesh>
-      <mesh castShadow receiveShadow position={[2.72, 0.12, 0]}>
-        <boxGeometry args={[0.24, 0.24, 5.4]} />
+      <mesh castShadow receiveShadow position={[floorWidth / 2 + 0.16, 0.12, 0]}>
+        <boxGeometry args={[0.24, 0.24, floorHeight + 0.28]} />
         <meshStandardMaterial color="#8a6742" roughness={0.82} />
       </mesh>
     </group>
   );
 }
 
-function LivingRoom({ accent }: { accent: string }) {
-  return (
-    <group>
-      <FurnitureBox position={[-0.85, 0.28, 0.75]} size={[1.7, 0.45, 0.75]} color={accent} />
-      <FurnitureBox position={[-0.85, 0.72, 0.38]} size={[1.7, 0.75, 0.22]} color="#3e6f50" />
-      <FurnitureBox position={[1.05, 0.18, 0.58]} size={[0.95, 0.22, 0.58]} color="#9b6a43" />
-      <FurnitureBox position={[1.05, 0.5, -1.8]} size={[1.25, 0.85, 0.18]} color="#5d4634" />
-    </group>
-  );
-}
-
-function Kitchen({ accent }: { accent: string }) {
-  return (
-    <group>
-      <FurnitureBox position={[-1.45, 0.35, -1.85]} size={[1.65, 0.7, 0.45]} color="#f2ead7" />
-      <FurnitureBox position={[0.25, 0.35, -1.85]} size={[1.35, 0.7, 0.45]} color="#f2ead7" />
-      <FurnitureBox position={[1.75, 0.55, -1.78]} size={[0.62, 1.1, 0.55]} color={accent} />
-      <FurnitureBox position={[0.2, 0.28, 0.55]} size={[1.6, 0.18, 1.05]} color="#d7c48a" />
-      <FurnitureBox position={[0.2, 0.62, 0.55]} size={[0.22, 0.7, 0.22]} color="#7a5b3d" />
-    </group>
-  );
-}
-
-function Bedroom({ accent }: { accent: string }) {
-  return (
-    <group>
-      <FurnitureBox position={[-0.95, 0.24, 0.72]} size={[1.65, 0.36, 2.1]} color="#ead9cf" />
-      <FurnitureBox position={[-0.95, 0.5, 0.25]} size={[1.55, 0.22, 1.15]} color={accent} />
-      <FurnitureBox position={[1.45, 0.48, -1.45]} size={[1, 0.96, 0.48]} color="#8a6742" />
-      <FurnitureBox position={[1.4, 0.2, 0.85]} size={[0.62, 0.4, 0.62]} color="#b9824d" />
-    </group>
-  );
-}
-
-function FurnitureBox({
-  position,
-  size,
-  color,
+function DecorationObject({
+  room,
+  decoration,
+  tile,
+  opacity,
+  invalid = false,
 }: {
-  position: [number, number, number];
-  size: [number, number, number];
-  color: string;
+  room: HouseInteriorRoom;
+  decoration: DecorationDefinition;
+  tile: RoomTile;
+  opacity: number;
+  invalid?: boolean;
 }) {
+  const width = decoration.footprint.width * tileSize;
+  const height = decoration.footprint.height * tileSize;
+  const x = (tile.x + decoration.footprint.width / 2 - room.width / 2) * tileSize;
+  const z = (tile.y + decoration.footprint.height / 2 - room.height / 2) * tileSize;
+  const color = invalid ? "#b8463d" : decorationColors[decoration.id] ?? "#d7c48a";
   return (
-    <mesh castShadow receiveShadow position={position}>
-      <boxGeometry args={size} />
-      <meshStandardMaterial color={color} roughness={0.78} />
+    <mesh castShadow receiveShadow position={[x, 0.12, z]}>
+      <boxGeometry args={[Math.max(0.18, width - 0.08), 0.24, Math.max(0.18, height - 0.08)]} />
+      <meshStandardMaterial color={color} roughness={0.78} transparent opacity={opacity} />
     </mesh>
   );
+}
+
+function RoomTileGrid({
+  room,
+  selectedDecoration,
+  canEditDecorations,
+  onHoverTile,
+  onPlaceDecoration,
+}: {
+  room: HouseInteriorRoom;
+  selectedDecoration: DecorationDefinition | null;
+  canEditDecorations: boolean;
+  onHoverTile: (tile: RoomTile | null) => void;
+  onPlaceDecoration: (roomId: string, decorationId: string, tile: RoomTile) => void;
+}) {
+  const tiles = useMemo(
+    () =>
+      Array.from({ length: room.width * room.height }, (_, index) => ({
+        x: index % room.width,
+        y: Math.floor(index / room.width),
+      })),
+    [room.height, room.width],
+  );
+
+  return (
+    <div
+      className="house-room-tiles"
+      style={{
+        gridTemplateColumns: `repeat(${room.width}, minmax(0, 1fr))`,
+        gridTemplateRows: `repeat(${room.height}, minmax(0, 1fr))`,
+        aspectRatio: `${room.width} / ${room.height}`,
+      }}
+      aria-label={`${room.name} Room Tiles`}
+    >
+      {tiles.map((tile) => (
+        <button
+          key={`${tile.x},${tile.y}`}
+          type="button"
+          className="house-room-tile"
+          aria-label={`Room Tile ${tile.x},${tile.y}`}
+          disabled={!canEditDecorations || !selectedDecoration}
+          onPointerEnter={() => onHoverTile(tile)}
+          onFocus={() => onHoverTile(tile)}
+          onPointerLeave={() => onHoverTile(null)}
+          onBlur={() => onHoverTile(null)}
+          onClick={() => {
+            if (selectedDecoration) {
+              onPlaceDecoration(room.id, selectedDecoration.id, tile);
+            }
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function DecorationCatalogTray({
+  catalog,
+  preview,
+  selectedDecorationId,
+  canEditDecorations,
+  onSelectDecoration,
+}: {
+  catalog: CatalogDocument;
+  preview: { tile: RoomTile; status: ReturnType<typeof decorationPlacementStatus> } | null;
+  selectedDecorationId: string | null;
+  canEditDecorations: boolean;
+  onSelectDecoration: (decorationId: string) => void;
+}) {
+  const statusText = placementStatusText(canEditDecorations, preview);
+  return (
+    <section className="decoration-dock" aria-label="Decoration catalog">
+      <div className="decoration-dock__status" data-testid="decoration-placement-status">
+        {statusText}
+      </div>
+      <nav className="decoration-tray" aria-label="Decorations">
+        {catalog.decorations.map((decoration) => (
+          <button
+            key={decoration.id}
+            type="button"
+            className={
+              decoration.id === selectedDecorationId
+                ? "decoration-card decoration-card--selected"
+                : "decoration-card"
+            }
+            disabled={!canEditDecorations}
+            aria-pressed={decoration.id === selectedDecorationId}
+            onClick={() => onSelectDecoration(decoration.id)}
+          >
+            <span className="decoration-card__swatch" style={{ background: decorationColors[decoration.id] }} />
+            <span>{decoration.name}</span>
+            <small>
+              {decoration.footprint.width}x{decoration.footprint.height}
+            </small>
+          </button>
+        ))}
+      </nav>
+    </section>
+  );
+}
+
+function placementStatusText(
+  canEditDecorations: boolean,
+  preview: { tile: RoomTile; status: ReturnType<typeof decorationPlacementStatus> } | null,
+) {
+  if (!canEditDecorations) {
+    return "Decoration placement unlocks at Farm level 5";
+  }
+  if (!preview) {
+    return "Choose a Decoration, then choose a Room Tile";
+  }
+  if (preview.status.fits) {
+    return `Fits on Room Tile ${preview.tile.x},${preview.tile.y}`;
+  }
+  return preview.status.reason === "overlap"
+    ? `Blocked: overlaps at Room Tile ${preview.tile.x},${preview.tile.y}`
+    : `Blocked: out of bounds at Room Tile ${preview.tile.x},${preview.tile.y}`;
 }
