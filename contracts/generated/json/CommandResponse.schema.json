@@ -928,26 +928,112 @@
       "type": "object",
       "required": [
         "id",
+        "kind",
         "ready_at_ms",
-        "reserved_work_target",
-        "started_at_ms"
+        "started_at_ms",
+        "steps"
       ],
       "properties": {
         "id": {
           "type": "string"
         },
+        "kind": {
+          "$ref": "#/definitions/ResidentTaskKind"
+        },
         "ready_at_ms": {
           "type": "integer",
           "format": "int64"
         },
-        "reserved_work_target": {
-          "$ref": "#/definitions/ReservedWorkTarget"
-        },
         "started_at_ms": {
           "type": "integer",
           "format": "int64"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResidentTaskStep"
+          }
         }
       }
+    },
+    "ResidentTaskKind": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "field_work"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ResidentTaskStep": {
+      "type": "object",
+      "required": [
+        "reserved_work_target",
+        "work"
+      ],
+      "properties": {
+        "reserved_work_target": {
+          "$ref": "#/definitions/ReservedWorkTarget"
+        },
+        "work": {
+          "$ref": "#/definitions/ResidentTaskStepWork"
+        }
+      }
+    },
+    "ResidentTaskStepWork": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "crop_id",
+            "type"
+          ],
+          "properties": {
+            "crop_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "plant_crop"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "crop_id",
+            "quantity",
+            "type"
+          ],
+          "properties": {
+            "crop_id": {
+              "type": "string"
+            },
+            "quantity": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "harvest_crop"
+              ]
+            }
+          }
+        }
+      ]
     },
     "ShelterKind": {
       "type": "string",

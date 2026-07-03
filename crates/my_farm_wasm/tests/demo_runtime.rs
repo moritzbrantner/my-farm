@@ -74,33 +74,34 @@ fn demo_runtime_supports_crop_and_bakery_loop() {
             ],
             harvest_mode: None,
         },
-        14_000.0,
+        21_000.0,
     );
-    command(
+    let built = command(
         &mut runtime,
         2,
         FarmCommand::BuyStructure {
             structure_kind: StructureKind::Bakery,
             tile: Tile { x: 8, y: 2 },
         },
-        14_000.0,
+        29_000.0,
     );
+    let bakery_id = built.view.machines[0].id.clone();
     command(
         &mut runtime,
         3,
         FarmCommand::QueueRecipe {
-            machine_id: "machine-1".to_owned(),
+            machine_id: bakery_id.clone(),
             recipe_id: "bread".to_owned(),
         },
-        14_000.0,
+        29_000.0,
     );
     let response = command(
         &mut runtime,
         4,
         FarmCommand::CollectMachineJob {
-            machine_id: "machine-1".to_owned(),
+            machine_id: bakery_id,
         },
-        45_000.0,
+        60_000.0,
     );
 
     assert!(response.accepted);

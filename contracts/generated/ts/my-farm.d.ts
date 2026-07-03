@@ -53,7 +53,13 @@ export type FarmResident = { id: string, display_name: string, };
 
 export type ReservedWorkTarget = { "type": "field_plot", plot_id: string, } | { "type": "machine", machine_id: string, } | { "type": "animal", shelter_id: string, animal_slot: string, };
 
-export type ResidentTask = { id: string, reserved_work_target: ReservedWorkTarget, started_at_ms: number, ready_at_ms: number, };
+export type ResidentTaskKind = { "type": "field_work" };
+
+export type ResidentTaskStepWork = { "type": "plant_crop", crop_id: string, } | { "type": "harvest_crop", crop_id: string, quantity: number, };
+
+export type ResidentTaskStep = { reserved_work_target: ReservedWorkTarget, work: ResidentTaskStepWork, };
+
+export type ResidentTask = { id: string, kind: ResidentTaskKind, steps: Array<ResidentTaskStep>, started_at_ms: number, ready_at_ms: number, };
 
 export type FarmState = { last_update_ms: number, xp: number, level: number, coins: number, silo_capacity: number, silo_upgrade_tier: number, silo_tile: Tile, barn_capacity: number, barn_upgrade_tier: number, barn_tile: Tile, inventory: { [key in string]?: number }, claimed_crop_unlocks: Array<string>, field_plots: Array<FieldPlot>, machines: Array<MachineState>, shelters: Array<AnimalShelterState>, delivery_board_built: boolean, delivery_board_tile: Tile, delivery_orders: Array<DeliveryOrder>, residents: Array<FarmResident>, selected_resident_id: string, resident_task_queues: { [key in string]?: Array<ResidentTask> }, next_id: number, };
 
