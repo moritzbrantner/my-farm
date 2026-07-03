@@ -331,6 +331,22 @@ export function App() {
     structureMenu,
   ]);
 
+  const clearTransientGameplayUi = useCallback(() => {
+    setSelection(null);
+    setFieldMenu(null);
+    setStructureMenu(null);
+    setActiveFieldTool({ type: "default" });
+    setBuildToolSelected(false);
+    setBuildPlacement(null);
+    setSelectedBuildKind(null);
+    setMovingStructure(null);
+    setMarketOpen(false);
+    plantSweepRef.current = null;
+    harvestSweepRef.current = null;
+    setPlantSweep(null);
+    setHarvestSweep(null);
+  }, []);
+
   const select = useCallback((nextSelection: Selection) => {
     setSelection(nextSelection);
     setFieldMenu(null);
@@ -413,24 +429,14 @@ export function App() {
   const reset = useCallback(async () => {
     const response = await client.reset();
     applyFarmSnapshot(response.version, response.view, { force: true });
-    setSelection(null);
-    setFieldMenu(null);
-    setStructureMenu(null);
-    setActiveFieldTool({ type: "default" });
-    setBuildToolSelected(false);
-    setBuildPlacement(null);
-    setMovingStructure(null);
-    plantSweepRef.current = null;
-    harvestSweepRef.current = null;
-    setPlantSweep(null);
-    setHarvestSweep(null);
+    clearTransientGameplayUi();
+    setGuidedTutorialStep(0);
     setMessage(demoMode ? "Demo farm reset" : "Farm reset");
-  }, [applyFarmSnapshot]);
+  }, [applyFarmSnapshot, clearTransientGameplayUi]);
 
   const startNewFarm = useCallback(async () => {
     await reset();
     setScreen("playing");
-    setGuidedTutorialStep(0);
   }, [reset]);
 
   const openMainMenu = useCallback(() => {
