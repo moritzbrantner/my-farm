@@ -1,0 +1,898 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WebsocketServerMessage",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "catalog",
+        "type"
+      ],
+      "properties": {
+        "catalog": {
+          "$ref": "#/definitions/CatalogDocument"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "catalog"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "version",
+        "view"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "farm_snapshot"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "view": {
+          "$ref": "#/definitions/FarmView"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "error",
+        "type"
+      ],
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/WebsocketError"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "error"
+          ]
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "AnimalShelterState": {
+      "type": "object",
+      "required": [
+        "animals",
+        "id",
+        "kind",
+        "tile"
+      ],
+      "properties": {
+        "animals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnimalSlot"
+          }
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/ShelterKind"
+        },
+        "tile": {
+          "$ref": "#/definitions/Tile"
+        }
+      }
+    },
+    "AnimalSlot": {
+      "type": "object",
+      "required": [
+        "id",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/definitions/AnimalState"
+        }
+      }
+    },
+    "AnimalState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "idle"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "fed_at_ms",
+            "ready_at_ms",
+            "type"
+          ],
+          "properties": {
+            "fed_at_ms": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "ready_at_ms": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "producing"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "ready"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "BalanceConfig": {
+      "type": "object",
+      "required": [
+        "max_orders",
+        "time_scale"
+      ],
+      "properties": {
+        "max_orders": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "time_scale": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "CatalogDocument": {
+      "type": "object",
+      "required": [
+        "balance",
+        "crops",
+        "items",
+        "level_xp",
+        "machines",
+        "market_items",
+        "recipes",
+        "shelters",
+        "storage_upgrades"
+      ],
+      "properties": {
+        "balance": {
+          "$ref": "#/definitions/BalanceConfig"
+        },
+        "crops": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CropDef"
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ItemDef"
+          }
+        },
+        "level_xp": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "machines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MachineDef"
+          }
+        },
+        "market_items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MarketItemDef"
+          }
+        },
+        "recipes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RecipeDef"
+          }
+        },
+        "shelters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ShelterDef"
+          }
+        },
+        "storage_upgrades": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/StorageUpgradeDef"
+          }
+        }
+      }
+    },
+    "CropDef": {
+      "type": "object",
+      "required": [
+        "harvest_quantity",
+        "item_id",
+        "reference_seconds",
+        "unlock_level",
+        "xp"
+      ],
+      "properties": {
+        "harvest_quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "reference_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "xp": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "DeliveryOrder": {
+      "type": "object",
+      "required": [
+        "id",
+        "requirements",
+        "reward_coins",
+        "reward_xp"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ItemStack"
+          }
+        },
+        "reward_coins": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reward_xp": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "FarmView": {
+      "type": "object",
+      "required": [
+        "barn_capacity",
+        "barn_tile",
+        "barn_upgrade_tier",
+        "barn_used",
+        "coins",
+        "delivery_board_built",
+        "delivery_board_tile",
+        "delivery_orders",
+        "field_plots",
+        "inventory",
+        "last_update_ms",
+        "level",
+        "machines",
+        "shelters",
+        "silo_capacity",
+        "silo_tile",
+        "silo_upgrade_tier",
+        "silo_used",
+        "unlocks",
+        "xp"
+      ],
+      "properties": {
+        "barn_capacity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "barn_tile": {
+          "$ref": "#/definitions/Tile"
+        },
+        "barn_upgrade_tier": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "barn_used": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "coins": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "delivery_board_built": {
+          "type": "boolean"
+        },
+        "delivery_board_tile": {
+          "$ref": "#/definitions/Tile"
+        },
+        "delivery_orders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeliveryOrder"
+          }
+        },
+        "field_plots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FieldPlot"
+          }
+        },
+        "inventory": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/InventoryItemView"
+          }
+        },
+        "last_update_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "machines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MachineState"
+          }
+        },
+        "shelters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnimalShelterState"
+          }
+        },
+        "silo_capacity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "silo_tile": {
+          "$ref": "#/definitions/Tile"
+        },
+        "silo_upgrade_tier": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "silo_used": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/UnlockView"
+          }
+        },
+        "xp": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "FieldPlot": {
+      "type": "object",
+      "required": [
+        "id",
+        "tile"
+      ],
+      "properties": {
+        "crop": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PlantedCrop"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "tile": {
+          "$ref": "#/definitions/Tile"
+        }
+      }
+    },
+    "InventoryItemView": {
+      "type": "object",
+      "required": [
+        "item_id",
+        "kind",
+        "name",
+        "quantity"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/ItemKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ItemDef": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "unlock_level"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/ItemKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ItemKind": {
+      "type": "string",
+      "enum": [
+        "crop",
+        "feed",
+        "animal_product",
+        "product"
+      ]
+    },
+    "ItemStack": {
+      "type": "object",
+      "required": [
+        "item_id",
+        "quantity"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MachineDef": {
+      "type": "object",
+      "required": [
+        "build_cost",
+        "kind",
+        "name",
+        "queue_limit",
+        "unlock_level"
+      ],
+      "properties": {
+        "build_cost": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "kind": {
+          "$ref": "#/definitions/MachineKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "queue_limit": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MachineJob": {
+      "type": "object",
+      "required": [
+        "id",
+        "ready_at_ms",
+        "recipe_id",
+        "started_at_ms"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ready_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "recipe_id": {
+          "type": "string"
+        },
+        "started_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "MachineKind": {
+      "type": "string",
+      "enum": [
+        "bakery",
+        "feed_mill"
+      ]
+    },
+    "MachineState": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "queue",
+        "tile"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/MachineKind"
+        },
+        "queue": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MachineJob"
+          }
+        },
+        "tile": {
+          "$ref": "#/definitions/Tile"
+        }
+      }
+    },
+    "MarketItemDef": {
+      "type": "object",
+      "required": [
+        "item_id",
+        "unlock_level"
+      ],
+      "properties": {
+        "buy_price": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "sell_price": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "PlantedCrop": {
+      "type": "object",
+      "required": [
+        "item_id",
+        "planted_at_ms",
+        "ready_at_ms"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "planted_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "ready_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "RecipeDef": {
+      "type": "object",
+      "required": [
+        "id",
+        "inputs",
+        "machine_kind",
+        "name",
+        "outputs",
+        "reference_seconds",
+        "unlock_level",
+        "xp"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ItemStack"
+          }
+        },
+        "machine_kind": {
+          "$ref": "#/definitions/MachineKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ItemStack"
+          }
+        },
+        "reference_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "xp": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ShelterDef": {
+      "type": "object",
+      "required": [
+        "animal_name",
+        "build_cost",
+        "feed_item_id",
+        "kind",
+        "name",
+        "product_item_id",
+        "reference_seconds",
+        "slots",
+        "unlock_level",
+        "xp"
+      ],
+      "properties": {
+        "animal_name": {
+          "type": "string"
+        },
+        "build_cost": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "feed_item_id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/ShelterKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "product_item_id": {
+          "type": "string"
+        },
+        "reference_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "slots": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "xp": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ShelterKind": {
+      "type": "string",
+      "enum": [
+        "chicken_coop",
+        "cow_pasture"
+      ]
+    },
+    "StorageKind": {
+      "type": "string",
+      "enum": [
+        "silo",
+        "barn"
+      ]
+    },
+    "StorageUpgradeDef": {
+      "type": "object",
+      "required": [
+        "capacity",
+        "cost_coins",
+        "storage_kind",
+        "tier",
+        "unlock_level"
+      ],
+      "properties": {
+        "capacity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "cost_coins": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "storage_kind": {
+          "$ref": "#/definitions/StorageKind"
+        },
+        "tier": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Tile": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "y": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "UnlockView": {
+      "type": "object",
+      "required": [
+        "label",
+        "level",
+        "unlocked"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "unlocked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "WebsocketError": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

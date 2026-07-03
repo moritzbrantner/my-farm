@@ -1,12 +1,14 @@
 use anyhow::Context;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{Json, Router, response::IntoResponse};
 use my_farm_core::{
     CatalogDocument, CatalogResponse, CommandRequest, CommandResponse, FarmResponse, FarmState,
-    HealthResponse, apply_command, apply_elapsed, farm_view, new_farm,
+    HealthResponse, WebsocketError, WebsocketServerMessage, apply_command, apply_elapsed,
+    farm_view, new_farm,
 };
 use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
@@ -41,6 +43,7 @@ pub fn app(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/catalog", get(get_catalog))
         .route("/api/farm", get(get_farm))
+        .route("/api/gameplay", get(gameplay_websocket))
         .route("/api/farm/reset", post(reset_farm))
         .route("/api/commands", post(post_command))
         .layer(CorsLayer::permissive())
@@ -87,6 +90,73 @@ async fn get_farm(
         version,
         view: farm_view(&farm, &state.catalog),
     }))
+}
+
+async fn gameplay_websocket(
+    State(state): State<AppState>,
+    websocket: WebSocketUpgrade,
+) -> impl IntoResponse {
+    websocket.on_upgrade(|socket| gameplay_session(socket, state))
+}
+
+async fn gameplay_session(mut socket: WebSocket, state: AppState) {
+    if let Err(error) = send_bootstrap(&mut socket, &state).await {
+        let _ = send_websocket_message(
+            &mut socket,
+            &WebsocketServerMessage::Error {
+                error: WebsocketError {
+                    code: "bootstrap_failed".to_owned(),
+                    message: error.error,
+                },
+            },
+        )
+        .await;
+        return;
+    }
+
+    while socket.recv().await.is_some() {
+        // Command and reset messages are added by later websocket transport slices.
+    }
+}
+
+async fn send_bootstrap(socket: &mut WebSocket, state: &AppState) -> Result<(), ApiError> {
+    let now_ms = now_ms();
+    let (version, mut farm) = load_or_create_farm(state, now_ms)
+        .await
+        .map_err(api_error)?;
+    apply_elapsed(&mut farm, &state.catalog, now_ms);
+
+    send_websocket_message(
+        socket,
+        &WebsocketServerMessage::Catalog {
+            catalog: state.catalog.clone(),
+        },
+    )
+    .await?;
+    send_websocket_message(
+        socket,
+        &WebsocketServerMessage::FarmSnapshot {
+            version,
+            view: farm_view(&farm, &state.catalog),
+        },
+    )
+    .await?;
+    Ok(())
+}
+
+async fn send_websocket_message(
+    socket: &mut WebSocket,
+    message: &WebsocketServerMessage,
+) -> Result<(), ApiError> {
+    let payload = serde_json::to_string(message).map_err(|error| ApiError {
+        error: error.to_string(),
+    })?;
+    socket
+        .send(Message::Text(payload.into()))
+        .await
+        .map_err(|error| ApiError {
+            error: format!("websocket send error: {error}"),
+        })
 }
 
 async fn reset_farm(
@@ -255,4 +325,8 @@ fn internal_error(error: impl std::fmt::Display) -> (StatusCode, Json<ApiError>)
             error: error.to_string(),
         }),
     )
+}
+
+fn api_error((_, Json(error)): (StatusCode, Json<ApiError>)) -> ApiError {
+    error
 }
