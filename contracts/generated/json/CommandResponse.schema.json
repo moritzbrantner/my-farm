@@ -131,6 +131,25 @@
         }
       ]
     },
+    "DecorationPlacement": {
+      "type": "object",
+      "required": [
+        "decoration_id",
+        "id",
+        "tile"
+      ],
+      "properties": {
+        "decoration_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "tile": {
+          "$ref": "#/definitions/RoomTile"
+        }
+      }
+    },
     "DeliveryOrder": {
       "type": "object",
       "required": [
@@ -592,6 +611,7 @@
         "delivery_board_tile",
         "delivery_orders",
         "field_plots",
+        "house_interior",
         "inventory",
         "last_update_ms",
         "level",
@@ -650,6 +670,9 @@
           "items": {
             "$ref": "#/definitions/FieldPlot"
           }
+        },
+        "house_interior": {
+          "$ref": "#/definitions/HouseInterior"
         },
         "inventory": {
           "type": "array",
@@ -764,6 +787,20 @@
         },
         "tile": {
           "$ref": "#/definitions/Tile"
+        }
+      }
+    },
+    "HouseInterior": {
+      "type": "object",
+      "required": [
+        "rooms"
+      ],
+      "properties": {
+        "rooms": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Room"
+          }
         }
       }
     },
@@ -1196,6 +1233,66 @@
           }
         }
       ]
+    },
+    "Room": {
+      "type": "object",
+      "required": [
+        "decoration_placements",
+        "height",
+        "id",
+        "name",
+        "tiles",
+        "width"
+      ],
+      "properties": {
+        "decoration_placements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DecorationPlacement"
+          }
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoomTile"
+          }
+        },
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "RoomTile": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "y": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
     },
     "ShelterKind": {
       "type": "string",

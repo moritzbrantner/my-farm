@@ -56,6 +56,8 @@ pub struct FarmState {
     pub selected_resident_id: String,
     #[serde(default = "default_resident_task_queues")]
     pub resident_task_queues: BTreeMap<String, Vec<ResidentTask>>,
+    #[serde(default = "default_house_interior")]
+    pub house_interior: HouseInterior,
     #[ts(type = "number")]
     pub next_id: u64,
 }
@@ -107,6 +109,8 @@ struct FarmStateSerde {
     selected_resident_id: String,
     #[serde(default = "default_resident_task_queues")]
     resident_task_queues: BTreeMap<String, Vec<ResidentTask>>,
+    #[serde(default = "default_house_interior")]
+    house_interior: HouseInterior,
     next_id: u64,
 }
 
@@ -146,6 +150,7 @@ impl FarmStateSerde {
             residents: self.residents,
             selected_resident_id: self.selected_resident_id,
             resident_task_queues: self.resident_task_queues,
+            house_interior: self.house_interior,
             next_id: self.next_id,
         };
 
@@ -279,6 +284,40 @@ pub struct ResidentTask {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct HouseInterior {
+    pub rooms: Vec<Room>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct Room {
+    pub id: String,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub tiles: Vec<RoomTile>,
+    pub decoration_placements: Vec<DecorationPlacement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct RoomTile {
+    pub x: u32,
+    pub y: u32,
+}
+
+impl RoomTile {
+    pub fn new(x: u32, y: u32) -> Self {
+        Self { x, y }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct DecorationPlacement {
+    pub id: String,
+    pub decoration_id: String,
+    pub tile: RoomTile,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResidentTaskKind {
     FieldWork,
@@ -346,6 +385,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         residents: default_residents(),
         selected_resident_id: default_selected_resident_id(),
         resident_task_queues: default_resident_task_queues(),
+        house_interior: default_house_interior(),
         next_id: 1,
     };
     update_level(&mut farm, catalog);
@@ -515,6 +555,67 @@ pub fn default_oven_state() -> OvenState {
     OvenState {
         id: "oven".to_owned(),
         queue: Vec::new(),
+    }
+}
+
+pub fn default_house_interior() -> HouseInterior {
+    HouseInterior {
+        rooms: vec![
+            room(
+                "living_room",
+                "Living Room",
+                vec![
+                    placement("living-room-sofa", "sofa", 1, 1),
+                    placement("living-room-rug", "rug", 2, 3),
+                    placement("living-room-plant", "plant", 6, 1),
+                ],
+            ),
+            room(
+                "kitchen",
+                "Kitchen",
+                vec![
+                    placement("kitchen-counter", "kitchen_counter", 0, 0),
+                    placement("kitchen-table", "table", 3, 2),
+                    placement("kitchen-chair", "chair", 5, 2),
+                ],
+            ),
+            room(
+                "bedroom",
+                "Bedroom",
+                vec![
+                    placement("bedroom-bed", "bed", 1, 1),
+                    placement("bedroom-cabinet", "cabinet", 5, 0),
+                    placement("bedroom-lamp", "lamp", 6, 2),
+                ],
+            ),
+        ],
+    }
+}
+
+fn room(id: &str, name: &str, decoration_placements: Vec<DecorationPlacement>) -> Room {
+    let width = 8;
+    let height = 6;
+    Room {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        width,
+        height,
+        tiles: room_tiles(width, height),
+        decoration_placements,
+    }
+}
+
+fn room_tiles(width: u32, height: u32) -> Vec<RoomTile> {
+    (0..height)
+        .flat_map(|y| (0..width).map(move |x| RoomTile::new(x, y)))
+        .collect()
+}
+
+fn placement(id: &str, decoration_id: &str, x: u32, y: u32) -> DecorationPlacement {
+    DecorationPlacement {
+        id: id.to_owned(),
+        decoration_id: decoration_id.to_owned(),
+        tile: RoomTile::new(x, y),
     }
 }
 

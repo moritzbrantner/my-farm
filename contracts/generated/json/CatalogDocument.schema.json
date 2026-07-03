@@ -5,6 +5,7 @@
   "required": [
     "balance",
     "crops",
+    "decorations",
     "farmhouse_upgrades",
     "items",
     "level_xp",
@@ -22,6 +23,12 @@
       "type": "array",
       "items": {
         "$ref": "#/definitions/CropDef"
+      }
+    },
+    "decorations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/DecorationDef"
       }
     },
     "farmhouse_upgrades": {
@@ -124,6 +131,44 @@
           "minimum": 0.0
         },
         "xp": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "DecorationDef": {
+      "type": "object",
+      "required": [
+        "footprint",
+        "id",
+        "name"
+      ],
+      "properties": {
+        "footprint": {
+          "$ref": "#/definitions/DecorationFootprint"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "DecorationFootprint": {
+      "type": "object",
+      "required": [
+        "height",
+        "width"
+      ],
+      "properties": {
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "width": {
           "type": "integer",
           "format": "uint32",
           "minimum": 0.0

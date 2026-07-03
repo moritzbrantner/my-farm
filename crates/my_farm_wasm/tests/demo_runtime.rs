@@ -23,6 +23,24 @@ fn demo_catalog_is_limited_to_early_production() {
     assert!(catalog.shelters.is_empty());
     assert!(catalog.market_items.is_empty());
     assert!(catalog.storage_upgrades.is_empty());
+    assert_eq!(
+        catalog
+            .decorations
+            .iter()
+            .map(|decoration| decoration.id.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "bed",
+            "table",
+            "chair",
+            "sofa",
+            "rug",
+            "plant",
+            "cabinet",
+            "lamp",
+            "kitchen_counter"
+        ]
+    );
 }
 
 #[test]
@@ -183,6 +201,36 @@ fn demo_runtime_loads_old_saves_with_default_residents_and_empty_queues() {
     );
     assert!(restored_farm.view.resident_task_queues["woman"].is_empty());
     assert!(restored_farm.view.resident_task_queues["man"].is_empty());
+}
+
+#[test]
+fn demo_runtime_loads_old_saves_with_default_house_interior() {
+    let runtime = DemoFarmRuntime::new(None, 1_000.0);
+    let mut save: serde_json::Value = serde_json::from_str(&runtime.save_json()).unwrap();
+    let farm_json = save["farm"].as_object_mut().unwrap();
+    farm_json.remove("house_interior");
+
+    let mut restored = DemoFarmRuntime::new(Some(save.to_string()), 2_000.0);
+    let restored_farm = farm(&mut restored, 2_000.0);
+
+    assert_eq!(
+        restored_farm
+            .view
+            .house_interior
+            .rooms
+            .iter()
+            .map(|room| room.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Living Room", "Kitchen", "Bedroom"]
+    );
+    assert!(
+        restored_farm
+            .view
+            .house_interior
+            .rooms
+            .iter()
+            .all(|room| room.width == 8 && room.height == 6 && room.tiles.len() == 48)
+    );
 }
 
 #[test]

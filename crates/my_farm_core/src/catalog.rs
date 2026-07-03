@@ -151,6 +151,19 @@ pub struct StorageUpgradeDef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct DecorationFootprint {
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct DecorationDef {
+    pub id: String,
+    pub name: String,
+    pub footprint: DecorationFootprint,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct BalanceConfig {
     pub time_scale: u32,
     pub max_orders: usize,
@@ -176,6 +189,7 @@ pub struct CatalogDocument {
     pub shelters: Vec<ShelterDef>,
     pub market_items: Vec<MarketItemDef>,
     pub storage_upgrades: Vec<StorageUpgradeDef>,
+    pub decorations: Vec<DecorationDef>,
     pub level_xp: Vec<u32>,
 }
 
@@ -357,6 +371,17 @@ impl CatalogDocument {
                 storage_upgrade(StorageKind::Barn, 2, 4, 100, 65),
                 storage_upgrade(StorageKind::Barn, 3, 6, 180, 90),
             ],
+            decorations: vec![
+                decoration("bed", "Bed", 3, 2),
+                decoration("table", "Table", 2, 2),
+                decoration("chair", "Chair", 1, 1),
+                decoration("sofa", "Sofa", 3, 1),
+                decoration("rug", "Rug", 3, 2),
+                decoration("plant", "Plant", 1, 1),
+                decoration("cabinet", "Cabinet", 2, 1),
+                decoration("lamp", "Lamp", 1, 1),
+                decoration("kitchen_counter", "Kitchen Counter", 3, 1),
+            ],
             level_xp: vec![0, 0, 4, 14, 30, 55, 90, 140],
         }
     }
@@ -401,6 +426,12 @@ impl CatalogDocument {
         self.storage_upgrades
             .iter()
             .find(|upgrade| upgrade.storage_kind == storage_kind && upgrade.tier == tier)
+    }
+
+    pub fn decoration(&self, id: &str) -> Option<&DecorationDef> {
+        self.decorations
+            .iter()
+            .find(|decoration| decoration.id == id)
     }
 
     pub fn item_kind(&self, item_id: &str) -> Option<&ItemKind> {
@@ -499,5 +530,13 @@ fn storage_upgrade(
         unlock_level,
         cost_coins,
         capacity,
+    }
+}
+
+fn decoration(id: &str, name: &str, width: u32, height: u32) -> DecorationDef {
+    DecorationDef {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        footprint: DecorationFootprint { width, height },
     }
 }

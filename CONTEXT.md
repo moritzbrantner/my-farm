@@ -12,6 +12,30 @@ _Avoid_: Account, realm, world
 The fixed home base for the Farm household. It anchors the Farm Residents in the playable Farm and is not a player-built production Structure.
 _Avoid_: House building, home structure
 
+**House Interior**:
+The saved inside-of-Farmhouse decoration space owned by the Farm. It contains starter Rooms and Decoration Placements that clients can browse and later edit.
+_Avoid_: Browser-only room state, UI-only house
+
+**Room**:
+A named area inside the House Interior, such as the Living Room, Kitchen, or Bedroom. Starter Rooms use fixed Room Tile grids.
+_Avoid_: Scene, level, screen
+
+**Room Tile**:
+A discrete coordinate inside a Room grid used to place Decorations.
+_Avoid_: Farm tile, world tile
+
+**Decoration**:
+A catalog-defined interior item with a footprint, such as a Bed, Sofa, or Kitchen Counter.
+_Avoid_: Furniture item, cosmetic item
+
+**Decoration Placement**:
+A saved instance of a Decoration at a Room Tile inside a Room.
+_Avoid_: Rendered prop, local layout
+
+**Decoration Editing**:
+Player intent to change saved Decoration Placements in the House Interior. Editing changes are authoritative Farm state rather than browser-only presentation.
+_Avoid_: Client-only decorating, unsaved layout
+
 **Farmhouse Upgrade**:
 A durable improvement bought for the Farmhouse rather than placed on the farm grid. Farmhouse Upgrades use catalog-driven level and coin requirements and are saved as owned Farm state.
 _Avoid_: Structure upgrade, house building
