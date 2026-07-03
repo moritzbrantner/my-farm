@@ -424,6 +424,134 @@ test("shows the arrival road path and moving car within farm framing", async ({ 
   await expect.poll(async () => await canvasSnapshot(page), { timeout: 3_000 }).not.toBe(before);
 });
 
+test("renders both farm residents idle near the Farm House", async ({ page }) => {
+  await mockFarmApi(page);
+  await openFarm(page);
+
+  const farmhouse = page.getByTestId("farm-scene-farm-house");
+  const mara = page.getByTestId("farm-scene-resident-woman");
+  const jon = page.getByTestId("farm-scene-resident-man");
+
+  await expectCanvasToRenderNonBlank(page);
+  await expect(farmhouse).toBeVisible();
+  await expect(mara).toBeVisible();
+  await expect(jon).toBeVisible();
+  await expect(mara).toHaveAttribute("data-resident-state", "idle");
+  await expect(jon).toHaveAttribute("data-resident-state", "idle");
+  await expect(mara).toHaveAttribute("data-resident-target", "farmhouse");
+  await expect(jon).toHaveAttribute("data-resident-target", "farmhouse");
+
+  const farmhouseCenter = await elementCenter(farmhouse);
+  const maraCenter = await elementCenter(mara);
+  const jonCenter = await elementCenter(jon);
+  expect(distanceBetween(farmhouseCenter, maraCenter)).toBeLessThan(120);
+  expect(distanceBetween(farmhouseCenter, jonCenter)).toBeLessThan(120);
+  expect(distanceBetween(maraCenter, jonCenter)).toBeGreaterThan(8);
+  await expectElementFramed(page, mara);
+  await expectElementFramed(page, jon);
+});
+
+test("moves a resident toward the current task target over authoritative task time", async ({ page }) => {
+  const now = Date.now();
+  const view: FarmView = {
+    ...farmView,
+    resident_task_queues: {
+      woman: [
+        {
+          id: "task-1",
+          kind: { type: "field_work" },
+          started_at_ms: now - 400,
+          ready_at_ms: now + 2_000,
+          steps: [
+            {
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "plant_crop", crop_id: "wheat" },
+            },
+          ],
+        },
+      ],
+      man: [],
+    },
+  };
+  await mockFarmApi(page, view);
+  await openFarm(page);
+
+  const resident = page.getByTestId("farm-scene-resident-woman");
+  const target = page.getByLabel("Field Plot plot-1");
+  await expect(resident).toHaveAttribute("data-resident-state", "moving");
+  await expect(resident).toHaveAttribute("data-resident-target", "field:plot-1");
+
+  const initialResidentCenter = await elementCenter(resident);
+  const targetCenter = await elementCenter(target);
+  const initialDistance = distanceBetween(initialResidentCenter, targetCenter);
+
+  await expect
+    .poll(async () => distanceBetween(await elementCenter(resident), targetCenter), { timeout: 3_000 })
+    .toBeLessThan(initialDistance - 4);
+});
+
+test("uses the first remaining batch task step as the scene movement target", async ({ page }) => {
+  const now = Date.now();
+  const batchView: FarmView = {
+    ...farmView,
+    resident_task_queues: {
+      woman: [
+        {
+          id: "task-1",
+          kind: { type: "field_work" },
+          started_at_ms: now,
+          ready_at_ms: now + 2_000,
+          steps: [
+            {
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "plant_crop", crop_id: "wheat" },
+            },
+            {
+              reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
+              work: { type: "plant_crop", crop_id: "wheat" },
+            },
+          ],
+        },
+      ],
+      man: [],
+    },
+  };
+  await installMockGameplayWebSocket(page, [{ version: 1, view: batchView, catalog }]);
+  await rejectRestGameplay(page);
+  await openFarm(page);
+
+  const resident = page.getByTestId("farm-scene-resident-woman");
+  await expect(resident).toHaveAttribute("data-resident-target", "field:plot-1");
+
+  const nextStepView: FarmView = {
+    ...batchView,
+    resident_task_queues: {
+      woman: [
+        {
+          id: "task-1",
+          kind: { type: "field_work" },
+          started_at_ms: now + 2_000,
+          ready_at_ms: now + 4_000,
+          steps: [
+            {
+              reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
+              work: { type: "plant_crop", crop_id: "wheat" },
+            },
+          ],
+        },
+      ],
+      man: [],
+    },
+  };
+  await page.evaluate((view) => {
+    (window as unknown as {
+      __pushLatestGameplayFarmSnapshot: (snapshot: { version: number; view: FarmView }) => void;
+    }).__pushLatestGameplayFarmSnapshot({ version: 2, view });
+  }, nextStepView);
+
+  await expect(resident).toHaveAttribute("data-resident-target", "field:plot-2");
+});
+
 test("idle machines do not show production status badges", async ({ page }) => {
   await mockFarmApi(page, { ...farmView, shelters: [] });
   await openFarm(page);
@@ -2881,6 +3009,21 @@ async function expectElementFramed(page: Page, target: Locator) {
   expect(box.y).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
   expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+}
+
+async function elementCenter(target: Locator) {
+  const box = await target.boundingBox();
+  if (!box) {
+    throw new Error("Element has no bounding box");
+  }
+  return {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
+}
+
+function distanceBetween(left: { x: number; y: number }, right: { x: number; y: number }) {
+  return Math.hypot(left.x - right.x, left.y - right.y);
 }
 
 function resourceAmount(scope: Locator, name: string, amount: string) {

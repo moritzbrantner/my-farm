@@ -6,11 +6,17 @@ import type {
   ResidentTask,
   ReservedWorkTarget,
 } from "../types";
+import { structureFootprint } from "./selectors";
 
 export type ResidentTaskStatus = {
   currentTask: ResidentTask | null;
   queuedCount: number;
   progress: number;
+  label: string;
+};
+
+export type ResidentSceneTarget = {
+  tile: { x: number; y: number };
   label: string;
 };
 
@@ -28,6 +34,16 @@ export function residentTaskStatus(
     progress: currentTask ? progressBetween(currentTask.started_at_ms, currentTask.ready_at_ms, nowMs) : 0,
     label: currentTask ? taskLabel(catalog, currentTask) : "Idle",
   };
+}
+
+export function currentResidentSceneTarget(view: FarmView, residentId: string): ResidentSceneTarget | null {
+  const currentTask = view.resident_task_queues[residentId]?.[0] ?? null;
+  const currentStep = currentTask?.steps[0] ?? null;
+  return currentStep ? sceneTargetForReservedWorkTarget(view, currentStep.reserved_work_target) : null;
+}
+
+export function residentTaskProgress(task: ResidentTask, nowMs: number) {
+  return progressBetween(task.started_at_ms, task.ready_at_ms, nowMs);
 }
 
 export function reservedFieldReason(view: FarmView, plotId: string): string | null {
@@ -59,6 +75,44 @@ function findReservation(view: FarmView, target: ReservedWorkTarget) {
     }
   }
   return null as { resident: FarmResident; task: ResidentTask } | null;
+}
+
+function sceneTargetForReservedWorkTarget(
+  view: FarmView,
+  target: ReservedWorkTarget,
+): ResidentSceneTarget | null {
+  if (target.type === "field_plot") {
+    const plot = view.field_plots.find((entry) => entry.id === target.plot_id);
+    return plot ? { tile: plot.tile, label: `field:${plot.id}` } : null;
+  }
+  if (target.type === "machine") {
+    const machine = view.machines.find((entry) => entry.id === target.machine_id);
+    if (!machine) {
+      return null;
+    }
+    return {
+      tile: footprintCenter(machine.tile, structureFootprint(machine.kind)),
+      label: `machine:${machine.id}`,
+    };
+  }
+  const shelter = view.shelters.find((entry) => entry.id === target.shelter_id);
+  if (!shelter) {
+    return null;
+  }
+  const center = footprintCenter(shelter.tile, structureFootprint(shelter.kind));
+  const slotIndex = shelter.animals.findIndex((animal) => animal.id === target.animal_slot);
+  const slotOffset = slotIndex >= 0 ? (slotIndex - (shelter.animals.length - 1) / 2) * 0.32 : 0;
+  return {
+    tile: { x: center.x + slotOffset, y: center.y + 0.18 },
+    label: `animal:${shelter.id}:${target.animal_slot}`,
+  };
+}
+
+function footprintCenter(tile: { x: number; y: number }, footprint: { width: number; height: number }) {
+  return {
+    x: tile.x + (footprint.width - 1) / 2,
+    y: tile.y + (footprint.height - 1) / 2,
+  };
 }
 
 function sameReservedTarget(left: ReservedWorkTarget, right: ReservedWorkTarget) {

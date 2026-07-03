@@ -21,6 +21,8 @@ test("pages demo runs from WASM without server API calls", async ({ page }) => {
   await expect(residents.getByText("Selected Resident")).toBeVisible();
   await expect(residents.getByRole("textbox", { name: "Woman display name", exact: true })).toBeVisible();
   await expect(residents.getByRole("textbox", { name: "Man display name", exact: true })).toBeVisible();
+  await expect(page.getByTestId("farm-scene-resident-woman")).toBeVisible();
+  await expect(page.getByTestId("farm-scene-resident-man")).toBeVisible();
   await expect(page.getByText("Farmers Market")).toHaveCount(0);
   await page.locator(".field-tools").getByRole("button", { name: "Build" }).click();
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Field Plot/ })).toBeVisible();
