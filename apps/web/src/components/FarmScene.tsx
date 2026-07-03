@@ -64,6 +64,7 @@ type Props = {
   onStartHarvestSweep: (plotId: string, pointerId: number) => void;
   onEnterHarvestSweepPlot: (plotId: string) => void;
   onCancelFieldToolAction: () => void;
+  onEnterHouseInterior: () => void;
 };
 
 export function FarmScene({
@@ -86,6 +87,7 @@ export function FarmScene({
   onStartHarvestSweep,
   onEnterHarvestSweepPlot,
   onCancelFieldToolAction,
+  onEnterHouseInterior,
 }: Props) {
   const [hoverTile, setHoverTile] = useState<Tile | null>(null);
 
@@ -159,6 +161,7 @@ export function FarmScene({
           buildPlacement={buildPlacement}
           movingStructure={movingStructure}
           onSelect={() => onSelect({ type: "farmhouse" })}
+          onEnterHouseInterior={onEnterHouseInterior}
           onOpenStructureMenu={onOpenStructureMenu}
           onPlaceNewStructure={onPlaceNewStructure}
           onPlaceStructure={onPlaceStructure}
@@ -328,6 +331,7 @@ function StaticFarmHouse({
   buildPlacement,
   movingStructure,
   onSelect,
+  onEnterHouseInterior,
   onOpenStructureMenu,
   onPlaceNewStructure,
   onPlaceStructure,
@@ -339,6 +343,7 @@ function StaticFarmHouse({
   buildPlacement: BuildPlacementState;
   movingStructure: StructureSelection | null;
   onSelect: () => void;
+  onEnterHouseInterior: () => void;
   onOpenStructureMenu: (target: StructureSelection, point: { x: number; y: number }) => void;
   onPlaceNewStructure: (tile: Tile) => void;
   onPlaceStructure: (tile: Tile) => void;
@@ -363,6 +368,7 @@ function StaticFarmHouse({
       return;
     }
     onSelect();
+    onEnterHouseInterior();
   };
 
   const handleFixedContextMenu = (event: React.MouseEvent<HTMLButtonElement>) => {

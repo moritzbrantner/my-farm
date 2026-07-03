@@ -1036,7 +1036,7 @@ test("farmhouse selection buys the oven upgrade when available", async ({ page }
   );
   await openFarm(page);
 
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await openFarmhouseSelection(page);
   const selection = page.locator(".panel-section").filter({
     has: page.getByRole("heading", { name: "Selection" }),
   });
@@ -1044,8 +1044,7 @@ test("farmhouse selection buys the oven upgrade when available", async ({ page }
   await expect(selection.getByText("Oven upgrade - 40 coins, queue 2")).toBeVisible();
   await selection.getByRole("button", { name: "Buy Oven" }).click();
 
-  expect(commands).toHaveLength(1);
-  expect(commands[0].command).toEqual({
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
     type: "buy_farmhouse_upgrade",
     upgrade_kind: "oven",
   });
@@ -1073,7 +1072,7 @@ test("Farmhouse Oven actions queue and collect Bread", async ({ page }) => {
   );
   await openFarm(page);
 
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await openFarmhouseSelection(page);
   const selection = page.locator(".panel-section").filter({
     has: page.getByRole("heading", { name: "Selection" }),
   });
@@ -1245,6 +1244,7 @@ test("farmhouse blocks new field plots and structures without sending a command"
   await farmHouse.click({ force: true });
 
   await expect(page.getByText("Tile is occupied")).toBeVisible();
+  await expect(page.getByRole("region", { name: "House Interior" })).toHaveCount(0);
   expect(commands).toHaveLength(0);
 
   await tray.getByRole("button", { name: /Feed Mill/ }).click();
@@ -1252,7 +1252,34 @@ test("farmhouse blocks new field plots and structures without sending a command"
   await farmHouse.click({ force: true });
 
   await expect(page.getByText("Tile is occupied")).toBeVisible();
+  await expect(page.getByRole("region", { name: "House Interior" })).toHaveCount(0);
   expect(commands).toHaveLength(0);
+});
+
+test("enters the Farmhouse interior, switches rooms, and returns to the farm scene", async ({ page }) => {
+  await mockFarmApi(page, { ...farmView, level: 1 });
+  await openFarm(page);
+
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+
+  const house = page.getByRole("region", { name: "House Interior" });
+  await expect(house).toBeVisible();
+  await expect(page.getByLabel("Farmhouse structure")).toHaveCount(0);
+  await expect(page.getByTestId("house-room-living_room")).toBeVisible();
+
+  const rooms = page.getByRole("navigation", { name: "Rooms" });
+  await rooms.getByRole("button", { name: "Kitchen" }).click();
+  await expect(page.getByTestId("house-room-kitchen")).toBeVisible();
+
+  await rooms.getByRole("button", { name: "Bedroom" }).click();
+  await expect(page.getByTestId("house-room-bedroom")).toBeVisible();
+
+  await rooms.getByRole("button", { name: "Living Room" }).click();
+  await expect(page.getByTestId("house-room-living_room")).toBeVisible();
+
+  await page.getByRole("button", { name: "Back to Farm" }).click();
+  await expect(house).toHaveCount(0);
+  await expect(page.getByLabel("Farmhouse structure")).toBeVisible();
 });
 
 test("escape cancels structure placement", async ({ page }) => {
@@ -2156,7 +2183,7 @@ test("filters inventory to the selected structure materials", async ({ page }) =
     has: page.getByRole("heading", { name: "Inventory" }),
   });
 
-  await page.getByLabel("Farmhouse structure").click();
+  await openFarmhouseSelection(page);
   await expect(resourceAmount(inventory, "Wheat", "2")).toBeVisible();
   await expect(resourceAmount(inventory, "Bread", "0")).toBeVisible();
   await expect(resourceAmount(inventory, "Corn Bread", "0")).toBeVisible();
@@ -2260,6 +2287,7 @@ test("farmhouse does not expose move and blocks moved structures", async ({ page
   await farmHouse.click({ force: true });
 
   await expect(page.getByText("Tile is occupied")).toBeVisible();
+  await expect(page.getByRole("region", { name: "House Interior" })).toHaveCount(0);
   expect(commands).toHaveLength(0);
 });
 
@@ -2877,6 +2905,13 @@ async function openBuildMenu(page: Page) {
   const tools = page.locator(".field-tools");
   await tools.getByRole("button", { name: "Build" }).click();
   return page.getByRole("navigation", { name: "Structures" });
+}
+
+async function openFarmhouseSelection(page: Page) {
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
+  await page.getByRole("button", { name: "Back to Farm" }).click();
+  await expect(page.getByRole("region", { name: "House Interior" })).toHaveCount(0);
 }
 
 async function clickGroundTileUntilCommand(

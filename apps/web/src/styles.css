@@ -70,6 +70,94 @@ button[aria-disabled="true"] {
   height: 100% !important;
 }
 
+.house-interior {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: #8fc9c5;
+}
+
+.house-interior__canvas {
+  position: absolute !important;
+  inset: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
+.house-interior__canvas > div,
+.house-interior__canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.house-interior__hud {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.house-interior__title {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(32, 49, 43, 0.22);
+  border-radius: 8px;
+  background: rgba(251, 246, 232, 0.94);
+  box-shadow: 0 10px 24px rgba(32, 49, 43, 0.14);
+}
+
+.house-interior__title span {
+  color: #536a5e;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.house-interior__title h1 {
+  margin: 2px 0 0;
+  font-size: 24px;
+  line-height: 1.05;
+}
+
+.house-interior__back {
+  min-width: 120px;
+  padding: 8px 12px;
+  background: #fff7d0;
+  border-color: #446d38;
+  box-shadow: 0 10px 24px rgba(32, 49, 43, 0.14);
+  pointer-events: auto;
+}
+
+.house-interior__tabs {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(520px, calc(100vw - 24px));
+  gap: 8px;
+  transform: translateX(-50%);
+}
+
+.house-interior__tabs button {
+  min-width: 0;
+  padding: 8px 10px;
+  background: rgba(251, 246, 232, 0.94);
+  box-shadow: 0 10px 24px rgba(32, 49, 43, 0.12);
+  overflow-wrap: anywhere;
+}
+
+.house-interior__tabs button[aria-pressed="true"] {
+  border-color: #446d38;
+  background: #fff7d0;
+  outline: 2px solid rgba(68, 109, 56, 0.28);
+  outline-offset: -2px;
+}
+
 .gameplay-surface {
   display: contents;
 }
