@@ -38,12 +38,23 @@ test("pages demo places a House Interior Decoration through the WASM runtime", a
   await page.getByRole("button", { name: "Start Farm" }).click();
 
   await page.getByLabel("Farmhouse structure").click({ force: true });
+  await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
+  await expectCanvasToRenderNonBlank(page);
+  await expectElementFramed(page, page.getByTestId("house-room-living_room"));
+  await expectHouseInteriorControlsFramedWithoutOverlap(page);
+  await expect(page.getByTestId("farm-scene-resident-woman")).toHaveCount(0);
+  await expect(page.getByTestId("farm-scene-resident-man")).toHaveCount(0);
   await page.getByRole("navigation", { name: "Decorations" }).getByRole("button", { name: /Chair/ }).click();
   await page.getByLabel("Room Tile 0,0").hover();
   await expect(page.getByTestId("decoration-placement-status")).toContainText("Fits on Room Tile 0,0");
   await page.getByLabel("Room Tile 0,0").click();
 
   await expect.poll(() => livingRoomPlacementCount(page)).toBe(4);
+
+  await page.reload();
+  await page.getByRole("button", { name: "Start Farm" }).click();
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await expect(page.getByLabel("Chair placement at Room Tile 0,0")).toBeVisible();
 });
 
 test("pages demo persists moved and removed House Interior Decorations", async ({ page }) => {
@@ -159,6 +170,70 @@ async function closeGuidedTutorial(page: Page) {
     await dialog.getByRole("button", { name: "Got it" }).click();
   }
   await expect(dialog).toHaveCount(0);
+}
+
+async function canvasSnapshot(page: Page) {
+  return page.locator("canvas").first().evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL());
+}
+
+async function expectCanvasToRenderNonBlank(page: Page) {
+  await expect
+    .poll(async () => (await canvasSnapshot(page)).length, { timeout: 5_000 })
+    .toBeGreaterThan(20_000);
+}
+
+async function expectElementFramed(page: Page, target: ReturnType<Page["locator"]>) {
+  const viewport = page.viewportSize();
+  if (!viewport) {
+    throw new Error("Page has no viewport size");
+  }
+  const box = await target.boundingBox();
+  if (!box) {
+    throw new Error("Element has no bounding box");
+  }
+
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+}
+
+async function expectHouseInteriorControlsFramedWithoutOverlap(page: Page) {
+  const controls = [
+    page.locator(".house-interior__title"),
+    page.locator(".house-interior__back"),
+    page.getByRole("navigation", { name: "Rooms" }),
+    page.getByTestId("decoration-placement-status"),
+    page.getByRole("navigation", { name: "Decorations" }),
+  ];
+  const boxes: Array<{ x: number; y: number; width: number; height: number }> = [];
+
+  for (const control of controls) {
+    await expectElementFramed(page, control);
+    const box = await control.boundingBox();
+    if (!box) {
+      throw new Error("House Interior control has no bounding box");
+    }
+    boxes.push(box);
+  }
+
+  for (let leftIndex = 0; leftIndex < boxes.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < boxes.length; rightIndex += 1) {
+      expect(boxesOverlap(boxes[leftIndex], boxes[rightIndex])).toBe(false);
+    }
+  }
+}
+
+function boxesOverlap(
+  left: { x: number; y: number; width: number; height: number },
+  right: { x: number; y: number; width: number; height: number },
+) {
+  return !(
+    left.x + left.width <= right.x ||
+    right.x + right.width <= left.x ||
+    left.y + left.height <= right.y ||
+    right.y + right.height <= left.y
+  );
 }
 
 async function livingRoomPlacementCount(page: Page) {
