@@ -6,7 +6,10 @@ import type {
   FarmView,
   Tile,
 } from "./types";
-import type { WebsocketServerMessage } from "../../../contracts/generated/ts/my-farm";
+import type {
+  WebsocketClientMessage,
+  WebsocketServerMessage,
+} from "../../../contracts/generated/ts/my-farm";
 
 const defaultApiPort = "8081";
 const defaultSiloTile: Tile = { x: 14, y: 2 };
@@ -55,54 +58,39 @@ export function createFarmClient(baseUrl = import.meta.env.VITE_API_BASE_URL ?? 
 }
 
 function createHttpFarmClient(baseUrl: string, gameplayWebsocketUrl: string): FarmClient {
-  async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const response = await fetch(`${baseUrl}${path}`, {
-      headers: {
-        "content-type": "application/json",
-        ...(init.headers ?? {}),
-      },
-      ...init,
-    });
-    const payloadText = await response.text();
-    const payload = parseResponsePayload(payloadText);
-    if (!response.ok) {
-      throw new Error(payload.error ?? `Request failed: ${response.status}`);
-    }
-    return payload as T;
-  }
+  const websocket = createGameplayWebsocketClient(gameplayWebsocketUrl);
+  const unavailableUntilConnected = () =>
+    Promise.reject(new Error("Gameplay data is loaded from the websocket connection"));
 
   return {
     runtime: "http",
-    async catalog(): Promise<CatalogDocument> {
-      const payload = await request<{ catalog: CatalogDocument }>("/api/catalog");
-      return payload.catalog;
-    },
-    async farm(): Promise<FarmResponse> {
-      return normalizeFarmResponse(await request<LegacyFarmResponse>("/api/farm"));
-    },
+    catalog: unavailableUntilConnected,
+    farm: unavailableUntilConnected,
     async reset(): Promise<FarmResponse> {
-      return normalizeFarmResponse(
-        await request<LegacyFarmResponse>("/api/farm/reset", { method: "POST" }),
-      );
+      const response = await websocket.reset();
+      return normalizeFarmResponse(response);
     },
     async command(command: CommandRequest): Promise<CommandResponse> {
-      return normalizeCommandResponse(
-        await request<LegacyCommandResponse>("/api/commands", {
-          method: "POST",
-          body: JSON.stringify(command),
-        }),
-      );
+      return normalizeCommandResponse(await websocket.command(command));
     },
     connect(handlers: FarmConnectionHandlers): () => void {
-      return connectGameplayWebsocket(gameplayWebsocketUrl, handlers);
+      return websocket.connect(handlers);
     },
   };
 }
 
-function connectGameplayWebsocket(url: string, handlers: FarmConnectionHandlers): () => void {
+type PendingWebsocketRequest = {
+  resolve(response: CommandResponse): void;
+  reject(error: Error): void;
+};
+
+function createGameplayWebsocketClient(url: string) {
   let socket: WebSocket | null = null;
   let reconnectTimer: number | null = null;
   let stopped = false;
+  let requestCounter = 0;
+  const pendingRequests = new Map<string, PendingWebsocketRequest>();
+  let handlers: FarmConnectionHandlers | null = null;
 
   const clearReconnectTimer = () => {
     if (reconnectTimer === null) {
@@ -112,11 +100,19 @@ function connectGameplayWebsocket(url: string, handlers: FarmConnectionHandlers)
     reconnectTimer = null;
   };
 
+  const rejectPendingRequests = (message: string) => {
+    for (const pending of pendingRequests.values()) {
+      pending.reject(new Error(message));
+    }
+    pendingRequests.clear();
+  };
+
   const scheduleReconnect = () => {
     if (stopped || reconnectTimer !== null) {
       return;
     }
-    handlers.status("disconnected");
+    handlers?.status("disconnected");
+    rejectPendingRequests("Gameplay websocket disconnected");
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = null;
       openSocket();
@@ -127,34 +123,37 @@ function connectGameplayWebsocket(url: string, handlers: FarmConnectionHandlers)
     if (stopped) {
       return;
     }
-    handlers.status("reconnecting");
+    handlers?.status("reconnecting");
     const nextSocket = new WebSocket(url);
     socket = nextSocket;
 
     nextSocket.addEventListener("message", (event) => {
       const message = parseWebsocketMessage(event.data);
       if (!message) {
-        handlers.error("Invalid websocket message");
+        handlers?.error("Invalid websocket message");
         return;
       }
       if (message.type === "catalog") {
-        handlers.catalog(message.catalog);
+        handlers?.catalog(message.catalog);
         return;
       }
       if (message.type === "farm_snapshot") {
-        handlers.farm(normalizeFarmResponse(message));
-        handlers.status("synced");
+        handlers?.farm(normalizeFarmResponse(message));
+        handlers?.status("synced");
         return;
       }
       if (message.type === "command_response") {
-        handlers.farm(normalizeCommandResponse(message));
-        handlers.status("synced");
+        const response = normalizeCommandResponse(message);
+        pendingRequests.get(message.request_id)?.resolve(response);
+        pendingRequests.delete(message.request_id);
+        handlers?.farm(response);
+        handlers?.status("synced");
         if (!message.accepted && message.error) {
-          handlers.error(message.error);
+          handlers?.error(message.error);
         }
         return;
       }
-      handlers.error(message.error.message);
+      handlers?.error(message.error.message);
     });
 
     nextSocket.addEventListener("close", () => {
@@ -165,17 +164,63 @@ function connectGameplayWebsocket(url: string, handlers: FarmConnectionHandlers)
     });
 
     nextSocket.addEventListener("error", () => {
-      handlers.error("Gameplay websocket disconnected");
+      handlers?.error("Gameplay websocket disconnected");
     });
   };
 
-  openSocket();
+  const nextRequestId = (prefix: string) => {
+    requestCounter += 1;
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return `${prefix}-${crypto.randomUUID()}`;
+    }
+    return `${prefix}-${Date.now()}-${requestCounter}`;
+  };
 
-  return () => {
-    stopped = true;
-    clearReconnectTimer();
-    socket?.close();
-    socket = null;
+  const sendRequest = (message: WebsocketClientMessage): Promise<CommandResponse> => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error("Gameplay websocket is not connected"));
+    }
+    return new Promise((resolve, reject) => {
+      pendingRequests.set(message.request_id, { resolve, reject });
+      try {
+        socket?.send(JSON.stringify(message));
+      } catch (error) {
+        pendingRequests.delete(message.request_id);
+        reject(error instanceof Error ? error : new Error("Gameplay websocket send failed"));
+      }
+    });
+  };
+
+  return {
+    command(request: CommandRequest): Promise<CommandResponse> {
+      return sendRequest({
+        type: "submit_command",
+        request_id: nextRequestId("command"),
+        expected_version: request.expected_version,
+        command: request.command,
+      });
+    },
+    async reset(): Promise<FarmResponse> {
+      const response = await sendRequest({
+        type: "reset_farm",
+        request_id: nextRequestId("reset"),
+      });
+      return { version: response.version, view: response.view };
+    },
+    connect(nextHandlers: FarmConnectionHandlers): () => void {
+      handlers = nextHandlers;
+      stopped = false;
+      openSocket();
+
+      return () => {
+        stopped = true;
+        handlers = null;
+        clearReconnectTimer();
+        rejectPendingRequests("Gameplay websocket disconnected");
+        socket?.close();
+        socket = null;
+      };
+    },
   };
 }
 
@@ -232,18 +277,6 @@ function createWasmDemoClient(): FarmClient {
       return response;
     },
   };
-}
-
-function parseResponsePayload(payloadText: string): { error?: string } {
-  if (!payloadText) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(payloadText);
-  } catch {
-    return { error: payloadText };
-  }
 }
 
 function parseWebsocketMessage(data: unknown): WebsocketServerMessage | null {
