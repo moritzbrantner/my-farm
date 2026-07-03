@@ -173,6 +173,7 @@ export function App() {
   const [playScene, setPlayScene] = useState<PlayScene>("farm");
   const [selectedHouseRoom, setSelectedHouseRoom] = useState<HouseRoomId>("living_room");
   const [selectedDecorationId, setSelectedDecorationId] = useState<string | null>(null);
+  const [selectedDecorationPlacementId, setSelectedDecorationPlacementId] = useState<string | null>(null);
   const [guidedTutorialStep, setGuidedTutorialStep] = useState<number | null>(null);
   const [marketOpen, setMarketOpen] = useState(false);
   const [message, setMessage] = useState(
@@ -296,6 +297,19 @@ export function App() {
 
   useEffect(() => {
     if (
+      !view ||
+      !selectedDecorationPlacementId ||
+      view.house_interior.rooms.some((room) =>
+        room.decoration_placements.some((placement) => placement.id === selectedDecorationPlacementId),
+      )
+    ) {
+      return;
+    }
+    setSelectedDecorationPlacementId(null);
+  }, [selectedDecorationPlacementId, view]);
+
+  useEffect(() => {
+    if (
       !fieldMenu &&
       !structureMenu &&
       !buildToolSelected &&
@@ -354,6 +368,8 @@ export function App() {
     setBuildPlacement(null);
     setSelectedBuildKind(null);
     setMovingStructure(null);
+    setSelectedDecorationId(null);
+    setSelectedDecorationPlacementId(null);
     setMarketOpen(false);
     plantSweepRef.current = null;
     harvestSweepRef.current = null;
@@ -615,9 +631,40 @@ export function App() {
     (decorationId: string) => {
       const decoration = catalog?.decorations.find((entry) => entry.id === decorationId);
       setSelectedDecorationId(decorationId);
+      setSelectedDecorationPlacementId(null);
       setMessage(decoration ? `Place ${decoration.name}` : "Place Decoration");
     },
     [catalog],
+  );
+
+  const selectHouseRoom = useCallback((roomId: HouseRoomId) => {
+    setSelectedHouseRoom(roomId);
+    setSelectedDecorationPlacementId(null);
+  }, []);
+
+  const selectDecorationPlacement = useCallback(
+    (roomId: string, placementId: string) => {
+      if (!catalog || !view) {
+        return;
+      }
+      if (view.level < 5) {
+        setMessage("Decoration editing unlocks at Farm level 5");
+        return;
+      }
+      const room = view.house_interior.rooms.find((entry) => entry.id === roomId);
+      const placement = room?.decoration_placements.find((entry) => entry.id === placementId);
+      const decoration = placement
+        ? catalog.decorations.find((entry) => entry.id === placement.decoration_id)
+        : null;
+      if (!room || !placement || !decoration) {
+        setMessage("Decoration placement not found");
+        return;
+      }
+      setSelectedDecorationId(null);
+      setSelectedDecorationPlacementId(placementId);
+      setMessage(`Selected ${decoration.name}`);
+    },
+    [catalog, view],
   );
 
   const placeDecoration = useCallback(
@@ -646,6 +693,54 @@ export function App() {
       await send({ type: "place_decoration", room_id: roomId, decoration_id: decorationId, tile });
     },
     [catalog, send, view],
+  );
+
+  const moveDecoration = useCallback(
+    async (roomId: string, placementId: string, tile: RoomTile) => {
+      if (!catalog || !view) {
+        return;
+      }
+      if (view.level < 5) {
+        setMessage("Decoration editing unlocks at Farm level 5");
+        return;
+      }
+      const room = view.house_interior.rooms.find((entry) => entry.id === roomId);
+      const placement = room?.decoration_placements.find((entry) => entry.id === placementId);
+      if (!room || !placement) {
+        setMessage("Decoration placement not found");
+        return;
+      }
+      const status = decorationPlacementStatus(catalog, room, placement.decoration_id, tile, {
+        ignorePlacementId: placementId,
+      });
+      if (!status.fits) {
+        setMessage(
+          status.reason === "overlap"
+            ? "Decoration move overlaps"
+            : "Decoration move is out of bounds",
+        );
+        return;
+      }
+      await send({ type: "move_decoration", room_id: roomId, placement_id: placementId, tile });
+    },
+    [catalog, send, view],
+  );
+
+  const removeDecoration = useCallback(
+    async (roomId: string, placementId: string) => {
+      if (!view) {
+        return;
+      }
+      if (view.level < 5) {
+        setMessage("Decoration editing unlocks at Farm level 5");
+        return;
+      }
+      const accepted = await send({ type: "remove_decoration", room_id: roomId, placement_id: placementId });
+      if (accepted.accepted) {
+        setSelectedDecorationPlacementId(null);
+      }
+    },
+    [send, view],
   );
 
   const selectPlantFieldTool = useCallback(
@@ -992,9 +1087,13 @@ export function App() {
             view={view}
             selectedRoom={selectedHouseRoom}
             selectedDecorationId={selectedDecorationId}
-            onSelectRoom={setSelectedHouseRoom}
+            selectedPlacementId={selectedDecorationPlacementId}
+            onSelectRoom={selectHouseRoom}
             onSelectDecoration={selectDecoration}
+            onSelectPlacement={selectDecorationPlacement}
             onPlaceDecoration={placeDecoration}
+            onMoveDecoration={moveDecoration}
+            onRemoveDecoration={removeDecoration}
             onBackToFarm={returnToFarmScene}
           />
         ) : (

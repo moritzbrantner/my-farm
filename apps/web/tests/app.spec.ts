@@ -1341,25 +1341,128 @@ test("house decoration preview blocks overlap and bounds failures before sending
   const decorations = page.getByRole("navigation", { name: "Decorations" });
 
   await decorations.getByRole("button", { name: /Chair/ }).click();
-  await page.getByLabel("Room Tile 1,1").hover();
+  await page.getByRole("button", { name: "Room Tile 1,1", exact: true }).hover();
   await expect(page.getByTestId("decoration-placement-status")).toContainText(
     "Blocked: overlaps at Room Tile 1,1",
   );
-  await page.getByLabel("Room Tile 1,1").click();
+  await page.getByRole("button", { name: "Room Tile 1,1", exact: true }).click();
   await expect(page.getByTestId("decoration-placement-status")).toContainText(
     "Blocked: overlaps at Room Tile 1,1",
   );
 
   await decorations.getByRole("button", { name: /Rug/ }).click();
-  await page.getByLabel("Room Tile 6,5").hover();
+  await page.getByRole("button", { name: "Room Tile 6,0", exact: true }).hover();
   await expect(page.getByTestId("decoration-placement-status")).toContainText(
-    "Blocked: out of bounds at Room Tile 6,5",
+    "Blocked: out of bounds at Room Tile 6,0",
   );
-  await page.getByLabel("Room Tile 6,5").click();
+  await page.getByRole("button", { name: "Room Tile 6,0", exact: true }).click();
   await expect(page.getByTestId("decoration-placement-status")).toContainText(
-    "Blocked: out of bounds at Room Tile 6,5",
+    "Blocked: out of bounds at Room Tile 6,0",
   );
   expect(commands).toHaveLength(0);
+});
+
+test("selects, moves, rejects invalid moves, and removes existing house Decorations", async ({
+  page,
+}) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, { ...farmView, level: 5 }, catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await page.getByLabel("Sofa placement at Room Tile 1,1").click();
+  await expect(page.getByTestId("decoration-placement-status")).toContainText(
+    "Selected Sofa at Room Tile 1,1",
+  );
+
+  await page.getByLabel("Room Tile 5,0").hover();
+  await expect(page.getByTestId("decoration-placement-status")).toContainText("Fits on Room Tile 5,0");
+  await page.getByLabel("Room Tile 5,0").click();
+
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands.at(-1)?.command).toEqual({
+    type: "move_decoration",
+    room_id: "living_room",
+    placement_id: "living-room-sofa",
+    tile: { x: 5, y: 0 },
+  });
+
+  await page.getByLabel("Rug placement at Room Tile 2,3").hover();
+  await expect(page.getByTestId("decoration-placement-status")).toContainText(
+    "Blocked: overlaps at Room Tile 2,3",
+  );
+  await page.getByLabel("Rug placement at Room Tile 2,3").click();
+  expect(commands).toHaveLength(1);
+
+  await page.getByLabel("Room Tile 6,0").hover();
+  await expect(page.getByTestId("decoration-placement-status")).toContainText(
+    "Blocked: out of bounds at Room Tile 6,0",
+  );
+  await page.getByLabel("Room Tile 6,0").click();
+  expect(commands).toHaveLength(1);
+
+  await page.getByRole("navigation", { name: "Decorations" }).getByRole("button", { name: /Chair/ }).click();
+  await page.getByLabel("Plant placement at Room Tile 6,1").click();
+  await page.getByRole("button", { name: "Remove Plant" }).click();
+
+  await expect.poll(() => commands.length).toBe(2);
+  expect(commands.at(-1)?.command).toEqual({
+    type: "remove_decoration",
+    room_id: "living_room",
+    placement_id: "living-room-plant",
+  });
+});
+
+test("house decoration changes arrive through farm snapshots for multiple clients", async ({
+  browser,
+}) => {
+  const movedView: FarmView = {
+    ...farmView,
+    level: 5,
+    house_interior: {
+      rooms: farmView.house_interior.rooms.map((room) =>
+        room.id === "living_room"
+          ? {
+              ...room,
+              decoration_placements: room.decoration_placements.map((placement) =>
+                placement.id === "living-room-sofa"
+                  ? { ...placement, tile: { x: 5, y: 0 } }
+                  : placement,
+              ),
+            }
+          : room,
+      ),
+    },
+  };
+  const firstPage = await browser.newPage();
+  const secondPage = await browser.newPage();
+  try {
+    await installMockGameplayWebSocket(firstPage, [{ version: 1, view: { ...farmView, level: 5 }, catalog }]);
+    await installMockGameplayWebSocket(secondPage, [{ version: 1, view: { ...farmView, level: 5 }, catalog }]);
+    await openFarm(firstPage);
+    await openFarm(secondPage);
+    await firstPage.getByLabel("Farmhouse structure").click({ force: true });
+    await secondPage.getByLabel("Farmhouse structure").click({ force: true });
+
+    await firstPage.evaluate((view) => {
+      (window as unknown as {
+        __pushLatestGameplayFarmSnapshot: (snapshot: { version: number; view: FarmView }) => void;
+      }).__pushLatestGameplayFarmSnapshot({ version: 2, view });
+    }, movedView);
+    await secondPage.evaluate((view) => {
+      (window as unknown as {
+        __pushLatestGameplayFarmSnapshot: (snapshot: { version: number; view: FarmView }) => void;
+      }).__pushLatestGameplayFarmSnapshot({ version: 2, view });
+    }, movedView);
+
+    await expect(firstPage.getByLabel("Sofa placement at Room Tile 5,0")).toBeVisible();
+    await expect(secondPage.getByLabel("Sofa placement at Room Tile 5,0")).toBeVisible();
+  } finally {
+    await firstPage.close();
+    await secondPage.close();
+  }
 });
 
 test("escape cancels structure placement", async ({ page }) => {
