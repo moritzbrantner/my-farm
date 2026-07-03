@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import type { CatalogDocument, CommandRequest, FarmView } from "../src/types";
+import type { CatalogDocument, CommandRequest, FarmView, ResidentTask } from "../src/types";
 
 test("renders the playable farm shell", async ({ page }) => {
   await page.goto("/");
@@ -274,11 +274,11 @@ test("resident selector shows queue counts and live task progress", async ({ pag
           started_at_ms: now - 10_000,
           ready_at_ms: now + 10_000,
           steps: [
-            {
+            taskStep({
               reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
               work: { type: "plant_crop", crop_id: "wheat" },
               duration_ms: 20_000,
-            },
+            }),
           ],
         },
         {
@@ -287,11 +287,11 @@ test("resident selector shows queue counts and live task progress", async ({ pag
           started_at_ms: now + 10_000,
           ready_at_ms: now + 20_000,
           steps: [
-            {
+            taskStep({
               reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
               work: { type: "harvest_crop", crop_id: "corn", quantity: 2 },
               duration_ms: 10_000,
-            },
+            }),
           ],
         },
       ],
@@ -341,11 +341,11 @@ test("reserved work targets disable direct actions with a pending reason", async
           started_at_ms: now - 5_000,
           ready_at_ms: now + 5_000,
           steps: [
-            {
+            taskStep({
               reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
               work: { type: "harvest_crop", crop_id: "wheat", quantity: 2 },
               duration_ms: 10_000,
-            },
+            }),
           ],
         },
         {
@@ -354,11 +354,11 @@ test("reserved work targets disable direct actions with a pending reason", async
           started_at_ms: now - 5_000,
           ready_at_ms: now + 5_000,
           steps: [
-            {
+            taskStep({
               reserved_work_target: { type: "machine", machine_id: "machine-1" },
               work: { type: "collect_machine_job", job_id: "job-1", recipe_id: "chicken_feed" },
               duration_ms: 10_000,
-            },
+            }),
           ],
         },
         {
@@ -367,11 +367,11 @@ test("reserved work targets disable direct actions with a pending reason", async
           started_at_ms: now - 5_000,
           ready_at_ms: now + 5_000,
           steps: [
-            {
+            taskStep({
               reserved_work_target: { type: "animal", shelter_id: "shelter-1", animal_slot: "animal-2" },
               work: { type: "collect_animal_product", item_id: "egg", quantity: 1 },
               duration_ms: 10_000,
-            },
+            }),
           ],
         },
       ],
@@ -460,6 +460,10 @@ test("moves a resident toward the current task target over authoritative task ti
   const now = Date.now();
   const view: FarmView = {
     ...farmView,
+    resident_locations: {
+      ...farmView.resident_locations,
+      woman: { x: 0, y: 2 },
+    },
     resident_task_queues: {
       woman: [
         {
@@ -468,11 +472,18 @@ test("moves a resident toward the current task target over authoritative task ti
           started_at_ms: now - 400,
           ready_at_ms: now + 2_000,
           steps: [
-            {
+            taskStep({
               reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
               work: { type: "plant_crop", crop_id: "wheat" },
+              approach_tile: { x: 0, y: 0 },
+              walk_path: [
+                { x: 0, y: 1 },
+                { x: 0, y: 0 },
+              ],
+              walk_duration_ms: 2_400,
+              work_duration_ms: 0,
               duration_ms: 2_400,
-            },
+            }),
           ],
         },
       ],
@@ -483,17 +494,43 @@ test("moves a resident toward the current task target over authoritative task ti
   await openFarm(page);
 
   const resident = page.getByTestId("farm-scene-resident-woman");
-  const target = page.getByLabel("Field Plot plot-1");
-  await expect(resident).toHaveAttribute("data-resident-state", "moving");
+  await expect(resident).toHaveAttribute("data-resident-state", "walking");
   await expect(resident).toHaveAttribute("data-resident-target", "field:plot-1");
+});
 
-  const initialResidentCenter = await elementCenter(resident);
-  const targetCenter = await elementCenter(target);
-  const initialDistance = distanceBetween(initialResidentCenter, targetCenter);
+test("renders resident as working after walking to the approach tile", async ({ page }) => {
+  const now = Date.now();
+  const view: FarmView = {
+    ...farmView,
+    resident_task_queues: {
+      woman: [
+        {
+          id: "task-1",
+          kind: { type: "field_work" },
+          started_at_ms: now - 1_500,
+          ready_at_ms: now + 1_500,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "plant_crop", crop_id: "wheat" },
+              approach_tile: { x: 0, y: 0 },
+              walk_path: [{ x: 0, y: 0 }],
+              walk_duration_ms: 500,
+              work_duration_ms: 2_500,
+              duration_ms: 3_000,
+            }),
+          ],
+        },
+      ],
+      man: [],
+    },
+  };
+  await mockFarmApi(page, view);
+  await openFarm(page);
 
-  await expect
-    .poll(async () => distanceBetween(await elementCenter(resident), targetCenter), { timeout: 3_000 })
-    .toBeLessThan(initialDistance - 4);
+  const resident = page.getByTestId("farm-scene-resident-woman");
+  await expect(resident).toHaveAttribute("data-resident-state", "working");
+  await expect(resident).toHaveAttribute("data-resident-target", "field:plot-1");
 });
 
 test("uses the first remaining batch task step as the scene movement target", async ({ page }) => {
@@ -508,16 +545,18 @@ test("uses the first remaining batch task step as the scene movement target", as
           started_at_ms: now,
           ready_at_ms: now + 2_000,
           steps: [
-            {
+            taskStep({
               reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
               work: { type: "plant_crop", crop_id: "wheat" },
+              approach_tile: { x: 0, y: 0 },
               duration_ms: 2_000,
-            },
-            {
+            }),
+            taskStep({
               reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
               work: { type: "plant_crop", crop_id: "wheat" },
+              approach_tile: { x: 1, y: 0 },
               duration_ms: 2_000,
-            },
+            }),
           ],
         },
       ],
@@ -541,11 +580,12 @@ test("uses the first remaining batch task step as the scene movement target", as
           started_at_ms: now + 2_000,
           ready_at_ms: now + 4_000,
           steps: [
-            {
+            taskStep({
               reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
               work: { type: "plant_crop", crop_id: "wheat" },
+              approach_tile: { x: 1, y: 0 },
               duration_ms: 2_000,
-            },
+            }),
           ],
         },
       ],
@@ -901,6 +941,9 @@ test("guided tutorial pauses the client clock until gameplay resumes", async ({ 
   await page.getByRole("button", { name: "Reset" }).click();
   const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
   await expect(dialog).toBeVisible();
+  const pausedProgress = await progress.evaluate((element) =>
+    element instanceof HTMLElement ? element.style.getPropertyValue("--progress") : "",
+  );
 
   await page.waitForTimeout(2800);
   await expect
@@ -909,7 +952,7 @@ test("guided tutorial pauses the client clock until gameplay resumes", async ({ 
         element instanceof HTMLElement ? element.style.getPropertyValue("--progress") : "",
       ),
     )
-    .toBe(initialProgress);
+    .toBe(pausedProgress);
 
   await closeGuidedTutorial(page);
   await expect
@@ -917,10 +960,10 @@ test("guided tutorial pauses the client clock until gameplay resumes", async ({ 
       () =>
         progress.evaluate((element) =>
           element instanceof HTMLElement ? element.style.getPropertyValue("--progress") : "",
-        ),
+      ),
       { timeout: 3_500 },
     )
-    .not.toBe(initialProgress);
+    .not.toBe(pausedProgress);
 });
 
 test("barn and silo are preplaced storage structures", async ({ page }) => {
@@ -2837,6 +2880,10 @@ const farmView: FarmView = {
     { id: "man", display_name: "Jon" },
   ],
   selected_resident_id: "woman",
+  resident_locations: {
+    woman: { x: 8, y: 10 },
+    man: { x: 9, y: 10 },
+  },
   resident_task_queues: {
     woman: [],
     man: [],
@@ -2883,6 +2930,21 @@ const farmView: FarmView = {
   },
   unlocks: [],
 };
+
+function taskStep(
+  step: Omit<
+    ResidentTask["steps"][number],
+    "walk_path" | "walk_duration_ms" | "work_duration_ms"
+  > &
+    Partial<Pick<ResidentTask["steps"][number], "walk_path" | "walk_duration_ms" | "work_duration_ms">>,
+): ResidentTask["steps"][number] {
+  return {
+    ...step,
+    walk_path: step.walk_path ?? [],
+    walk_duration_ms: step.walk_duration_ms ?? 0,
+    work_duration_ms: step.work_duration_ms ?? step.duration_ms,
+  };
+}
 
 function buildableFarmView(): FarmView {
   return {

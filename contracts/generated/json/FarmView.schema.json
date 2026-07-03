@@ -19,6 +19,7 @@
     "machines",
     "oven",
     "owned_farmhouse_upgrades",
+    "resident_locations",
     "resident_task_queues",
     "residents",
     "selected_resident_id",
@@ -103,6 +104,12 @@
       "type": "array",
       "items": {
         "$ref": "#/definitions/FarmhouseUpgradeKind"
+      }
+    },
+    "resident_locations": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/Tile"
       }
     },
     "resident_task_queues": {
@@ -671,6 +678,17 @@
         "work"
       ],
       "properties": {
+        "approach_tile": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Tile"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "duration_ms": {
           "default": 2000,
           "type": "integer",
@@ -679,8 +697,25 @@
         "reserved_work_target": {
           "$ref": "#/definitions/ReservedWorkTarget"
         },
+        "walk_duration_ms": {
+          "default": 0,
+          "type": "integer",
+          "format": "int64"
+        },
+        "walk_path": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Tile"
+          }
+        },
         "work": {
           "$ref": "#/definitions/ResidentTaskStepWork"
+        },
+        "work_duration_ms": {
+          "default": 2000,
+          "type": "integer",
+          "format": "int64"
         }
       }
     },

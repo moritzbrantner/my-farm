@@ -101,7 +101,7 @@ fn demo_runtime_supports_buying_and_persisting_the_farmhouse_oven() {
         FarmCommand::BuyFarmhouseUpgrade {
             upgrade_kind: FarmhouseUpgradeKind::Oven,
         },
-        37_000.0,
+        40_000.0,
     );
 
     assert_eq!(bought.view.coins, 140);
@@ -111,8 +111,8 @@ fn demo_runtime_supports_buying_and_persisting_the_farmhouse_oven() {
     );
 
     let save = runtime.save_json();
-    let mut restored = DemoFarmRuntime::new(Some(save), 37_000.0);
-    let farm = farm(&mut restored, 37_000.0);
+    let mut restored = DemoFarmRuntime::new(Some(save), 40_000.0);
+    let farm = farm(&mut restored, 40_000.0);
     assert_eq!(
         farm.view.owned_farmhouse_upgrades,
         vec![FarmhouseUpgradeKind::Oven]
@@ -160,7 +160,7 @@ fn demo_runtime_supports_decoration_commands_and_persists_saved_placements() {
             decoration_id: "chair".to_owned(),
             tile: RoomTile::new(0, 0),
         },
-        37_000.0,
+        40_000.0,
     );
 
     assert_eq!(placed.version, 3);
@@ -180,7 +180,7 @@ fn demo_runtime_supports_decoration_commands_and_persists_saved_placements() {
             placement_id: placement_id.clone(),
             tile: RoomTile::new(0, 1),
         },
-        37_000.0,
+        40_000.0,
     );
     let removed = command(
         &mut runtime,
@@ -189,7 +189,7 @@ fn demo_runtime_supports_decoration_commands_and_persists_saved_placements() {
             room_id: "living_room".to_owned(),
             placement_id,
         },
-        37_000.0,
+        40_000.0,
     );
 
     assert_eq!(removed.version, 5);
@@ -201,8 +201,8 @@ fn demo_runtime_supports_decoration_commands_and_persists_saved_placements() {
     );
 
     let save = runtime.save_json();
-    let mut restored = DemoFarmRuntime::new(Some(save), 37_000.0);
-    let restored_farm = farm(&mut restored, 37_000.0);
+    let mut restored = DemoFarmRuntime::new(Some(save), 40_000.0);
+    let restored_farm = farm(&mut restored, 40_000.0);
     assert_eq!(restored_farm.version, 5);
     assert_eq!(
         restored_farm.view.house_interior.rooms[0]
@@ -406,7 +406,7 @@ fn demo_runtime_supports_crop_and_farmhouse_oven_loop() {
         FarmCommand::BuyFarmhouseUpgrade {
             upgrade_kind: FarmhouseUpgradeKind::Oven,
         },
-        33_000.0,
+        40_000.0,
     );
     command(
         &mut runtime,
@@ -414,9 +414,9 @@ fn demo_runtime_supports_crop_and_farmhouse_oven_loop() {
         FarmCommand::QueueOvenRecipe {
             recipe_id: "bread".to_owned(),
         },
-        33_000.0,
+        40_000.0,
     );
-    let response = command(&mut runtime, 4, FarmCommand::CollectOvenJob, 64_000.0);
+    let response = command(&mut runtime, 4, FarmCommand::CollectOvenJob, 71_000.0);
 
     assert!(response.accepted);
     assert_eq!(
@@ -429,7 +429,7 @@ fn demo_runtime_supports_crop_and_farmhouse_oven_loop() {
         None
     );
 
-    let farm = farm(&mut runtime, 66_000.0);
+    let farm = farm(&mut runtime, 80_000.0);
     assert_eq!(
         farm.view
             .inventory

@@ -17,6 +17,10 @@ const defaultApiPort = "8081";
 const defaultSiloTile: Tile = { x: 14, y: 2 };
 const defaultBarnTile: Tile = { x: 16, y: 2 };
 const defaultDeliveryBoardTile: Tile = { x: 2, y: 7 };
+const defaultResidentLocations: Record<string, Tile> = {
+  woman: { x: 8, y: 10 },
+  man: { x: 9, y: 10 },
+};
 const defaultResidents: FarmResident[] = [
   { id: "woman", display_name: "Woman" },
   { id: "man", display_name: "Man" },
@@ -26,13 +30,20 @@ const reconnectDelayMs = 1_000;
 
 type LegacyFarmView = Omit<
   FarmView,
-  "silo_tile" | "barn_tile" | "delivery_board_tile" | "residents" | "selected_resident_id" | "resident_task_queues"
+  | "silo_tile"
+  | "barn_tile"
+  | "delivery_board_tile"
+  | "residents"
+  | "selected_resident_id"
+  | "resident_locations"
+  | "resident_task_queues"
 > & {
   silo_tile?: Tile | null;
   barn_tile?: Tile | null;
   delivery_board_tile?: Tile | null;
   residents?: FarmResident[] | null;
   selected_resident_id?: string | null;
+  resident_locations?: FarmView["resident_locations"] | null;
   resident_task_queues?: FarmView["resident_task_queues"] | null;
 };
 
@@ -338,8 +349,11 @@ function normalizeFarmView(view: LegacyFarmView): FarmView {
     ? view.selected_resident_id
     : residents[0]?.id ?? "woman";
   const residentTaskQueues = validResidentTaskQueues(view.resident_task_queues)
-    ? view.resident_task_queues
+    ? normalizeResidentTaskQueues(view.resident_task_queues)
     : Object.fromEntries(residents.map((resident) => [resident.id, []]));
+  const residentLocations = validResidentLocations(view.resident_locations)
+    ? { ...defaultResidentLocationsFor(residents), ...view.resident_locations }
+    : defaultResidentLocationsFor(residents);
 
   return {
     ...view,
@@ -350,6 +364,7 @@ function normalizeFarmView(view: LegacyFarmView): FarmView {
       : defaultDeliveryBoardTile,
     residents,
     selected_resident_id: selectedResidentId ?? "woman",
+    resident_locations: residentLocations,
     resident_task_queues: residentTaskQueues,
   };
 }
@@ -370,4 +385,53 @@ function validResidentTaskQueues(
   queues: FarmView["resident_task_queues"] | null | undefined,
 ): queues is FarmView["resident_task_queues"] {
   return queues !== undefined && queues !== null && typeof queues === "object";
+}
+
+function validResidentLocations(
+  locations: FarmView["resident_locations"] | null | undefined,
+): locations is FarmView["resident_locations"] {
+  return locations !== undefined && locations !== null && typeof locations === "object";
+}
+
+function defaultResidentLocationsFor(residents: FarmResident[]): FarmView["resident_locations"] {
+  return Object.fromEntries(
+    residents.map((resident, index) => [
+      resident.id,
+      defaultResidentLocations[resident.id] ?? { x: 8 + index, y: 10 },
+    ]),
+  );
+}
+
+function normalizeResidentTaskQueues(
+  queues: FarmView["resident_task_queues"],
+): FarmView["resident_task_queues"] {
+  return Object.fromEntries(
+    Object.entries(queues).map(([residentId, tasks]) => [
+      residentId,
+      (tasks ?? []).map((task) => ({
+        ...task,
+        steps: task.steps.map(normalizeResidentTaskStep),
+      })),
+    ]),
+  );
+}
+
+function normalizeResidentTaskStep(
+  step: ResidentTask["steps"][number],
+): ResidentTask["steps"][number] {
+  const walkDurationMs = Number.isFinite(step.walk_duration_ms) ? step.walk_duration_ms : 0;
+  const workDurationMs = Number.isFinite(step.work_duration_ms)
+    ? step.work_duration_ms
+    : Math.max(0, step.duration_ms - walkDurationMs);
+  const durationMs = Number.isFinite(step.duration_ms)
+    ? step.duration_ms
+    : walkDurationMs + workDurationMs;
+  return {
+    ...step,
+    approach_tile: validTile(step.approach_tile) ? step.approach_tile : undefined,
+    walk_path: Array.isArray(step.walk_path) ? step.walk_path.filter(validTile) : [],
+    walk_duration_ms: walkDurationMs,
+    work_duration_ms: workDurationMs,
+    duration_ms: durationMs,
+  };
 }

@@ -816,6 +816,22 @@
         "$ref": "#/definitions/FarmhouseUpgradeKind"
       }
     },
+    "resident_locations": {
+      "default": {
+        "man": {
+          "x": 9,
+          "y": 10
+        },
+        "woman": {
+          "x": 8,
+          "y": 10
+        }
+      },
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/Tile"
+      }
+    },
     "resident_task_queues": {
       "default": {
         "man": [],
@@ -1361,6 +1377,17 @@
         "work"
       ],
       "properties": {
+        "approach_tile": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Tile"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "duration_ms": {
           "default": 2000,
           "type": "integer",
@@ -1369,8 +1396,25 @@
         "reserved_work_target": {
           "$ref": "#/definitions/ReservedWorkTarget"
         },
+        "walk_duration_ms": {
+          "default": 0,
+          "type": "integer",
+          "format": "int64"
+        },
+        "walk_path": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Tile"
+          }
+        },
         "work": {
           "$ref": "#/definitions/ResidentTaskStepWork"
+        },
+        "work_duration_ms": {
+          "default": 2000,
+          "type": "integer",
+          "format": "int64"
         }
       }
     },

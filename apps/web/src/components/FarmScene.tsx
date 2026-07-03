@@ -33,8 +33,7 @@ import {
   type StructureProductionStatus,
 } from "../game/structureStatus";
 import {
-  currentResidentSceneTarget,
-  residentTaskProgress,
+  currentResidentScenePose,
 } from "../game/residentTasks";
 
 const MOVE_TILE_BLOCKED_COLOR = "#a9333f";
@@ -315,22 +314,21 @@ export function FarmScene({
 
 function FarmResidents({ view, nowMs }: { view: FarmView; nowMs: number }) {
   const residents = view.residents.slice(0, 2).map((resident, index): FarmResidentPresentation => {
-    const idle = idleResidentPosition(index);
-    const currentTask = view.resident_task_queues[resident.id]?.[0] ?? null;
-    const target = currentResidentSceneTarget(view, resident.id);
-    const progress = currentTask && target ? residentTaskProgress(currentTask, nowMs) : 0;
-    const targetPosition: [number, number, number] = target
-      ? [tileToWorld(target.tile.x), 0.16, tileToWorld(target.tile.y)]
-      : idle;
-    const position = currentTask && target ? interpolatePosition(idle, targetPosition, easeOut(progress)) : idle;
+    const pose = currentResidentScenePose(view, resident.id, nowMs);
+    const offset = residentVisualOffset(index, pose.state);
+    const position: [number, number, number] = [
+      tileToWorld(pose.tile.x) + offset[0],
+      0.16,
+      tileToWorld(pose.tile.y) + offset[1],
+    ];
 
     return {
       id: resident.id,
       displayName: resident.display_name,
       variant: resident.id === "man" ? "man" : "woman",
       position,
-      moving: Boolean(currentTask && target && progress < 1),
-      targetLabel: target?.label ?? "farmhouse",
+      state: pose.state,
+      targetLabel: pose.label,
     };
   });
 
@@ -1626,31 +1624,15 @@ function worldToTile(value: number) {
   return value - BOARD_ORIGIN;
 }
 
-function idleResidentPosition(index: number): [number, number, number] {
-  const houseCenter = footprintCenter(FARM_HOUSE_TILE, FARM_HOUSE_FOOTPRINT);
+function residentVisualOffset(index: number, state: "idle" | "walking" | "working") {
+  if (state === "walking") {
+    return [0, 0] as const;
+  }
   const offsets = [
-    [-0.58, 1.24],
-    [0.48, 1.08],
+    [-0.12, 0.1],
+    [0.12, -0.1],
   ] as const;
-  const [xOffset, zOffset] = offsets[index] ?? [0, 1.18];
-  return [tileToWorld(houseCenter.x) + xOffset, 0.16, tileToWorld(houseCenter.y) + zOffset];
-}
-
-function interpolatePosition(
-  start: [number, number, number],
-  end: [number, number, number],
-  progress: number,
-): [number, number, number] {
-  return [
-    start[0] + (end[0] - start[0]) * progress,
-    start[1] + (end[1] - start[1]) * progress,
-    start[2] + (end[2] - start[2]) * progress,
-  ];
-}
-
-function easeOut(progress: number) {
-  const clamped = Math.min(1, Math.max(0, progress));
-  return 1 - (1 - clamped) * (1 - clamped);
+  return offsets[index] ?? ([0, 0] as const);
 }
 
 function structureHitTargetWidth(footprint: StructureFootprint) {

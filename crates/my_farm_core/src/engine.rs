@@ -9,6 +9,7 @@ use crate::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use ts_rs::TS;
 
 const FARM_GRID_SIZE: i32 = 18;
@@ -426,8 +427,7 @@ fn plant_crop(
         return Err(CommandError::new("field plot is reserved"));
     }
     require_level(farm, crop.unlock_level)?;
-    remove_inventory(farm, &[ItemStack::new(crop_id, 1)])?;
-    enqueue_resident_work(
+    let planned = plan_resident_work(
         farm,
         now_ms,
         ResidentTaskKind::FieldWork,
@@ -440,6 +440,8 @@ fn plant_crop(
             },
         )],
     )?;
+    remove_inventory(farm, &[ItemStack::new(crop_id, 1)])?;
+    push_planned_resident_work(farm, planned);
     Ok(Vec::new())
 }
 
@@ -488,8 +490,9 @@ fn sweep_plant(
         }));
     }
 
-    remove_inventory(farm, &[ItemStack::new(crop_id, steps.len() as u32)])?;
-    enqueue_resident_work(farm, now_ms, ResidentTaskKind::FieldWork, steps)?;
+    let planned = plan_resident_work(farm, now_ms, ResidentTaskKind::FieldWork, steps)?;
+    remove_inventory(farm, &[ItemStack::new(crop_id, planned.steps.len() as u32)])?;
+    push_planned_resident_work(farm, planned);
     Ok(Vec::new())
 }
 
@@ -521,7 +524,7 @@ fn harvest_crop(
     if !has_storage_room_after_reservations(farm, catalog, &outputs) {
         return Err(CommandError::new("storage is full"));
     }
-    enqueue_resident_work(
+    let planned = plan_resident_work(
         farm,
         now_ms,
         ResidentTaskKind::FieldWork,
@@ -535,6 +538,7 @@ fn harvest_crop(
             },
         )],
     )?;
+    push_planned_resident_work(farm, planned);
     Ok(Vec::new())
 }
 
@@ -612,7 +616,8 @@ fn sweep_harvest(
         }));
     }
 
-    enqueue_resident_work(farm, now_ms, ResidentTaskKind::FieldWork, steps)?;
+    let planned = plan_resident_work(farm, now_ms, ResidentTaskKind::FieldWork, steps)?;
+    push_planned_resident_work(farm, planned);
     Ok(Vec::new())
 }
 
@@ -637,19 +642,32 @@ fn resident_task_step(
     reserved_work_target: ReservedWorkTarget,
     work: ResidentTaskStepWork,
 ) -> ResidentTaskStep {
+    let work_duration_ms = default_resident_task_step_duration_ms();
     ResidentTaskStep {
         reserved_work_target,
         work,
-        duration_ms: default_resident_task_step_duration_ms(),
+        approach_tile: None,
+        walk_path: Vec::new(),
+        walk_duration_ms: 0,
+        work_duration_ms,
+        duration_ms: work_duration_ms,
     }
 }
 
-fn enqueue_resident_work(
-    farm: &mut FarmState,
+struct PlannedResidentWork {
+    resident_id: String,
+    started_at_ms: i64,
+    ready_at_ms: i64,
+    kind: ResidentTaskKind,
+    steps: Vec<ResidentTaskStep>,
+}
+
+fn plan_resident_work(
+    farm: &FarmState,
     now_ms: i64,
     kind: ResidentTaskKind,
     steps: Vec<ResidentTaskStep>,
-) -> Result<(), CommandError> {
+) -> Result<PlannedResidentWork, CommandError> {
     find_resident_index(farm, &farm.selected_resident_id)?;
     let selected_resident_id = farm.selected_resident_id.clone();
     let started_at_ms = farm
@@ -659,24 +677,34 @@ fn enqueue_resident_work(
         .map(resident_task_tail_ready_at)
         .unwrap_or(now_ms)
         .max(now_ms);
-    let steps = snapshot_resident_task_step_durations(farm, &kind, steps);
+    let steps = plan_resident_task_steps(farm, &selected_resident_id, steps)?;
     let ready_at_ms = started_at_ms
         + steps
             .first()
             .map(resident_task_step_duration_ms)
             .unwrap_or(0);
-    let task = ResidentTask {
-        id: next_id(farm, "task"),
-        kind,
-        steps,
+
+    Ok(PlannedResidentWork {
+        resident_id: selected_resident_id,
         started_at_ms,
         ready_at_ms,
+        kind,
+        steps,
+    })
+}
+
+fn push_planned_resident_work(farm: &mut FarmState, planned: PlannedResidentWork) {
+    let task = ResidentTask {
+        id: next_id(farm, "task"),
+        kind: planned.kind,
+        steps: planned.steps,
+        started_at_ms: planned.started_at_ms,
+        ready_at_ms: planned.ready_at_ms,
     };
     farm.resident_task_queues
-        .entry(selected_resident_id)
+        .entry(planned.resident_id)
         .or_default()
         .push(task);
-    Ok(())
 }
 
 fn resident_task_tail_ready_at(task: &ResidentTask) -> i64 {
@@ -689,96 +717,152 @@ fn resident_task_tail_ready_at(task: &ResidentTask) -> i64 {
             .sum::<i64>()
 }
 
-fn snapshot_resident_task_step_durations(
+fn projected_resident_start_tile(farm: &FarmState, resident_id: &str) -> Tile {
+    farm.resident_task_queues
+        .get(resident_id)
+        .and_then(|queue| queue.last())
+        .and_then(|task| task.steps.last())
+        .and_then(|step| step.approach_tile.clone())
+        .or_else(|| farm.resident_locations.get(resident_id).cloned())
+        .unwrap_or_else(|| Tile::new(8, 10))
+}
+
+fn plan_resident_task_steps(
     farm: &FarmState,
-    kind: &ResidentTaskKind,
-    steps: Vec<ResidentTaskStep>,
-) -> Vec<ResidentTaskStep> {
-    match kind {
-        ResidentTaskKind::FieldWork | ResidentTaskKind::ProductionWork => {
-            snapshot_tool_source_step_durations(farm, steps)
+    resident_id: &str,
+    mut steps: Vec<ResidentTaskStep>,
+) -> Result<Vec<ResidentTaskStep>, CommandError> {
+    let mut previous_tile = projected_resident_start_tile(farm, resident_id);
+    for (index, step) in steps.iter_mut().enumerate() {
+        let route = if index == 0 {
+            best_tool_source_route(farm, &previous_tile, step)
+        } else {
+            best_work_target_route(farm, &previous_tile, step)
         }
+        .ok_or_else(|| CommandError::new("work target is unreachable"))?;
+
+        apply_route_to_step(step, route);
+        previous_tile = step.approach_tile.clone().unwrap_or(previous_tile);
+    }
+    Ok(steps)
+}
+
+fn apply_route_to_step(step: &mut ResidentTaskStep, route: PlannedRoute) {
+    let work_duration_ms = RESIDENT_FIELD_WORK_BASE_DURATION_MS;
+    let walk_duration_ms = route.walk_duration_ms();
+    step.approach_tile = Some(route.approach_tile);
+    step.walk_path = route.path;
+    step.walk_duration_ms = walk_duration_ms;
+    step.work_duration_ms = work_duration_ms;
+    step.duration_ms = walk_duration_ms + work_duration_ms;
+}
+
+#[derive(Debug, Clone)]
+struct PlannedRoute {
+    approach_tile: Tile,
+    path: Vec<Tile>,
+}
+
+impl PlannedRoute {
+    fn walk_duration_ms(&self) -> i64 {
+        self.path.len() as i64 * RESIDENT_FIELD_WORK_WALKED_TILE_DURATION_MS
     }
 }
 
-fn duration_from_farmhouse_tool_source(_farm: &FarmState, _step: &ResidentTaskStep) -> i64 {
-    default_resident_task_step_duration_ms()
-}
-
-fn snapshot_tool_source_step_durations(
+fn best_tool_source_route(
     farm: &FarmState,
-    steps: Vec<ResidentTaskStep>,
-) -> Vec<ResidentTaskStep> {
-    let Some(first_target_center) = steps
-        .first()
-        .and_then(|step| resident_task_target_center(farm, step))
-    else {
-        return steps
-            .into_iter()
-            .map(|mut step| {
-                step.duration_ms = duration_from_farmhouse_tool_source(farm, &step);
-                step
-            })
-            .collect();
-    };
-
-    let farmhouse_source_center = footprint_center(
-        &Tile::new(FARM_HOUSE_TILE_X, FARM_HOUSE_TILE_Y),
-        FARM_HOUSE_FOOTPRINT,
-    );
-    let mut source_center = farmhouse_source_center;
-    let farmhouse_distance =
-        manhattan_distance_between_centers(farmhouse_source_center, first_target_center);
-    if let Some(tool_shed) = &farm.tool_shed {
-        let tool_shed_center = footprint_center(
-            &tool_shed.tile,
-            structure_footprint(&StructureKind::ToolShed),
-        );
-        let tool_shed_distance =
-            manhattan_distance_between_centers(tool_shed_center, first_target_center);
-        if tool_shed_distance <= farmhouse_distance {
-            source_center = tool_shed_center;
-        }
-    }
-
-    let mut previous_center = source_center;
-    steps
-        .into_iter()
-        .map(|mut step| {
-            if let Some(target_center) = resident_task_target_center(farm, &step) {
-                let walked_tiles =
-                    manhattan_distance_between_centers(previous_center, target_center);
-                step.duration_ms = duration_from_walked_tiles(walked_tiles);
-                previous_center = target_center;
-            } else {
-                step.duration_ms = duration_from_farmhouse_tool_source(farm, &step);
-            }
-            step
-        })
-        .collect()
-}
-
-fn resident_task_target_center(
-    farm: &FarmState,
+    start: &Tile,
     step: &ResidentTaskStep,
-) -> Option<FootprintCenter> {
+) -> Option<PlannedRoute> {
+    let target_candidates = work_target_candidates(farm, step)?;
+    let source_candidates = tool_source_candidates(farm);
+    let mut best: Option<(usize, i32, i32, i32, i32, PlannedRoute)> = None;
+
+    for source in source_candidates {
+        let Some(start_to_source) = find_walk_path(farm, start, &source) else {
+            continue;
+        };
+        for target in &target_candidates {
+            let Some(source_to_target) = find_walk_path(farm, &source, target) else {
+                continue;
+            };
+            let mut path = start_to_source.clone();
+            path.extend(source_to_target);
+            let score = (
+                path.len(),
+                target.y,
+                target.x,
+                source.y,
+                source.x,
+                PlannedRoute {
+                    approach_tile: target.clone(),
+                    path,
+                },
+            );
+            if best
+                .as_ref()
+                .is_none_or(|current| route_score_less(&score, current))
+            {
+                best = Some(score);
+            }
+        }
+    }
+
+    best.map(|(_, _, _, _, _, route)| route)
+}
+
+fn best_work_target_route(
+    farm: &FarmState,
+    start: &Tile,
+    step: &ResidentTaskStep,
+) -> Option<PlannedRoute> {
+    let target_candidates = work_target_candidates(farm, step)?;
+    let mut best: Option<(usize, i32, i32, i32, i32, PlannedRoute)> = None;
+    for target in target_candidates {
+        let Some(path) = find_walk_path(farm, start, &target) else {
+            continue;
+        };
+        let score = (
+            path.len(),
+            target.y,
+            target.x,
+            0,
+            0,
+            PlannedRoute {
+                approach_tile: target,
+                path,
+            },
+        );
+        if best
+            .as_ref()
+            .is_none_or(|current| route_score_less(&score, current))
+        {
+            best = Some(score);
+        }
+    }
+    best.map(|(_, _, _, _, _, route)| route)
+}
+
+fn route_score_less(
+    left: &(usize, i32, i32, i32, i32, PlannedRoute),
+    right: &(usize, i32, i32, i32, i32, PlannedRoute),
+) -> bool {
+    (left.0, left.1, left.2, left.3, left.4) < (right.0, right.1, right.2, right.3, right.4)
+}
+
+fn work_target_candidates(farm: &FarmState, step: &ResidentTaskStep) -> Option<Vec<Tile>> {
     match &step.reserved_work_target {
         ReservedWorkTarget::FieldPlot { plot_id } => {
             let plot = farm.field_plots.iter().find(|plot| plot.id == *plot_id)?;
-            Some(footprint_center(
-                &plot.tile,
-                StructureFootprint {
-                    width: 1,
-                    height: 1,
-                },
-            ))
+            Some(vec![plot.tile.clone()])
         }
         ReservedWorkTarget::Machine { machine_id } => {
             let machine = farm
                 .machines
                 .iter()
                 .find(|machine| machine.id == *machine_id)?;
-            Some(footprint_center(
+            Some(approach_tiles_for_footprint(
+                farm,
                 &machine.tile,
                 structure_footprint(&machine_structure_kind(&machine.kind)),
             ))
@@ -788,36 +872,135 @@ fn resident_task_target_center(
                 .shelters
                 .iter()
                 .find(|shelter| shelter.id == *shelter_id)?;
-            Some(footprint_center(
+            Some(approach_tiles_for_footprint(
+                farm,
                 &shelter.tile,
                 structure_footprint(&shelter_structure_kind(&shelter.kind)),
             ))
         }
-        ReservedWorkTarget::Oven => None,
+        ReservedWorkTarget::Oven => Some(approach_tiles_for_footprint(
+            farm,
+            &Tile::new(FARM_HOUSE_TILE_X, FARM_HOUSE_TILE_Y),
+            FARM_HOUSE_FOOTPRINT,
+        )),
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FootprintCenter {
-    doubled_x: i32,
-    doubled_y: i32,
-}
-
-fn footprint_center(origin: &Tile, footprint: StructureFootprint) -> FootprintCenter {
-    FootprintCenter {
-        doubled_x: origin.x * 2 + footprint.width,
-        doubled_y: origin.y * 2 + footprint.height,
+fn tool_source_candidates(farm: &FarmState) -> Vec<Tile> {
+    let mut candidates = approach_tiles_for_footprint(
+        farm,
+        &Tile::new(FARM_HOUSE_TILE_X, FARM_HOUSE_TILE_Y),
+        FARM_HOUSE_FOOTPRINT,
+    );
+    if let Some(tool_shed) = &farm.tool_shed {
+        candidates.extend(approach_tiles_for_footprint(
+            farm,
+            &tool_shed.tile,
+            structure_footprint(&StructureKind::ToolShed),
+        ));
     }
+    candidates.sort_by_key(|tile| (tile.y, tile.x));
+    candidates.dedup_by(|left, right| left.x == right.x && left.y == right.y);
+    candidates
 }
 
-fn manhattan_distance_between_centers(left: FootprintCenter, right: FootprintCenter) -> i64 {
-    i64::from((left.doubled_x - right.doubled_x).abs() + (left.doubled_y - right.doubled_y).abs())
-        / 2
+fn approach_tiles_for_footprint(
+    farm: &FarmState,
+    origin: &Tile,
+    footprint: StructureFootprint,
+) -> Vec<Tile> {
+    let mut candidates = Vec::new();
+    for x in origin.x..origin.x + footprint.width {
+        candidates.push(Tile::new(x, origin.y - 1));
+        candidates.push(Tile::new(x, origin.y + footprint.height));
+    }
+    for y in origin.y..origin.y + footprint.height {
+        candidates.push(Tile::new(origin.x - 1, y));
+        candidates.push(Tile::new(origin.x + footprint.width, y));
+    }
+    candidates.sort_by_key(|tile| (tile.y, tile.x));
+    candidates.dedup_by(|left, right| left.x == right.x && left.y == right.y);
+    candidates
+        .into_iter()
+        .filter(|tile| is_walkable_tile(farm, tile))
+        .collect()
 }
 
-fn duration_from_walked_tiles(walked_tiles: i64) -> i64 {
-    RESIDENT_FIELD_WORK_BASE_DURATION_MS
-        + walked_tiles * RESIDENT_FIELD_WORK_WALKED_TILE_DURATION_MS
+fn find_walk_path(farm: &FarmState, start: &Tile, target: &Tile) -> Option<Vec<Tile>> {
+    if !is_walkable_tile(farm, start) || !is_walkable_tile(farm, target) {
+        return None;
+    }
+    if start == target {
+        return Some(Vec::new());
+    }
+
+    let start_key = tile_key(start);
+    let target_key = tile_key(target);
+    let mut queue = VecDeque::from([start_key]);
+    let mut visited = BTreeSet::from([start_key]);
+    let mut previous: BTreeMap<(i32, i32), (i32, i32)> = BTreeMap::new();
+
+    while let Some(current) = queue.pop_front() {
+        for neighbor in walk_neighbors(current) {
+            let neighbor_tile = Tile::new(neighbor.0, neighbor.1);
+            if !is_walkable_tile(farm, &neighbor_tile) || visited.contains(&neighbor) {
+                continue;
+            }
+            visited.insert(neighbor);
+            previous.insert(neighbor, current);
+            if neighbor == target_key {
+                return Some(reconstruct_path(start_key, target_key, &previous));
+            }
+            queue.push_back(neighbor);
+        }
+    }
+
+    None
+}
+
+fn reconstruct_path(
+    start: (i32, i32),
+    target: (i32, i32),
+    previous: &BTreeMap<(i32, i32), (i32, i32)>,
+) -> Vec<Tile> {
+    let mut cursor = target;
+    let mut path = vec![Tile::new(cursor.0, cursor.1)];
+    while cursor != start {
+        let Some(next) = previous.get(&cursor) else {
+            break;
+        };
+        cursor = *next;
+        if cursor != start {
+            path.push(Tile::new(cursor.0, cursor.1));
+        }
+    }
+    path.reverse();
+    path
+}
+
+fn walk_neighbors(tile: (i32, i32)) -> [(i32, i32); 4] {
+    [
+        (tile.0, tile.1 - 1),
+        (tile.0 - 1, tile.1),
+        (tile.0 + 1, tile.1),
+        (tile.0, tile.1 + 1),
+    ]
+}
+
+fn tile_key(tile: &Tile) -> (i32, i32) {
+    (tile.x, tile.y)
+}
+
+fn is_walkable_tile(farm: &FarmState, tile: &Tile) -> bool {
+    is_tile_inside_farm(tile)
+        && !footprint_contains(
+            &Tile::new(FARM_HOUSE_TILE_X, FARM_HOUSE_TILE_Y),
+            FARM_HOUSE_FOOTPRINT,
+            tile,
+        )
+        && !structure_footprints(farm)
+            .into_iter()
+            .any(|(origin, footprint)| footprint_contains(&origin, footprint, tile))
 }
 
 fn resident_task_step_duration_ms(step: &ResidentTaskStep) -> i64 {
@@ -879,6 +1062,10 @@ fn pop_ready_resident_task_step(
                 .first()
                 .map(resident_task_step_duration_ms)
                 .unwrap_or(0);
+    }
+    if let Some(approach_tile) = &step.approach_tile {
+        farm.resident_locations
+            .insert(resident_id.to_owned(), approach_tile.clone());
     }
     Some((step, completed_at))
 }
@@ -1070,6 +1257,22 @@ fn oven_is_reserved(farm: &FarmState) -> bool {
         .flat_map(|queue| queue.iter())
         .flat_map(|task| task.steps.iter())
         .any(|step| matches!(&step.reserved_work_target, ReservedWorkTarget::Oven))
+}
+
+fn shelter_is_reserved(farm: &FarmState, shelter_id: &str) -> bool {
+    farm.resident_task_queues
+        .values()
+        .flat_map(|queue| queue.iter())
+        .flat_map(|task| task.steps.iter())
+        .any(|step| {
+            matches!(
+                &step.reserved_work_target,
+                ReservedWorkTarget::Animal {
+                    shelter_id: reserved_shelter_id,
+                    ..
+                } if reserved_shelter_id == shelter_id
+            )
+        })
 }
 
 fn animal_slot_is_reserved(farm: &FarmState, shelter_id: &str, animal_slot: &str) -> bool {
@@ -1350,6 +1553,7 @@ fn move_structure(
     target: StructureTarget,
     tile: Tile,
 ) -> Result<Vec<FarmEvent>, CommandError> {
+    ensure_structure_target_can_move(farm, &target)?;
     let structure_kind = match &target {
         StructureTarget::Silo => StructureKind::Silo,
         StructureTarget::Barn => StructureKind::Barn,
@@ -1428,6 +1632,21 @@ fn move_structure(
     }
 
     Ok(vec![FarmEvent::StructureMoved { target, tile }])
+}
+
+fn ensure_structure_target_can_move(
+    farm: &FarmState,
+    target: &StructureTarget,
+) -> Result<(), CommandError> {
+    match target {
+        StructureTarget::Machine { id } if machine_is_reserved(farm, id) => {
+            Err(CommandError::new("machine is reserved"))
+        }
+        StructureTarget::Shelter { id } if shelter_is_reserved(farm, id) => {
+            Err(CommandError::new("animal shelter is reserved"))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn queue_recipe(
@@ -1548,7 +1767,7 @@ fn collect_machine_job(
     if !has_storage_room_after_reservations(farm, catalog, &recipe.outputs) {
         return Err(CommandError::new("storage is full"));
     }
-    enqueue_resident_work(
+    let planned = plan_resident_work(
         farm,
         now_ms,
         ResidentTaskKind::ProductionWork,
@@ -1562,6 +1781,7 @@ fn collect_machine_job(
             },
         )],
     )?;
+    push_planned_resident_work(farm, planned);
     Ok(Vec::new())
 }
 
@@ -1586,7 +1806,7 @@ fn collect_oven_job(
     if !has_storage_room_after_reservations(farm, catalog, &recipe.outputs) {
         return Err(CommandError::new("storage is full"));
     }
-    enqueue_resident_work(
+    let planned = plan_resident_work(
         farm,
         now_ms,
         ResidentTaskKind::ProductionWork,
@@ -1598,6 +1818,7 @@ fn collect_oven_job(
             },
         )],
     )?;
+    push_planned_resident_work(farm, planned);
     Ok(Vec::new())
 }
 
@@ -1621,8 +1842,7 @@ fn feed_animal(
     if animal_slot_is_reserved(farm, shelter_id, animal_slot) {
         return Err(CommandError::new("animal is reserved"));
     }
-    remove_inventory(farm, &[ItemStack::new(&def.feed_item_id, 1)])?;
-    enqueue_resident_work(
+    let planned = plan_resident_work(
         farm,
         now_ms,
         ResidentTaskKind::ProductionWork,
@@ -1634,6 +1854,8 @@ fn feed_animal(
             ResidentTaskStepWork::FeedAnimal,
         )],
     )?;
+    remove_inventory(farm, &[ItemStack::new(&def.feed_item_id, 1)])?;
+    push_planned_resident_work(farm, planned);
     Ok(Vec::new())
 }
 
@@ -1661,7 +1883,7 @@ fn collect_animal_product(
     if !has_storage_room_after_reservations(farm, catalog, std::slice::from_ref(&output)) {
         return Err(CommandError::new("storage is full"));
     }
-    enqueue_resident_work(
+    let planned = plan_resident_work(
         farm,
         now_ms,
         ResidentTaskKind::ProductionWork,
@@ -1676,6 +1898,7 @@ fn collect_animal_product(
             },
         )],
     )?;
+    push_planned_resident_work(farm, planned);
     Ok(Vec::new())
 }
 
@@ -2113,12 +2336,11 @@ fn ensure_tile_can_hold_structure(
     footprint: StructureFootprint,
     ignore_target: Option<&StructureTarget>,
 ) -> Result<(), CommandError> {
-    if tile.x < 0
-        || tile.y < 0
-        || tile.x + footprint.width > FARM_GRID_SIZE
-        || tile.y + footprint.height > FARM_GRID_SIZE
-    {
+    if !is_footprint_inside_farm(tile, footprint) {
         return Err(CommandError::new("tile is outside the farm"));
+    }
+    if resident_path_overlaps_footprint(farm, tile, footprint) {
+        return Err(CommandError::new("resident path is reserved"));
     }
     let farm_house_tile = Tile::new(FARM_HOUSE_TILE_X, FARM_HOUSE_TILE_Y);
     if footprints_overlap(tile, footprint, &farm_house_tile, FARM_HOUSE_FOOTPRINT) {
@@ -2199,6 +2421,57 @@ fn ensure_tile_can_hold_structure(
     Ok(())
 }
 
+fn resident_path_overlaps_footprint(
+    farm: &FarmState,
+    tile: &Tile,
+    footprint: StructureFootprint,
+) -> bool {
+    farm.resident_task_queues
+        .values()
+        .flat_map(|queue| queue.iter())
+        .flat_map(|task| task.steps.iter())
+        .flat_map(|step| step.walk_path.iter())
+        .any(|path_tile| footprint_contains(tile, footprint, path_tile))
+}
+
+fn structure_footprints(farm: &FarmState) -> Vec<(Tile, StructureFootprint)> {
+    let mut footprints = vec![
+        (
+            farm.silo_tile.clone(),
+            structure_footprint(&StructureKind::Silo),
+        ),
+        (
+            farm.barn_tile.clone(),
+            structure_footprint(&StructureKind::Barn),
+        ),
+    ];
+    footprints.extend(farm.machines.iter().map(|machine| {
+        (
+            machine.tile.clone(),
+            structure_footprint(&machine_structure_kind(&machine.kind)),
+        )
+    }));
+    footprints.extend(farm.shelters.iter().map(|shelter| {
+        (
+            shelter.tile.clone(),
+            structure_footprint(&shelter_structure_kind(&shelter.kind)),
+        )
+    }));
+    if farm.delivery_board_built {
+        footprints.push((
+            farm.delivery_board_tile.clone(),
+            structure_footprint(&StructureKind::DeliveryBoard),
+        ));
+    }
+    if let Some(tool_shed) = &farm.tool_shed {
+        footprints.push((
+            tool_shed.tile.clone(),
+            structure_footprint(&StructureKind::ToolShed),
+        ));
+    }
+    footprints
+}
+
 fn structure_footprint(kind: &StructureKind) -> StructureFootprint {
     match kind {
         StructureKind::Silo | StructureKind::Barn => StructureFootprint {
@@ -2240,6 +2513,17 @@ fn footprint_contains(origin: &Tile, footprint: StructureFootprint, tile: &Tile)
         && tile.x < origin.x + footprint.width
         && tile.y >= origin.y
         && tile.y < origin.y + footprint.height
+}
+
+fn is_tile_inside_farm(tile: &Tile) -> bool {
+    tile.x >= 0 && tile.y >= 0 && tile.x < FARM_GRID_SIZE && tile.y < FARM_GRID_SIZE
+}
+
+fn is_footprint_inside_farm(tile: &Tile, footprint: StructureFootprint) -> bool {
+    tile.x >= 0
+        && tile.y >= 0
+        && tile.x + footprint.width <= FARM_GRID_SIZE
+        && tile.y + footprint.height <= FARM_GRID_SIZE
 }
 
 fn footprints_overlap(

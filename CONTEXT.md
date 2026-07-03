@@ -60,6 +60,18 @@ _Avoid_: Animation job, client task
 The per-resident FIFO list of Resident Tasks saved on the Farm. Later work may enqueue physical production tasks here; empty queues still exist for each Farm Resident.
 _Avoid_: Local queue, animation queue
 
+**Resident Location**:
+The saved Farm Tile where a Farm Resident currently stands or last finished work. New Resident Tasks start walking from this Tile unless the resident already has queued work.
+_Avoid_: Browser avatar position, animation origin
+
+**Resident Path**:
+The saved sequence of Farm Tiles a Farm Resident will walk through for a Resident Task step before work starts. Resident Paths avoid Structures, while Field Plots remain walkable.
+_Avoid_: Client-only route, visual interpolation path
+
+**Approach Tile**:
+The reachable Farm Tile where a Farm Resident stands to perform a Resident Task step. Field work uses the Field Plot Tile; Structure work uses an adjacent Tile outside the Structure footprint.
+_Avoid_: Structure center, work target center
+
 **Reserved Work Target**:
 The Farm object reserved by a Resident Task while that task is pending or producing, such as a Field Plot, Machine, or animal slot.
 _Avoid_: Client lock, UI reservation

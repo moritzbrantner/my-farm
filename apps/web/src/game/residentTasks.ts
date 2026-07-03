@@ -20,6 +20,14 @@ export type ResidentSceneTarget = {
   label: string;
 };
 
+export type ResidentSceneState = "idle" | "walking" | "working";
+
+export type ResidentScenePose = {
+  tile: { x: number; y: number };
+  label: string;
+  state: ResidentSceneState;
+};
+
 export function residentTaskStatus(
   catalog: CatalogDocument,
   view: FarmView,
@@ -39,7 +47,50 @@ export function residentTaskStatus(
 export function currentResidentSceneTarget(view: FarmView, residentId: string): ResidentSceneTarget | null {
   const currentTask = view.resident_task_queues[residentId]?.[0] ?? null;
   const currentStep = currentTask?.steps[0] ?? null;
-  return currentStep ? sceneTargetForReservedWorkTarget(view, currentStep.reserved_work_target) : null;
+  if (!currentStep) {
+    return null;
+  }
+  const target = sceneTargetForReservedWorkTarget(view, currentStep.reserved_work_target);
+  const approachTile = currentStep.approach_tile;
+  return approachTile && target ? { ...target, tile: approachTile } : target;
+}
+
+export function currentResidentScenePose(
+  view: FarmView,
+  residentId: string,
+  nowMs: number,
+): ResidentScenePose {
+  const currentTile = view.resident_locations[residentId] ?? { x: 8, y: 10 };
+  const currentTask = view.resident_task_queues[residentId]?.[0] ?? null;
+  const currentStep = currentTask?.steps[0] ?? null;
+  if (!currentTask || !currentStep) {
+    return {
+      tile: currentTile,
+      label: "farmhouse",
+      state: "idle",
+    };
+  }
+
+  const target = currentResidentSceneTarget(view, residentId);
+  const approachTile = currentStep.approach_tile ?? currentStep.walk_path.at(-1) ?? target?.tile ?? currentTile;
+  const walkEndsAtMs = currentTask.started_at_ms + currentStep.walk_duration_ms;
+  if (currentStep.walk_path.length > 0 && nowMs < walkEndsAtMs) {
+    return {
+      tile: interpolatePath(
+        currentTile,
+        currentStep.walk_path,
+        progressBetween(currentTask.started_at_ms, walkEndsAtMs, nowMs),
+      ),
+      label: target?.label ?? "work",
+      state: "walking",
+    };
+  }
+
+  return {
+    tile: approachTile,
+    label: target?.label ?? "work",
+    state: "working",
+  };
 }
 
 export function residentTaskProgress(task: ResidentTask, nowMs: number) {
@@ -173,4 +224,27 @@ function progressBetween(startMs: number, readyAtMs: number, nowMs: number) {
     return 1;
   }
   return Math.min(1, Math.max(0, (nowMs - startMs) / duration));
+}
+
+export function interpolatePath(
+  start: { x: number; y: number },
+  path: Array<{ x: number; y: number }>,
+  progress: number,
+) {
+  if (path.length === 0) {
+    return start;
+  }
+  const clamped = Math.min(1, Math.max(0, progress));
+  if (clamped >= 1) {
+    return path[path.length - 1];
+  }
+  const scaled = clamped * path.length;
+  const segmentIndex = Math.min(path.length - 1, Math.floor(scaled));
+  const segmentProgress = scaled - segmentIndex;
+  const from = segmentIndex === 0 ? start : path[segmentIndex - 1];
+  const to = path[segmentIndex];
+  return {
+    x: from.x + (to.x - from.x) * segmentProgress,
+    y: from.y + (to.y - from.y) * segmentProgress,
+  };
 }

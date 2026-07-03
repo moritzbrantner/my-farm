@@ -59,6 +59,8 @@ pub struct FarmState {
     pub residents: Vec<FarmResident>,
     #[serde(default = "default_selected_resident_id")]
     pub selected_resident_id: String,
+    #[serde(default = "default_resident_locations")]
+    pub resident_locations: BTreeMap<String, Tile>,
     #[serde(default = "default_resident_task_queues")]
     pub resident_task_queues: BTreeMap<String, Vec<ResidentTask>>,
     #[serde(default = "default_house_interior")]
@@ -114,6 +116,8 @@ struct FarmStateSerde {
     residents: Vec<FarmResident>,
     #[serde(default = "default_selected_resident_id")]
     selected_resident_id: String,
+    #[serde(default = "default_resident_locations")]
+    resident_locations: BTreeMap<String, Tile>,
     #[serde(default = "default_resident_task_queues")]
     resident_task_queues: BTreeMap<String, Vec<ResidentTask>>,
     #[serde(default = "default_house_interior")]
@@ -157,10 +161,13 @@ impl FarmStateSerde {
             delivery_orders: self.delivery_orders,
             residents: self.residents,
             selected_resident_id: self.selected_resident_id,
+            resident_locations: self.resident_locations,
             resident_task_queues: self.resident_task_queues,
             house_interior: self.house_interior,
             next_id: self.next_id,
         };
+
+        ensure_resident_locations(&mut farm);
 
         if let Some(legacy_bakery) = legacy_bakery {
             migrate_legacy_bakery(&mut farm, legacy_bakery, forward_oven_present);
@@ -338,13 +345,67 @@ pub enum ResidentTaskKind {
     ProductionWork,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct ResidentTaskStep {
     pub reserved_work_target: ReservedWorkTarget,
     pub work: ResidentTaskStepWork,
+    #[serde(default)]
+    #[ts(optional)]
+    pub approach_tile: Option<Tile>,
+    #[serde(default)]
+    pub walk_path: Vec<Tile>,
+    #[serde(default)]
+    #[ts(type = "number")]
+    pub walk_duration_ms: i64,
+    #[serde(default = "default_resident_task_step_duration_ms")]
+    #[ts(type = "number")]
+    pub work_duration_ms: i64,
     #[serde(default = "default_resident_task_step_duration_ms")]
     #[ts(type = "number")]
     pub duration_ms: i64,
+}
+
+impl<'de> Deserialize<'de> for ResidentTaskStep {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawResidentTaskStep {
+            reserved_work_target: ReservedWorkTarget,
+            work: ResidentTaskStepWork,
+            #[serde(default)]
+            approach_tile: Option<Tile>,
+            #[serde(default)]
+            walk_path: Vec<Tile>,
+            #[serde(default)]
+            walk_duration_ms: Option<i64>,
+            #[serde(default)]
+            work_duration_ms: Option<i64>,
+            #[serde(default)]
+            duration_ms: Option<i64>,
+        }
+
+        let raw = RawResidentTaskStep::deserialize(deserializer)?;
+        let duration_ms = raw
+            .duration_ms
+            .unwrap_or_else(default_resident_task_step_duration_ms);
+        let walk_duration_ms = raw.walk_duration_ms.unwrap_or(0);
+        let work_duration_ms = raw
+            .work_duration_ms
+            .unwrap_or_else(|| (duration_ms - walk_duration_ms).max(0));
+        Ok(Self {
+            reserved_work_target: raw.reserved_work_target,
+            work: raw.work,
+            approach_tile: raw.approach_tile,
+            walk_path: raw.walk_path,
+            walk_duration_ms,
+            work_duration_ms,
+            duration_ms: raw
+                .duration_ms
+                .unwrap_or_else(|| walk_duration_ms + work_duration_ms),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -402,6 +463,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         delivery_orders: Vec::new(),
         residents: default_residents(),
         selected_resident_id: default_selected_resident_id(),
+        resident_locations: default_resident_locations(),
         resident_task_queues: default_resident_task_queues(),
         house_interior: default_house_interior(),
         next_id: 1,
@@ -569,8 +631,28 @@ pub fn default_resident_task_queues() -> BTreeMap<String, Vec<ResidentTask>> {
     ])
 }
 
+pub fn default_resident_locations() -> BTreeMap<String, Tile> {
+    BTreeMap::from([
+        ("woman".to_owned(), Tile::new(8, 10)),
+        ("man".to_owned(), Tile::new(9, 10)),
+    ])
+}
+
 pub fn default_resident_task_step_duration_ms() -> i64 {
     DEFAULT_RESIDENT_TASK_STEP_DURATION_MS
+}
+
+fn ensure_resident_locations(farm: &mut FarmState) {
+    let defaults = default_resident_locations();
+    for resident in &farm.residents {
+        if !farm.resident_locations.contains_key(&resident.id) {
+            let default = defaults
+                .get(&resident.id)
+                .cloned()
+                .unwrap_or_else(|| Tile::new(8, 10));
+            farm.resident_locations.insert(resident.id.clone(), default);
+        }
+    }
 }
 
 pub fn default_oven_state() -> OvenState {

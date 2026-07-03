@@ -8,7 +8,7 @@ export type FarmResidentPresentation = {
   displayName: string;
   variant: "woman" | "man";
   position: [number, number, number];
-  moving: boolean;
+  state: "idle" | "walking" | "working";
   targetLabel: string;
 };
 
@@ -20,10 +20,10 @@ export function FarmResidentFigure({ resident }: { resident: FarmResidentPresent
     if (!groupRef.current || reducedMotion) {
       return;
     }
-    const stride = resident.moving ? 7 : 2;
+    const stride = resident.state === "walking" ? 7 : 2;
     const bob = Math.sin(clock.getElapsedTime() * stride + (resident.variant === "woman" ? 0 : 0.7)) * 0.025;
     groupRef.current.position.y = bob;
-    groupRef.current.rotation.y = resident.moving
+    groupRef.current.rotation.y = resident.state === "walking"
       ? Math.sin(clock.getElapsedTime() * 3) * 0.08
       : Math.sin(clock.getElapsedTime() * 0.9) * 0.04;
   });
@@ -38,7 +38,7 @@ export function FarmResidentFigure({ resident }: { resident: FarmResidentPresent
         <div
           className="farm-scene-marker farm-scene-resident-marker"
           data-testid={`farm-scene-resident-${resident.id}`}
-          data-resident-state={resident.moving ? "moving" : "idle"}
+          data-resident-state={resident.state}
           data-resident-target={resident.targetLabel}
           aria-label={`${resident.displayName} Farm Resident`}
         />
