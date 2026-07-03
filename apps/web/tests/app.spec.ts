@@ -48,6 +48,45 @@ test("bootstraps from the gameplay websocket without polling farm snapshots", as
   expect(urls.at(-1)).toBe("ws://127.0.0.1:8091/api/gameplay");
 });
 
+test("updates ready field actions from pushed websocket snapshots without REST polling", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop field selection is covered here.");
+  const growingView = growingFieldView();
+  const readyView = {
+    ...growingView,
+    last_update_ms: Date.now(),
+    field_plots: growingView.field_plots.map((plot) =>
+      plot.id === "plot-1" && plot.crop
+        ? {
+            ...plot,
+            crop: {
+              ...plot.crop,
+              ready_at_ms: Date.now() - 1_000,
+            },
+          }
+        : plot,
+    ),
+  } satisfies FarmView;
+  await installMockGameplayWebSocket(page, [{ version: 1, view: growingView, catalog }]);
+  await rejectRestGameplay(page);
+
+  await openFarm(page);
+  await page.getByLabel("Field Plot plot-1").click({ force: true });
+
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+  await expect(selection.getByRole("button", { name: "Harvest" })).toBeDisabled();
+
+  await page.evaluate((view) => {
+    (window as unknown as {
+      __pushLatestGameplayFarmSnapshot: (snapshot: { version: number; view: FarmView }) => void;
+    }).__pushLatestGameplayFarmSnapshot({ version: 2, view });
+  }, readyView);
+
+  await expect(selection.getByText("Wheat - ready")).toBeVisible();
+  await expect(selection.getByRole("button", { name: "Harvest" })).toBeEnabled();
+});
+
 test("sends commands and reset over the gameplay websocket without REST gameplay calls", async ({ page }) => {
   const resetView = {
     ...farmView,
@@ -2101,7 +2140,7 @@ async function installMockGameplayWebSocket(
         this.emit("close", {});
       }
 
-      private emit(type: string, event: { data?: string }) {
+      emit(type: string, event: { data?: string }) {
         for (const listener of this.listeners.get(type) ?? []) {
           listener(event);
         }
@@ -2112,11 +2151,31 @@ async function installMockGameplayWebSocket(
       WebSocket: typeof MockGameplayWebSocket;
       __gameplayWebSocketUrls: string[];
       __gameplayWebSocketInstances: MockGameplayWebSocket[];
+      __pushGameplayFarmSnapshot: (index: number, snapshot: { version: number; view: FarmView }) => void;
+      __pushLatestGameplayFarmSnapshot: (snapshot: { version: number; view: FarmView }) => void;
       __closeGameplayWebSocket: (index: number) => void;
       __closeLatestGameplayWebSocket: () => void;
     };
     mockWindow.__gameplayWebSocketUrls = [];
     mockWindow.__gameplayWebSocketInstances = [];
+    mockWindow.__pushGameplayFarmSnapshot = (index, snapshot) => {
+      const socket = mockWindow.__gameplayWebSocketInstances[index];
+      if (socket?.readyState !== MockGameplayWebSocket.OPEN) {
+        return;
+      }
+      responseVersion = snapshot.version;
+      responseView = snapshot.view;
+      socket.emit("message", {
+        data: JSON.stringify({
+          type: "farm_snapshot",
+          version: snapshot.version,
+          view: snapshot.view,
+        }),
+      });
+    };
+    mockWindow.__pushLatestGameplayFarmSnapshot = (snapshot) => {
+      mockWindow.__pushGameplayFarmSnapshot(mockWindow.__gameplayWebSocketInstances.length - 1, snapshot);
+    };
     mockWindow.__closeGameplayWebSocket = (index: number) => {
       mockWindow.__gameplayWebSocketInstances[index]?.closeFromServer();
     };
