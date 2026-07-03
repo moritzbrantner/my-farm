@@ -365,7 +365,7 @@ button[aria-disabled="true"] {
 
 .main-menu__options {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -389,7 +389,6 @@ button[aria-disabled="true"] {
 
 .main-menu__settings,
 .main-menu__account,
-.main-menu__tutorial,
 .main-menu__wiki {
   display: grid;
   gap: 8px;
@@ -397,7 +396,6 @@ button[aria-disabled="true"] {
 
 .main-menu__settings label,
 .main-menu__account span,
-.main-menu__tutorial li,
 .main-menu__wiki div {
   min-width: 0;
   padding: 10px;
@@ -424,23 +422,6 @@ button[aria-disabled="true"] {
   margin: 0;
 }
 
-.main-menu__tutorial {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.main-menu__tutorial li {
-  display: grid;
-  gap: 3px;
-}
-
-.main-menu__tutorial span {
-  color: #536a5e;
-  font-size: 13px;
-  font-weight: 650;
-}
-
 .main-menu__wiki div {
   display: grid;
   gap: 3px;
@@ -463,6 +444,66 @@ button[aria-disabled="true"] {
 
 .main-menu__account span {
   font-weight: 800;
+}
+
+.guided-tutorial-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 980;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(24, 37, 32, 0.42);
+}
+
+.guided-tutorial {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 10px;
+  padding: 22px;
+  border: 1px solid rgba(32, 49, 43, 0.3);
+  border-radius: 8px;
+  background: #fbf6e8;
+  box-shadow: 0 22px 56px rgba(24, 37, 32, 0.36);
+}
+
+.guided-tutorial__eyebrow {
+  color: #536a5e;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.guided-tutorial h2,
+.guided-tutorial h3,
+.guided-tutorial p {
+  margin: 0;
+}
+
+.guided-tutorial h2 {
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.guided-tutorial h3 {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.guided-tutorial p {
+  color: #536a5e;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.guided-tutorial__primary {
+  justify-self: end;
+  min-width: 110px;
+  margin-top: 4px;
+  padding: 8px 14px;
+  background: #fff7d0;
+  border-color: #446d38;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.48);
 }
 
 .side-panel {

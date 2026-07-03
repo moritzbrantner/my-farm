@@ -7,11 +7,12 @@ test("renders the playable farm shell", async ({ page }) => {
   await expect(page.getByRole("region", { name: "Main menu" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Start Farm" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Settings" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Tutorial" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Tutorial" })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Wiki" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Main menu options" }).getByRole("button", { name: "Account" })).toBeVisible();
   await startFarm(page);
 
+  await expect(page.getByRole("dialog", { name: "Guided Tutorial" })).toHaveCount(0);
   await expect(page.getByText("My Farm")).toBeVisible();
   await expect(page.getByText(/Level 1/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
@@ -345,22 +346,17 @@ test("field tools expose one seed picker and change the cursor", async ({ page }
   await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", "cell");
 });
 
-test("main menu opens settings tutorial wiki and account panels", async ({ page }) => {
+test("main menu opens settings wiki and account panels", async ({ page }) => {
   await mockFarmApi(page);
   await page.goto("/");
 
   const options = page.getByRole("navigation", { name: "Main menu options" });
+  await expect(options.getByRole("button", { name: "Tutorial" })).toHaveCount(0);
 
   await options.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.getByLabel("Sound")).toBeChecked();
   await expect(page.getByLabel("Reduced Motion")).not.toBeChecked();
-  await page.getByRole("button", { name: "Back" }).click();
-
-  await options.getByRole("button", { name: "Tutorial" }).click();
-  await expect(page.getByRole("heading", { name: "Tutorial" })).toBeVisible();
-  await expect(page.getByText("Plant crops.")).toBeVisible();
-  await expect(page.getByText("Fill delivery orders.")).toBeVisible();
   await page.getByRole("button", { name: "Back" }).click();
 
   await options.getByRole("button", { name: "Wiki" }).click();
@@ -387,6 +383,37 @@ test("top bar menu returns to the main menu", async ({ page }) => {
   await page.getByRole("button", { name: "New Farm" }).click();
   await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
   await expect(page.getByText("Farm reset")).toBeVisible();
+});
+
+test("new farm opens the guided tutorial modal sequence", async ({ page }) => {
+  await mockFarmApi(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "New Farm" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(dialog.getByRole("button", { name: "Got it" })).toHaveCount(1);
+  await expect(dialog.getByText("Step 1 of 5")).toBeVisible();
+  await expect(dialog.getByText("Welcome to your fresh Farm")).toBeVisible();
+
+  const expectedCards = [
+    { step: "Step 2 of 5", title: "Field Plots and planting" },
+    { step: "Step 3 of 5", title: "Crop timers and harvesting" },
+    { step: "Step 4 of 5", title: "Silo storage" },
+    { step: "Step 5 of 5", title: "Coins, XP, and Build progression" },
+  ];
+
+  for (const card of expectedCards) {
+    await dialog.getByRole("button", { name: "Got it" }).click();
+    await expect(dialog.getByText(card.step)).toBeVisible();
+    await expect(dialog.getByText(card.title)).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Got it" })).toHaveCount(1);
+  }
+
+  await dialog.getByRole("button", { name: "Got it" }).click();
+  await expect(dialog).toHaveCount(0);
 });
 
 test("barn and silo are preplaced storage structures", async ({ page }) => {

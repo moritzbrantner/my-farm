@@ -77,7 +77,7 @@ type StructureBuildCardMeta = {
 };
 type ActiveFieldTool = { type: "default" } | { type: "plant"; cropId: string } | { type: "harvest" };
 type GameScreen = "main_menu" | "playing";
-type MainMenuPanel = "home" | "settings" | "tutorial" | "wiki" | "account";
+type MainMenuPanel = "home" | "settings" | "wiki" | "account";
 type MarketTradeMode = "buy" | "sell";
 type PlantSweepState = {
   cropId: string;
@@ -124,6 +124,29 @@ const structureBuildCardMetas: Record<BuildableKind, StructureBuildCardMeta> = {
   },
 };
 
+const guidedTutorialCards = [
+  {
+    title: "Welcome to your fresh Farm",
+    body: "This New Farm starts clean so every crop, coin, and upgrade comes from your next commands.",
+  },
+  {
+    title: "Field Plots and planting",
+    body: "Field Plots hold one planted Crop job. Open Seed, choose Wheat, then use empty Field Plots to start growing.",
+  },
+  {
+    title: "Crop timers and harvesting",
+    body: "Crops count down until they become Ready Output. Use Harvest when the timer finishes to move crops into storage.",
+  },
+  {
+    title: "Silo storage",
+    body: "The Silo stores harvested Crops and has a limited capacity. Keep an eye on it before planting large batches.",
+  },
+  {
+    title: "Coins, XP, and Build progression",
+    body: "Delivery Orders and production earn coins and XP. Build progression unlocks more Field Plots, Machines, Shelters, and upgrades.",
+  },
+] as const;
+
 export function App() {
   const [catalog, setCatalog] = useState<CatalogDocument | null>(null);
   const [view, setView] = useState<FarmView | null>(null);
@@ -140,6 +163,7 @@ export function App() {
   const [harvestSweep, setHarvestSweep] = useState<HarvestSweepState>(null);
   const [harvestMode, setHarvestMode] = useState<SweepHarvestMode>("matching_crop");
   const [screen, setScreen] = useState<GameScreen>("main_menu");
+  const [guidedTutorialStep, setGuidedTutorialStep] = useState<number | null>(null);
   const [marketOpen, setMarketOpen] = useState(false);
   const [message, setMessage] = useState(
     demoMode ? "Loading browser demo..." : "Connecting to local server...",
@@ -406,6 +430,7 @@ export function App() {
   const startNewFarm = useCallback(async () => {
     await reset();
     setScreen("playing");
+    setGuidedTutorialStep(0);
   }, [reset]);
 
   const openMainMenu = useCallback(() => {
@@ -420,6 +445,7 @@ export function App() {
     setHarvestSweep(null);
     setActiveFieldTool({ type: "default" });
     setMarketOpen(false);
+    setGuidedTutorialStep(null);
     setScreen("main_menu");
   }, []);
 
@@ -946,6 +972,19 @@ export function App() {
               onSelectKind={selectBuildKind}
             />
           ) : null}
+          {guidedTutorialStep !== null ? (
+            <GuidedTutorial
+              step={guidedTutorialStep}
+              onGotIt={() => {
+                setGuidedTutorialStep((currentStep) => {
+                  if (currentStep === null || currentStep >= guidedTutorialCards.length - 1) {
+                    return null;
+                  }
+                  return currentStep + 1;
+                });
+              }}
+            />
+          ) : null}
         </>
       ) : (
         <MainMenu
@@ -1039,9 +1078,6 @@ function MainMenu({
               <button type="button" onClick={() => setPanel("settings")}>
                 Settings
               </button>
-              <button type="button" onClick={() => setPanel("tutorial")}>
-                Tutorial
-              </button>
               <button type="button" onClick={() => setPanel("wiki")}>
                 Wiki
               </button>
@@ -1080,51 +1116,6 @@ function MainMenu({
                 />
               </label>
             </div>
-          </MainMenuSubpanel>
-        ) : null}
-        {panel === "tutorial" ? (
-          <MainMenuSubpanel title="Tutorial" onBack={openHome}>
-            <ol className="main-menu__tutorial">
-              <li>
-                <strong>Plant crops.</strong>
-                <span>Open Seed, pick Wheat, then drag across empty Field Plots to seed several at once.</span>
-              </li>
-              <li>
-                <strong>Harvest when ready.</strong>
-                <span>Use Harvest and drag across ready crops. Right-click Harvest to switch between matching crops and all crops.</span>
-              </li>
-              <li>
-                <strong>{demoMode ? "Build bread production." : "Fill delivery orders."}</strong>
-                <span>
-                  {demoMode
-                    ? "Reach level 2, place the Bakery, then turn Wheat into Bread."
-                    : "Select the Delivery Board or its Orders menu, then ship matching goods for coins and XP."}
-                </span>
-              </li>
-              <li>
-                <strong>Build the chain.</strong>
-                <span>
-                  {demoMode
-                    ? "Use Build to place Field Plots and the Bakery as levels and coins allow."
-                    : "Use Build to place Field Plots, Machines, Shelters, and the Delivery Board as levels and coins allow."}
-                </span>
-              </li>
-              {!demoMode ? (
-                <>
-                  <li>
-                    <strong>Run structures.</strong>
-                    <span>Click a Machine or Shelter to queue recipes, feed animals, collect ready output, or move the structure.</span>
-                  </li>
-                  <li>
-                    <strong>Upgrade storage.</strong>
-                    <span>Select the Silo or Barn to spend coins on capacity tiers as levels allow.</span>
-                  </li>
-                </>
-              ) : null}
-            </ol>
-            <button className="main-menu__primary" type="button" onClick={onContinue}>
-              Start Farm
-            </button>
           </MainMenuSubpanel>
         ) : null}
         {panel === "wiki" ? (
@@ -1174,6 +1165,31 @@ function MainMenu({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function GuidedTutorial({ step, onGotIt }: { step: number; onGotIt: () => void }) {
+  const card = guidedTutorialCards[step];
+  const progress = `Step ${step + 1} of ${guidedTutorialCards.length}`;
+
+  return (
+    <div className="guided-tutorial-backdrop">
+      <section
+        className="guided-tutorial"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="guided-tutorial-title"
+        aria-describedby="guided-tutorial-copy"
+      >
+        <div className="guided-tutorial__eyebrow">{progress}</div>
+        <h2 id="guided-tutorial-title">Guided Tutorial</h2>
+        <h3>{card.title}</h3>
+        <p id="guided-tutorial-copy">{card.body}</p>
+        <button className="guided-tutorial__primary" type="button" onClick={onGotIt} autoFocus>
+          Got it
+        </button>
+      </section>
+    </div>
   );
 }
 
