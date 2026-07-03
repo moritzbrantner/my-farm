@@ -26,12 +26,12 @@ test("pages demo runs from WASM without server API calls", async ({ page }) => {
   await expect(page.getByText("Farmers Market")).toHaveCount(0);
   await page.locator(".field-tools").getByRole("button", { name: "Build" }).click();
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Field Plot/ })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Feed Mill/ })).toHaveCount(0);
   expect(apiRequests).toEqual([]);
 });
 
-test("pages demo persists a bakery production save in localStorage", async ({ page }) => {
+test("pages demo persists a Farmhouse Oven production save in localStorage", async ({ page }) => {
   await page.goto("/");
   await seedBreadSave(page);
   await page.reload();
@@ -41,7 +41,7 @@ test("pages demo persists a bakery production save in localStorage", async ({ pa
 
   await expect(page.getByText(/Level 2/)).toBeVisible();
   await expect(page.getByText("Bread")).toBeVisible();
-  await expect(page.getByLabel("Bakery structure")).toBeVisible();
+  await expect(page.getByLabel("Farmhouse structure")).toBeVisible();
 
   await page.getByRole("button", { name: "Menu" }).click();
   await page.getByRole("button", { name: "New Farm" }).click();
@@ -127,7 +127,7 @@ async function seedBreadSave(page: Page) {
     const send = (command: unknown, nowMs: number) => {
       const response = JSON.parse(
         runtime.command_json(JSON.stringify({ expected_version: version, command }), nowMs),
-      ) as { accepted: boolean; error: string | null; version: number; view: { machines: Array<{ id: string; kind: string }> } };
+      ) as { accepted: boolean; error: string | null; version: number };
       if (!response.accepted) {
         throw new Error(response.error ?? "command rejected");
       }
@@ -154,13 +154,9 @@ async function seedBreadSave(page: Page) {
       40_000,
     );
     tick(65_000);
-    const buildResponse = send({ type: "buy_structure", structure_kind: "bakery", tile: { x: 8, y: 2 } }, 65_000);
-    const bakeryId = buildResponse.view.machines.find((machine) => machine.kind === "bakery")?.id;
-    if (!bakeryId) {
-      throw new Error("bakery was not built");
-    }
-    send({ type: "queue_recipe", machine_id: bakeryId, recipe_id: "bread" }, 65_000);
-    send({ type: "collect_machine_job", machine_id: bakeryId }, 100_000);
+    send({ type: "buy_farmhouse_upgrade", upgrade_kind: "oven" }, 65_000);
+    send({ type: "queue_oven_recipe", recipe_id: "bread" }, 65_000);
+    send({ type: "collect_oven_job" }, 100_000);
     tick(110_000);
     window.localStorage.setItem(key, runtime.save_json());
   }, demoSaveKey);

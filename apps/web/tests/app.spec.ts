@@ -20,7 +20,8 @@ test("renders the playable farm shell", async ({ page }) => {
   await expect(page.locator(".field-tools").getByRole("button", { name: "Build" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Structures" })).toBeHidden();
   await page.locator(".field-tools").getByRole("button", { name: "Build" }).click();
-  await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Feed Mill/ })).toBeVisible();
 
   const canvas = page.locator("canvas").first();
   await expect(canvas).toBeVisible();
@@ -41,7 +42,7 @@ test("bootstraps from the gameplay websocket without polling farm snapshots", as
 
   await expect(page.getByLabel("Connection Synced")).toBeVisible();
   await expect(page.getByText("Local farm synced")).toBeVisible();
-  await expect(page.getByLabel("Bakery structure")).toBeVisible();
+  await expect(page.getByLabel("Feed Mill structure")).toBeVisible();
   await page.waitForTimeout(2800);
   expect(farmPolls).toBe(0);
 
@@ -325,11 +326,10 @@ test("reserved work targets disable direct actions with a pending reason", async
     machines: [
       {
         id: "machine-1",
-        kind: "bakery",
+        kind: "feed_mill",
         tile: { x: 8, y: 2 },
-        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 20_000, ready_at_ms: now - 1_000 }],
+        queue: [{ id: "job-1", recipe_id: "chicken_feed", started_at_ms: now - 20_000, ready_at_ms: now - 1_000 }],
       },
-      farmView.machines[1],
     ],
     resident_task_queues: {
       woman: [
@@ -353,7 +353,7 @@ test("reserved work targets disable direct actions with a pending reason", async
           steps: [
             {
               reserved_work_target: { type: "machine", machine_id: "machine-1" },
-              work: { type: "collect_machine_job", job_id: "job-1", recipe_id: "bread" },
+              work: { type: "collect_machine_job", job_id: "job-1", recipe_id: "chicken_feed" },
             },
           ],
         },
@@ -381,10 +381,10 @@ test("reserved work targets disable direct actions with a pending reason", async
   await expect(selection.getByRole("button", { name: "Harvest" })).toBeDisabled();
   await expect(selection.getByText("Reserved for Mara's task")).toBeVisible();
 
-  await page.getByLabel("Bakery structure").click({ force: true });
+  await page.getByLabel("Feed Mill structure").click({ force: true });
   selection = page.locator(".panel-section").filter({ has: page.getByRole("heading", { name: "Selection" }) });
-  await expect(selection.getByRole("button", { name: /Collect Bread/ })).toBeDisabled();
-  await expect(selection.getByRole("button", { name: "Make Bread" })).toBeDisabled();
+  await expect(selection.getByRole("button", { name: /Collect Chicken Feed/ })).toBeDisabled();
+  await expect(selection.getByRole("button", { name: "Make Chicken Feed" })).toBeDisabled();
   await expect(selection.getByText("Reserved for Mara's task")).toBeVisible();
 
   await page.getByLabel("Chicken Coop structure").click({ force: true });
@@ -556,8 +556,8 @@ test("idle machines do not show production status badges", async ({ page }) => {
   await mockFarmApi(page, { ...farmView, shelters: [] });
   await openFarm(page);
 
-  await expect(page.getByLabel("Bakery structure")).toBeVisible();
-  await expect(page.getByTestId("structure-status-bakery")).toHaveCount(0);
+  await expect(page.getByLabel("Feed Mill structure")).toBeVisible();
+  await expect(page.getByTestId("structure-status-feed-mill")).toHaveCount(0);
 });
 
 test("producing machines show product identity and progress", async ({ page }) => {
@@ -568,20 +568,19 @@ test("producing machines show product identity and progress", async ({ page }) =
     machines: [
       {
         id: "machine-1",
-        kind: "bakery",
+        kind: "feed_mill",
         tile: { x: 8, y: 2 },
-        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 5_000, ready_at_ms: now + 5_000 }],
+        queue: [{ id: "job-1", recipe_id: "chicken_feed", started_at_ms: now - 5_000, ready_at_ms: now + 5_000 }],
       },
-      farmView.machines[1],
     ],
   });
   await openFarm(page);
 
-  const status = page.getByTestId("structure-status-bakery");
+  const status = page.getByTestId("structure-status-feed-mill");
   await expect(status).toBeVisible();
-  await expect(status).toHaveAttribute("aria-label", "Bakery status: Producing Bread");
-  await expect(page.getByTestId("structure-status-bakery-progress")).toBeVisible();
-  await expect(page.getByLabel("Bakery structure")).toBeVisible();
+  await expect(status).toHaveAttribute("aria-label", "Feed Mill status: Producing Chicken Feed");
+  await expect(page.getByTestId("structure-status-feed-mill-progress")).toBeVisible();
+  await expect(page.getByLabel("Feed Mill structure")).toBeVisible();
 });
 
 test("ready machines show product identity and storage warnings", async ({ page }) => {
@@ -594,23 +593,22 @@ test("ready machines show product identity and storage warnings", async ({ page 
     machines: [
       {
         id: "machine-1",
-        kind: "bakery",
+        kind: "feed_mill",
         tile: { x: 8, y: 2 },
-        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
+        queue: [{ id: "job-1", recipe_id: "chicken_feed", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
       },
-      farmView.machines[1],
     ],
   });
   await openFarm(page);
 
-  const status = page.getByTestId("structure-status-bakery");
+  const status = page.getByTestId("structure-status-feed-mill");
   await expect(status).toBeVisible();
-  await expect(status).toHaveAttribute("aria-label", "Bakery status: Ready Bread, storage full");
-  await expect(page.getByTestId("structure-status-bakery-blocked")).toBeVisible();
+  await expect(status).toHaveAttribute("aria-label", "Feed Mill status: Ready Chicken Feed, storage full");
+  await expect(page.getByTestId("structure-status-feed-mill-blocked")).toBeVisible();
 
-  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await page.getByLabel("Feed Mill structure").click({ button: "right" });
   await expect(
-    page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Collect Bread Storage full" }),
+    page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Collect Chicken Feed Storage full" }),
   ).toBeDisabled();
 });
 
@@ -829,15 +827,14 @@ test("guided tutorial pauses the client clock until gameplay resumes", async ({ 
     machines: [
       {
         id: "machine-1",
-        kind: "bakery",
+        kind: "feed_mill",
         tile: { x: 8, y: 2 },
-        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: openedAt - 5_000, ready_at_ms: openedAt + 20_000 }],
+        queue: [{ id: "job-1", recipe_id: "chicken_feed", started_at_ms: openedAt - 5_000, ready_at_ms: openedAt + 20_000 }],
       },
-      farmView.machines[1],
     ],
   });
   await openFarm(page);
-  const progress = page.getByTestId("structure-status-bakery-progress");
+  const progress = page.getByTestId("structure-status-feed-mill-progress");
   await expect(progress).toBeVisible();
   const initialProgress = await progress.evaluate((element) =>
     element instanceof HTMLElement ? element.style.getPropertyValue("--progress") : "",
@@ -1119,11 +1116,11 @@ test("build tray shows disabled structure details without opening a context menu
 
   await expect(page.getByRole("navigation", { name: "Structures" })).toBeHidden();
   const tray = await openBuildMenu(page);
-  await tray.getByRole("button", { name: /Bakery/ }).click();
+  await tray.getByRole("button", { name: /Feed Mill/ }).click();
 
   await expect(page.getByTestId("structure-context-menu")).toBeHidden();
-  await expect(page.getByTestId("build-detail-strip")).toContainText("Bakery");
-  await expect(page.getByTestId("build-detail-strip")).toContainText("Unlocks at level 2");
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Feed Mill");
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Unlocks at level 3");
 });
 
 test("placing an available structure sends buy_structure with the chosen tile", async ({ page }) => {
@@ -1134,15 +1131,15 @@ test("placing an available structure sends buy_structure with the chosen tile", 
   await openFarm(page);
 
   const tray = await openBuildMenu(page);
-  await tray.getByRole("button", { name: /Bakery/ }).click();
-  await expect(page.getByText("Place Bakery")).toBeVisible();
+  await tray.getByRole("button", { name: /Feed Mill/ }).click();
+  await expect(page.getByText("Place Feed Mill")).toBeVisible();
   await expect(page.getByTestId("build-detail-strip")).toContainText("Choose a tile");
   await expectCanvasToChangeAfterGroundHover(page, { x: 3, y: 3 });
 
   const command = await clickGroundTileUntilCommand(page, commands, { x: 3, y: 3 });
   expect(command.command).toMatchObject({
     type: "buy_structure",
-    structure_kind: "bakery",
+    structure_kind: "feed_mill",
   });
   expect(command.command).toHaveProperty("tile");
 });
@@ -1174,8 +1171,8 @@ test("blocked structure placement explains the occupied tile without sending a c
   await openFarm(page);
 
   const tray = await openBuildMenu(page);
-  await tray.getByRole("button", { name: /Bakery/ }).click();
-  await expect(page.getByText("Place Bakery")).toBeVisible();
+  await tray.getByRole("button", { name: /Feed Mill/ }).click();
+  await expect(page.getByText("Place Feed Mill")).toBeVisible();
   await expect(page.getByTestId("build-detail-strip")).toContainText("Choose a tile");
   await page.getByLabel("Field Plot plot-1").click({ force: true });
 
@@ -1201,8 +1198,8 @@ test("farmhouse blocks new field plots and structures without sending a command"
   await expect(page.getByText("Tile is occupied")).toBeVisible();
   expect(commands).toHaveLength(0);
 
-  await tray.getByRole("button", { name: /Bakery/ }).click();
-  await expect(page.getByText("Place Bakery")).toBeVisible();
+  await tray.getByRole("button", { name: /Feed Mill/ }).click();
+  await expect(page.getByText("Place Feed Mill")).toBeVisible();
   await farmHouse.click({ force: true });
 
   await expect(page.getByText("Tile is occupied")).toBeVisible();
@@ -1218,8 +1215,8 @@ test("escape cancels structure placement", async ({ page }) => {
 
   const groundPoint = await findFreeCanvasPoint(page);
   const tray = await openBuildMenu(page);
-  await tray.getByRole("button", { name: /Bakery/ }).click();
-  await expect(page.getByText("Place Bakery")).toBeVisible();
+  await tray.getByRole("button", { name: /Feed Mill/ }).click();
+  await expect(page.getByText("Place Feed Mill")).toBeVisible();
   await page.keyboard.press("Escape");
   await page.mouse.click(groundPoint.x, groundPoint.y);
 
@@ -1236,7 +1233,7 @@ test("built and locked structure cards show reasons without buying", async ({ pa
   const tray = await openBuildMenu(page);
   const details = page.getByTestId("build-detail-strip");
 
-  await tray.getByRole("button", { name: /Bakery/ }).click();
+  await tray.getByRole("button", { name: /Feed Mill/ }).click();
   await expect(details).toContainText("Already built");
 
   await tray.getByRole("button", { name: /Cow Pasture/ }).click();
@@ -1254,8 +1251,8 @@ test("unaffordable structure card shows its coin shortfall without buying", asyn
   const tray = await openBuildMenu(page);
   const details = page.getByTestId("build-detail-strip");
 
-  await tray.getByRole("button", { name: /Bakery/ }).click();
-  await expect(details).toContainText("Need 40 coins");
+  await tray.getByRole("button", { name: /Feed Mill/ }).click();
+  await expect(details).toContainText("Need 35 coins");
   expect(commands).toHaveLength(0);
 });
 
@@ -1266,24 +1263,21 @@ test("opens a structure menu from right click without replacing normal selection
   await mockFarmApi(page);
   await openFarm(page);
 
-  const bakeryHitTarget = page.getByLabel("Bakery structure");
-  await bakeryHitTarget.click({ button: "right" });
+  const feedMillHitTarget = page.getByLabel("Feed Mill structure");
+  await feedMillHitTarget.click({ button: "right" });
   const menu = page.getByTestId("structure-context-menu");
   await expect(menu).toContainText("Queue 0/2");
-  await expect(menu.getByRole("menuitem", { name: "Bread Need Wheat x1" })).toBeDisabled();
-  await expect(page.getByText("Need Wheat x1")).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: "Corn Bread Unlocks at level 4" })).toBeDisabled();
-  await expect(page.getByText("Unlocks at level 4")).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: "Potato Bread Unlocks at level 6" })).toBeDisabled();
-  await expect(menu.getByRole("menuitem", { name: "Carrot Cake Unlocks at level 6" })).toBeDisabled();
-  await expect(menu.getByRole("menuitem", { name: "Tomato Tart Unlocks at level 7" })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Chicken Feed Need Corn x1" })).toBeDisabled();
+  await expect(page.getByText("Need Corn x1")).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Cow Feed Unlocks at level 5" })).toBeDisabled();
+  await expect(page.getByText("Unlocks at level 5")).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("structure-context-menu")).toBeHidden();
 
-  await bakeryHitTarget.click();
+  await feedMillHitTarget.click();
   await expect(page.getByTestId("structure-context-menu")).toBeHidden();
-  await expect(page.getByText("Bakery - queue 0/2")).toBeVisible();
+  await expect(page.getByText("Feed Mill - queue 0/2")).toBeVisible();
 });
 
 test("machine context menu sends collect and closes after success", async ({ page }, testInfo) => {
@@ -1297,11 +1291,10 @@ test("machine context menu sends collect and closes after success", async ({ pag
       machines: [
         {
           id: "machine-1",
-          kind: "bakery",
+          kind: "feed_mill",
           tile: { x: 8, y: 2 },
-          queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
+          queue: [{ id: "job-1", recipe_id: "chicken_feed", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
         },
-        farmView.machines[1],
       ],
     },
     catalog,
@@ -1311,11 +1304,11 @@ test("machine context menu sends collect and closes after success", async ({ pag
   );
   await openFarm(page);
 
-  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await page.getByLabel("Feed Mill structure").click({ button: "right" });
   const menu = page.getByTestId("structure-context-menu");
-  await expect(menu).toContainText("Bakery");
+  await expect(menu).toContainText("Feed Mill");
   await expect(menu).toContainText("Queue 1/2");
-  await menu.getByRole("menuitem", { name: "Collect Bread" }).click();
+  await menu.getByRole("menuitem", { name: "Collect Chicken Feed" }).click();
 
   await expect.poll(() => commands.at(-1)?.command).toEqual({
     type: "collect_machine_job",
@@ -1332,19 +1325,18 @@ test("machine context menu disables collect until ready", async ({ page }, testI
     machines: [
       {
         id: "machine-1",
-        kind: "bakery",
+        kind: "feed_mill",
         tile: { x: 8, y: 2 },
-        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now, ready_at_ms: now + 60_000 }],
+        queue: [{ id: "job-1", recipe_id: "chicken_feed", started_at_ms: now, ready_at_ms: now + 60_000 }],
       },
-      farmView.machines[1],
     ],
   });
   await openFarm(page);
 
-  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await page.getByLabel("Feed Mill structure").click({ button: "right" });
   const menu = page.getByTestId("structure-context-menu");
   await expect(menu).toContainText("Queue 1/2");
-  await expect(menu.getByRole("menuitem", { name: /Collect Bread \d+s/ })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: /Collect Chicken Feed \d+s/ })).toBeDisabled();
 });
 
 test("machine context menu disables recipes when queue is full", async ({ page }, testInfo) => {
@@ -1356,32 +1348,27 @@ test("machine context menu disables recipes when queue is full", async ({ page }
     inventory: [
       { item_id: "wheat", name: "Wheat", quantity: 20, kind: "crop" },
       { item_id: "corn", name: "Corn", quantity: 20, kind: "crop" },
-      { item_id: "egg", name: "Egg", quantity: 20, kind: "animal_product" },
-      { item_id: "potato", name: "Potato", quantity: 20, kind: "crop" },
-      { item_id: "carrot", name: "Carrot", quantity: 20, kind: "crop" },
-      { item_id: "milk", name: "Milk", quantity: 20, kind: "animal_product" },
-      { item_id: "tomato", name: "Tomato", quantity: 20, kind: "crop" },
+      { item_id: "soybean", name: "Soybean", quantity: 20, kind: "crop" },
     ],
     machines: [
       {
         id: "machine-1",
-        kind: "bakery",
+        kind: "feed_mill",
         tile: { x: 8, y: 2 },
         queue: [
-          { id: "job-1", recipe_id: "bread", started_at_ms: now, ready_at_ms: now + 60_000 },
-          { id: "job-2", recipe_id: "corn_bread", started_at_ms: now, ready_at_ms: now + 120_000 },
+          { id: "job-1", recipe_id: "chicken_feed", started_at_ms: now, ready_at_ms: now + 60_000 },
+          { id: "job-2", recipe_id: "cow_feed", started_at_ms: now, ready_at_ms: now + 120_000 },
         ],
       },
-      farmView.machines[1],
     ],
   });
   await openFarm(page);
 
-  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await page.getByLabel("Feed Mill structure").click({ button: "right" });
   const menu = page.getByTestId("structure-context-menu");
   await expect(menu).toContainText("Queue 2/2");
-  await expect(menu.getByRole("menuitem", { name: "Bread Queue full", exact: true })).toBeDisabled();
-  await expect(menu.getByRole("menuitem", { name: "Tomato Tart Queue full", exact: true })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Chicken Feed Queue full", exact: true })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Cow Feed Queue full", exact: true })).toBeDisabled();
 });
 
 test("machine context menu sends queue recipe and closes after success", async ({ page }, testInfo) => {
@@ -1391,7 +1378,10 @@ test("machine context menu sends queue recipe and closes after success", async (
     page,
     {
       ...farmView,
-      inventory: [{ item_id: "wheat", name: "Wheat", quantity: 3, kind: "crop" }],
+      inventory: [
+        { item_id: "wheat", name: "Wheat", quantity: 3, kind: "crop" },
+        { item_id: "corn", name: "Corn", quantity: 1, kind: "crop" },
+      ],
     },
     catalog,
     (request) => {
@@ -1400,14 +1390,14 @@ test("machine context menu sends queue recipe and closes after success", async (
   );
   await openFarm(page);
 
-  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await page.getByLabel("Feed Mill structure").click({ button: "right" });
   const menu = page.getByTestId("structure-context-menu");
-  await menu.getByRole("menuitem", { name: "Bread", exact: true }).click();
+  await menu.getByRole("menuitem", { name: "Chicken Feed", exact: true }).click();
 
   await expect.poll(() => commands.at(-1)?.command).toEqual({
     type: "queue_recipe",
     machine_id: "machine-1",
-    recipe_id: "bread",
+    recipe_id: "chicken_feed",
   });
   await expect(menu).toBeHidden();
 });
@@ -1519,10 +1509,10 @@ test("opens a structure menu from the visible canvas structure", async ({ page }
   await mockFarmApi(page);
   await openFarm(page);
 
-  const bakeryPoint = await findCanvasSelectionPoint(page, "Bakery - queue 0/2");
-  await page.mouse.click(bakeryPoint.x, bakeryPoint.y, { button: "right" });
+  const feedMillPoint = await findCanvasSelectionPoint(page, "Feed Mill - queue 0/2");
+  await page.mouse.click(feedMillPoint.x, feedMillPoint.y, { button: "right" });
 
-  await expect(page.getByTestId("structure-context-menu")).toContainText("Bakery");
+  await expect(page.getByTestId("structure-context-menu")).toContainText("Feed Mill");
 });
 
 test("right mouse drag on a structure opens menu instead of panning canvas", async ({
@@ -1532,13 +1522,13 @@ test("right mouse drag on a structure opens menu instead of panning canvas", asy
   await mockFarmApi(page);
   await openFarm(page);
 
-  const bakeryPoint = await findCanvasSelectionPoint(page, "Bakery - queue 0/2");
-  await page.mouse.move(bakeryPoint.x, bakeryPoint.y);
+  const feedMillPoint = await findCanvasSelectionPoint(page, "Feed Mill - queue 0/2");
+  await page.mouse.move(feedMillPoint.x, feedMillPoint.y);
   await page.mouse.down({ button: "right" });
-  await page.mouse.move(bakeryPoint.x + 96, bakeryPoint.y + 64);
+  await page.mouse.move(feedMillPoint.x + 96, feedMillPoint.y + 64);
   await page.mouse.up({ button: "right" });
 
-  await expect(page.getByTestId("structure-context-menu")).toContainText("Bakery");
+  await expect(page.getByTestId("structure-context-menu")).toContainText("Feed Mill");
 });
 
 test("right mouse drag on free ground pans the canvas", async ({ page }, testInfo) => {
@@ -2107,14 +2097,17 @@ test("farmers market buys and sells items through commands", async ({ page }) =>
 });
 
 test("filters inventory to the selected structure materials", async ({ page }) => {
-  await mockFarmApi(page);
+  await mockFarmApi(page, {
+    ...farmView,
+    owned_farmhouse_upgrades: ["oven"],
+  });
   await openFarm(page);
 
   const inventory = page.locator(".panel-section").filter({
     has: page.getByRole("heading", { name: "Inventory" }),
   });
 
-  await page.getByLabel("Bakery structure").click();
+  await page.getByLabel("Farmhouse structure").click();
   await expect(resourceAmount(inventory, "Wheat", "2")).toBeVisible();
   await expect(resourceAmount(inventory, "Bread", "0")).toBeVisible();
   await expect(resourceAmount(inventory, "Corn Bread", "0")).toBeVisible();
@@ -2133,11 +2126,10 @@ test("machine recipes show required resources and disable missing ingredients", 
     page,
     {
       ...farmView,
-      level: 4,
+      level: 5,
       inventory: [
         { item_id: "wheat", name: "Wheat", quantity: 3, kind: "crop" },
         { item_id: "corn", name: "Corn", quantity: 1, kind: "crop" },
-        { item_id: "egg", name: "Egg", quantity: 0, kind: "animal_product" },
       ],
     },
     catalog,
@@ -2147,28 +2139,30 @@ test("machine recipes show required resources and disable missing ingredients", 
   );
   await openFarm(page);
 
-  await page.getByLabel("Bakery structure").click();
-  const breadRecipe = page.getByTestId("recipe-card-bread");
-  const cornBreadRecipe = page.getByTestId("recipe-card-corn_bread");
+  await page.getByLabel("Feed Mill structure").click();
+  const chickenFeedRecipe = page.getByTestId("recipe-card-chicken_feed");
+  const cowFeedRecipe = page.getByTestId("recipe-card-cow_feed");
 
-  await expect(breadRecipe).toContainText("Wheat");
-  await expect(breadRecipe).toContainText("3/3");
-  await expect(breadRecipe.getByRole("button", { name: "Make Bread" })).toBeEnabled();
+  await expect(chickenFeedRecipe).toContainText("Wheat");
+  await expect(chickenFeedRecipe).toContainText("3/2");
+  await expect(chickenFeedRecipe).toContainText("Corn");
+  await expect(chickenFeedRecipe).toContainText("1/1");
+  await expect(chickenFeedRecipe.getByRole("button", { name: "Make Chicken Feed" })).toBeEnabled();
 
-  await expect(cornBreadRecipe).toContainText("Corn");
-  await expect(cornBreadRecipe).toContainText("1/2");
-  await expect(cornBreadRecipe).toContainText("Need 1");
-  await expect(cornBreadRecipe).toContainText("Egg");
-  await expect(cornBreadRecipe).toContainText("0/1");
-  await expect(cornBreadRecipe.getByRole("button", { name: "Make Corn Bread" })).toBeDisabled();
+  await expect(cowFeedRecipe).toContainText("Soybean");
+  await expect(cowFeedRecipe).toContainText("0/2");
+  await expect(cowFeedRecipe).toContainText("Corn");
+  await expect(cowFeedRecipe).toContainText("1/1");
+  await expect(cowFeedRecipe).toContainText("Need 2");
+  await expect(cowFeedRecipe.getByRole("button", { name: "Make Cow Feed" })).toBeDisabled();
 
-  await breadRecipe.getByRole("button", { name: "Make Bread" }).click();
+  await chickenFeedRecipe.getByRole("button", { name: "Make Chicken Feed" }).click();
 
   expect(commands).toHaveLength(1);
   expect(commands[0].command).toEqual({
     type: "queue_recipe",
     machine_id: "machine-1",
-    recipe_id: "bread",
+    recipe_id: "chicken_feed",
   });
 });
 
@@ -2180,10 +2174,10 @@ test("moves a structure by choosing move and clicking a destination tile", async
   });
   await openFarm(page);
 
-  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await page.getByLabel("Feed Mill structure").click({ button: "right" });
   await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move" }).click();
   await expect(page.getByTestId("structure-context-menu")).toBeHidden();
-  await expect(page.getByText("Moving Bakery")).toBeVisible();
+  await expect(page.getByText("Moving Feed Mill")).toBeVisible();
 
   const command = await clickGroundTileUntilCommand(page, commands, { x: 3, y: 3 });
   expect(command.command).toMatchObject({
@@ -2211,9 +2205,9 @@ test("farmhouse does not expose move and blocks moved structures", async ({ page
   await touchPress(farmHouse, 560);
   await expect(page.getByText(/Moving Farmhouse/)).toHaveCount(0);
 
-  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await page.getByLabel("Feed Mill structure").click({ button: "right" });
   await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move" }).click();
-  await expect(page.getByText("Moving Bakery")).toBeVisible();
+  await expect(page.getByText("Moving Feed Mill")).toBeVisible();
   await farmHouse.click({ force: true });
 
   await expect(page.getByText("Tile is occupied")).toBeVisible();
@@ -2225,9 +2219,9 @@ test("shows a footprint preview while moving a structure", async ({ page }, test
   await mockFarmApi(page);
   await openFarm(page);
 
-  await page.getByLabel("Bakery structure").click({ button: "right" });
+  await page.getByLabel("Feed Mill structure").click({ button: "right" });
   await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move" }).click();
-  await expect(page.getByText("Moving Bakery")).toBeVisible();
+  await expect(page.getByText("Moving Feed Mill")).toBeVisible();
 
   await expectCanvasToChangeAfterGroundHover(page, { x: 3, y: 3 });
 });
@@ -2352,7 +2346,6 @@ const catalog: CatalogDocument = {
     },
   ],
   machines: [
-    { kind: "bakery", name: "Bakery", build_cost: 40, unlock_level: 2, queue_limit: 2 },
     { kind: "feed_mill", name: "Feed Mill", build_cost: 35, unlock_level: 3, queue_limit: 2 },
   ],
   farmhouse_upgrades: [
@@ -2431,8 +2424,7 @@ const farmView: FarmView = {
     { id: "plot-2", tile: { x: 1, y: 0 }, crop: null },
   ],
   machines: [
-    { id: "machine-1", kind: "bakery", tile: { x: 8, y: 2 }, queue: [] },
-    { id: "machine-2", kind: "feed_mill", tile: { x: 10, y: 3 }, queue: [] },
+    { id: "machine-1", kind: "feed_mill", tile: { x: 8, y: 2 }, queue: [] },
   ],
   owned_farmhouse_upgrades: [],
   oven: { id: "oven", queue: [] },
@@ -3036,7 +3028,7 @@ async function expectFarmHitTargetsFramed(page: Page) {
     page.getByLabel("Field Plot plot-1"),
     page.getByLabel("Silo structure"),
     page.getByLabel("Barn structure"),
-    page.getByLabel("Bakery structure"),
+    page.getByLabel("Feed Mill structure"),
   ];
   const boxes = await Promise.all(
     targets.map(async (target) => {
