@@ -78,6 +78,12 @@ pub enum StructureKind {
     DeliveryBoard,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FarmhouseUpgradeKind {
+    Oven,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct RecipeDef {
     pub id: String,
@@ -95,6 +101,15 @@ pub struct MachineDef {
     pub kind: MachineKind,
     pub name: String,
     pub build_cost: u32,
+    pub unlock_level: u32,
+    pub queue_limit: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct FarmhouseUpgradeDef {
+    pub kind: FarmhouseUpgradeKind,
+    pub name: String,
+    pub cost_coins: u32,
     pub unlock_level: u32,
     pub queue_limit: usize,
 }
@@ -152,6 +167,7 @@ pub struct CatalogDocument {
     pub crops: Vec<CropDef>,
     pub recipes: Vec<RecipeDef>,
     pub machines: Vec<MachineDef>,
+    pub farmhouse_upgrades: Vec<FarmhouseUpgradeDef>,
     pub shelters: Vec<ShelterDef>,
     pub market_items: Vec<MarketItemDef>,
     pub storage_upgrades: Vec<StorageUpgradeDef>,
@@ -283,6 +299,13 @@ impl CatalogDocument {
                     queue_limit: 2,
                 },
             ],
+            farmhouse_upgrades: vec![FarmhouseUpgradeDef {
+                kind: FarmhouseUpgradeKind::Oven,
+                name: "Oven".to_owned(),
+                cost_coins: 40,
+                unlock_level: 2,
+                queue_limit: 2,
+            }],
             shelters: vec![
                 ShelterDef {
                     kind: ShelterKind::ChickenCoop,
@@ -356,6 +379,12 @@ impl CatalogDocument {
 
     pub fn shelter(&self, kind: &ShelterKind) -> Option<&ShelterDef> {
         self.shelters.iter().find(|shelter| &shelter.kind == kind)
+    }
+
+    pub fn farmhouse_upgrade(&self, kind: FarmhouseUpgradeKind) -> Option<&FarmhouseUpgradeDef> {
+        self.farmhouse_upgrades
+            .iter()
+            .find(|upgrade| upgrade.kind == kind)
     }
 
     pub fn market_item(&self, item_id: &str) -> Option<&MarketItemDef> {

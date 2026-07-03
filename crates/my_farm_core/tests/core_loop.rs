@@ -1,8 +1,8 @@
 use my_farm_core::{
-    AnimalState, CatalogDocument, FarmCommand, FarmEvent, FarmState, ItemStack, MachineKind,
-    ShelterKind, StorageKind, StructureKind, StructureTarget, SweepHarvestMode, Tile,
-    add_inventory, apply_command, apply_elapsed, farm_view, inventory_quantity, new_farm,
-    scaled_duration_ms, update_level,
+    AnimalState, CatalogDocument, FarmCommand, FarmEvent, FarmState, FarmhouseUpgradeKind,
+    ItemStack, MachineKind, ShelterKind, StorageKind, StructureKind, StructureTarget,
+    SweepHarvestMode, Tile, add_inventory, apply_command, apply_elapsed, farm_view,
+    inventory_quantity, new_farm, scaled_duration_ms, update_level,
 };
 
 #[test]
@@ -54,6 +54,106 @@ fn player_can_plant_and_harvest_wheat() {
     assert_eq!(inventory_quantity(&farm, "wheat"), 7);
     assert!(farm.field_plots[0].crop.is_none());
     assert!(harvested.events.is_empty());
+}
+
+#[test]
+fn catalog_and_new_farm_expose_unowned_farmhouse_oven_upgrade() {
+    let catalog = CatalogDocument::default_catalog();
+    let farm = new_farm(0, &catalog);
+    let view = farm_view(&farm, &catalog);
+    let oven = catalog
+        .farmhouse_upgrade(FarmhouseUpgradeKind::Oven)
+        .expect("oven farmhouse upgrade");
+
+    assert_eq!(oven.name, "Oven");
+    assert_eq!(oven.cost_coins, 40);
+    assert_eq!(oven.unlock_level, 2);
+    assert_eq!(oven.queue_limit, 2);
+    assert!(farm.owned_farmhouse_upgrades.is_empty());
+    assert!(view.owned_farmhouse_upgrades.is_empty());
+    assert_eq!(view.unlocks[1].label, "Oven, bread, and corn");
+}
+
+#[test]
+fn player_can_buy_farmhouse_oven_once_when_level_and_coins_allow() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.level = 2;
+    farm.coins = 40;
+
+    let bought = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyFarmhouseUpgrade {
+            upgrade_kind: FarmhouseUpgradeKind::Oven,
+        },
+        0,
+    );
+
+    assert!(bought.accepted);
+    assert_eq!(farm.coins, 0);
+    assert_eq!(
+        farm.owned_farmhouse_upgrades,
+        vec![FarmhouseUpgradeKind::Oven]
+    );
+    assert_eq!(
+        bought.events,
+        vec![FarmEvent::FarmhouseUpgradeBought {
+            upgrade_kind: FarmhouseUpgradeKind::Oven,
+        }]
+    );
+
+    let duplicate = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyFarmhouseUpgrade {
+            upgrade_kind: FarmhouseUpgradeKind::Oven,
+        },
+        0,
+    );
+    assert!(!duplicate.accepted);
+    assert_eq!(
+        duplicate.error.unwrap().message,
+        "farmhouse upgrade already owned"
+    );
+    assert_eq!(farm.coins, 0);
+}
+
+#[test]
+fn buying_farmhouse_oven_requires_level_and_coins() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut locked_farm = new_farm(0, &catalog);
+    locked_farm.level = 1;
+    locked_farm.coins = 180;
+
+    let locked = apply_command(
+        &mut locked_farm,
+        &catalog,
+        FarmCommand::BuyFarmhouseUpgrade {
+            upgrade_kind: FarmhouseUpgradeKind::Oven,
+        },
+        0,
+    );
+    assert!(!locked.accepted);
+    assert_eq!(locked.error.unwrap().message, "requires level 2");
+    assert!(locked_farm.owned_farmhouse_upgrades.is_empty());
+    assert_eq!(locked_farm.coins, 180);
+
+    let mut poor_farm = new_farm(0, &catalog);
+    poor_farm.level = 2;
+    poor_farm.coins = 39;
+    let unaffordable = apply_command(
+        &mut poor_farm,
+        &catalog,
+        FarmCommand::BuyFarmhouseUpgrade {
+            upgrade_kind: FarmhouseUpgradeKind::Oven,
+        },
+        0,
+    );
+    assert!(!unaffordable.accepted);
+    assert_eq!(unaffordable.error.unwrap().message, "not enough coins");
+    assert!(poor_farm.owned_farmhouse_upgrades.is_empty());
+    assert_eq!(poor_farm.coins, 39);
 }
 
 #[test]

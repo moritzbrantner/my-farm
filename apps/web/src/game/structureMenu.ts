@@ -38,6 +38,12 @@ export function buildStructureMenuModel(
   target: StructureSelection,
   nowMs: number,
 ): StructureMenuModel | null {
+  if (target.type === "farmhouse") {
+    return {
+      title: "Farmhouse",
+      items: [farmhouseOvenItem(catalog, view)],
+    };
+  }
   if (target.type === "silo") {
     return {
       title: "Silo",
@@ -143,6 +149,9 @@ export function buildFieldMenuModel(
 }
 
 export function isStructureTargetPresent(view: FarmView, target: StructureSelection): boolean {
+  if (target.type === "farmhouse") {
+    return true;
+  }
   if (target.type === "silo" || target.type === "barn") {
     return true;
   }
@@ -153,6 +162,41 @@ export function isStructureTargetPresent(view: FarmView, target: StructureSelect
     return view.shelters.some((shelter) => shelter.id === target.id);
   }
   return view.delivery_board_built;
+}
+
+function farmhouseOvenItem(catalog: CatalogDocument, view: FarmView): StructureMenuItem {
+  const oven = catalog.farmhouse_upgrades.find((upgrade) => upgrade.kind === "oven");
+  const reason = farmhouseOvenDisabledReason(catalog, view);
+  return {
+    id: "buy-farmhouse-oven",
+    label: "Buy Oven",
+    disabled: Boolean(reason),
+    reason,
+    command:
+      oven && !reason
+        ? { type: "buy_farmhouse_upgrade", upgrade_kind: "oven" }
+        : undefined,
+  };
+}
+
+export function farmhouseOvenDisabledReason(
+  catalog: CatalogDocument,
+  view: FarmView,
+): string | undefined {
+  const oven = catalog.farmhouse_upgrades.find((upgrade) => upgrade.kind === "oven");
+  if (!oven) {
+    return "Unavailable";
+  }
+  if (view.owned_farmhouse_upgrades.includes("oven")) {
+    return "Already owned";
+  }
+  if (view.level < oven.unlock_level) {
+    return `Unlocks at level ${oven.unlock_level}`;
+  }
+  if (view.coins < oven.cost_coins) {
+    return `Need ${oven.cost_coins - view.coins} coins`;
+  }
+  return undefined;
 }
 
 export function hasRequiredItems(view: FarmView, stacks: ItemStack[]): boolean {

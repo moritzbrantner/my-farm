@@ -12,6 +12,14 @@ _Avoid_: Account, realm, world
 The fixed home base for the Farm household. It anchors the Farm Residents in the playable Farm and is not a player-built production Structure.
 _Avoid_: House building, home structure
 
+**Farmhouse Upgrade**:
+A durable improvement bought for the Farmhouse rather than placed on the farm grid. Farmhouse Upgrades use catalog-driven level and coin requirements and are saved as owned Farm state.
+_Avoid_: Structure upgrade, house building
+
+**Oven**:
+The Farmhouse Upgrade that unlocks bread-family production from the Farmhouse kitchen. It keeps the old Bakery balance but is not a placed or movable Structure.
+_Avoid_: Bakery, kitchen building
+
 **Farm Resident**:
 One of the two saved household members who can perform work on the Farm. Farm Residents have stable ids `woman` and `man` and editable display names.
 _Avoid_: Character, avatar, worker

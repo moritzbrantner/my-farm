@@ -424,7 +424,7 @@ test("shows the arrival road path and moving car within farm framing", async ({ 
   await expect.poll(async () => await canvasSnapshot(page), { timeout: 3_000 }).not.toBe(before);
 });
 
-test("renders both farm residents idle near the Farm House", async ({ page }) => {
+test("renders both farm residents idle near the Farmhouse", async ({ page }) => {
   await mockFarmApi(page);
   await openFarm(page);
 
@@ -973,6 +973,38 @@ test("storage selection panel shows tier and upgrade details", async ({ page }) 
   });
 });
 
+test("farmhouse selection buys the oven upgrade when available", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(
+    page,
+    {
+      ...farmView,
+      level: 2,
+      coins: 40,
+      owned_farmhouse_upgrades: [],
+    },
+    catalog,
+    (request) => {
+      commands.push(request);
+    },
+  );
+  await openFarm(page);
+
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+
+  await expect(selection.getByText("Oven upgrade - 40 coins, queue 2")).toBeVisible();
+  await selection.getByRole("button", { name: "Buy Oven" }).click();
+
+  expect(commands).toHaveLength(1);
+  expect(commands[0].command).toEqual({
+    type: "buy_farmhouse_upgrade",
+    upgrade_kind: "oven",
+  });
+});
+
 test("storage selection can discard one item from the inventory list", async ({ page }) => {
   const commands: CommandRequest[] = [];
   await mockFarmApi(
@@ -1113,14 +1145,14 @@ test("blocked structure placement explains the occupied tile without sending a c
   expect(commands).toHaveLength(0);
 });
 
-test("farm house blocks new field plots and structures without sending a command", async ({ page }) => {
+test("farmhouse blocks new field plots and structures without sending a command", async ({ page }) => {
   const commands: CommandRequest[] = [];
   await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
     commands.push(request);
   });
   await openFarm(page);
 
-  const farmHouse = page.getByLabel("Farm House structure");
+  const farmHouse = page.getByLabel("Farmhouse structure");
   await expect(farmHouse).toBeVisible();
 
   const tray = await openBuildMenu(page);
@@ -2123,7 +2155,7 @@ test("moves a structure by choosing move and clicking a destination tile", async
   expect(command.command).toHaveProperty("tile");
 });
 
-test("farm house does not expose move and blocks moved structures", async ({ page }, testInfo) => {
+test("farmhouse does not expose move and blocks moved structures", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   const commands: CommandRequest[] = [];
   await mockFarmApi(page, farmView, catalog, (request) => {
@@ -2131,15 +2163,15 @@ test("farm house does not expose move and blocks moved structures", async ({ pag
   });
   await openFarm(page);
 
-  const farmHouse = page.getByLabel("Farm House structure");
+  const farmHouse = page.getByLabel("Farmhouse structure");
   await farmHouse.click({ button: "right" });
 
-  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  await expect(page.getByTestId("structure-context-menu")).toContainText("Farmhouse");
   await expect(page.getByRole("menuitem", { name: "Move" })).toHaveCount(0);
 
+  await page.keyboard.press("Escape");
   await touchPress(farmHouse, 560);
-  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
-  await expect(page.getByText(/Moving Farm House/)).toHaveCount(0);
+  await expect(page.getByText(/Moving Farmhouse/)).toHaveCount(0);
 
   await page.getByLabel("Bakery structure").click({ button: "right" });
   await page.getByTestId("structure-context-menu").getByRole("menuitem", { name: "Move" }).click();
@@ -2285,6 +2317,9 @@ const catalog: CatalogDocument = {
     { kind: "bakery", name: "Bakery", build_cost: 40, unlock_level: 2, queue_limit: 2 },
     { kind: "feed_mill", name: "Feed Mill", build_cost: 35, unlock_level: 3, queue_limit: 2 },
   ],
+  farmhouse_upgrades: [
+    { kind: "oven", name: "Oven", cost_coins: 40, unlock_level: 2, queue_limit: 2 },
+  ],
   shelters: [
     {
       kind: "chicken_coop",
@@ -2361,6 +2396,7 @@ const farmView: FarmView = {
     { id: "machine-1", kind: "bakery", tile: { x: 8, y: 2 }, queue: [] },
     { id: "machine-2", kind: "feed_mill", tile: { x: 10, y: 3 }, queue: [] },
   ],
+  owned_farmhouse_upgrades: [],
   shelters: [
     {
       id: "shelter-1",

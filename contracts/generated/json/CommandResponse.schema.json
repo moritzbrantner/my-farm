@@ -244,6 +244,24 @@
         {
           "type": "object",
           "required": [
+            "type",
+            "upgrade_kind"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "farmhouse_upgrade_bought"
+              ]
+            },
+            "upgrade_kind": {
+              "$ref": "#/definitions/FarmhouseUpgradeKind"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "capacity",
             "storage_kind",
             "tier",
@@ -578,6 +596,7 @@
         "last_update_ms",
         "level",
         "machines",
+        "owned_farmhouse_upgrades",
         "resident_task_queues",
         "residents",
         "selected_resident_id",
@@ -652,6 +671,12 @@
             "$ref": "#/definitions/MachineState"
           }
         },
+        "owned_farmhouse_upgrades": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FarmhouseUpgradeKind"
+          }
+        },
         "resident_task_queues": {
           "type": "object",
           "additionalProperties": {
@@ -706,6 +731,12 @@
           "minimum": 0.0
         }
       }
+    },
+    "FarmhouseUpgradeKind": {
+      "type": "string",
+      "enum": [
+        "oven"
+      ]
     },
     "FieldPlot": {
       "type": "object",

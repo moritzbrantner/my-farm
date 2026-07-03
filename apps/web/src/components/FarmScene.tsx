@@ -151,8 +151,11 @@ export function FarmScene({
           />
         ))}
         <StaticFarmHouse
+          selected={selection?.type === "farmhouse"}
           buildPlacement={buildPlacement}
           movingStructure={movingStructure}
+          onSelect={() => onSelect({ type: "farmhouse" })}
+          onOpenStructureMenu={onOpenStructureMenu}
           onPlaceNewStructure={onPlaceNewStructure}
           onPlaceStructure={onPlaceStructure}
         />
@@ -314,13 +317,19 @@ function FarmResidents({ view, nowMs }: { view: FarmView; nowMs: number }) {
 }
 
 function StaticFarmHouse({
+  selected,
   buildPlacement,
   movingStructure,
+  onSelect,
+  onOpenStructureMenu,
   onPlaceNewStructure,
   onPlaceStructure,
 }: {
+  selected: boolean;
   buildPlacement: BuildPlacementState;
   movingStructure: StructureSelection | null;
+  onSelect: () => void;
+  onOpenStructureMenu: (target: StructureSelection, point: { x: number; y: number }) => void;
   onPlaceNewStructure: (tile: Tile) => void;
   onPlaceStructure: (tile: Tile) => void;
 }) {
@@ -338,36 +347,43 @@ function StaticFarmHouse({
     }
     if (buildPlacement) {
       onPlaceNewStructure(FARM_HOUSE_TILE);
+      return;
     }
+    onSelect();
+  };
+
+  const handleFixedContextMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    clearFixedInteraction(event);
+    onOpenStructureMenu({ type: "farmhouse" }, { x: event.clientX, y: event.clientY });
   };
 
   return (
     <group position={[tileToWorld(center.x), 0.015, tileToWorld(center.y)]}>
       <FarmAsset
         kind="farm_house"
-        label="Farm House"
+        label="Farmhouse"
         footprint={FARM_HOUSE_FOOTPRINT}
         state={{
-          selected: false,
+          selected,
           blockedByPlacement: false,
           movingTarget: false,
         }}
       />
       <Html position={[0, 1.1, 0]} center zIndexRange={[95, 0]} wrapperClass="farm-scene-marker-wrapper">
-        <div className="farm-scene-marker" data-testid="farm-scene-farm-house" aria-label="Farm House" />
+        <div className="farm-scene-marker" data-testid="farm-scene-farm-house" aria-label="Farmhouse" />
       </Html>
       <Html position={[0, 0.62, 0]} center zIndexRange={[100, 0]} wrapperClass="structure-hit-wrapper">
         <button
           className="structure-hit-target"
           type="button"
           tabIndex={-1}
-          aria-label="Farm House structure"
+          aria-label="Farmhouse structure"
           style={{
             width: `${structureHitTargetWidth(FARM_HOUSE_FOOTPRINT)}px`,
             height: `${structureHitTargetHeight(FARM_HOUSE_FOOTPRINT)}px`,
           }}
           onClick={handleFixedClick}
-          onContextMenu={clearFixedInteraction}
+          onContextMenu={handleFixedContextMenu}
           onPointerDown={clearFixedInteraction}
         />
       </Html>
@@ -1579,6 +1595,8 @@ function structureHitTargetHeight(footprint: StructureFootprint) {
 
 function assetKindForTarget(target: StructureSelection, label: string): Exclude<FarmAssetKind, "ground_tile" | "field_plot"> {
   switch (target.type) {
+    case "farmhouse":
+      return "farm_house";
     case "silo":
       return "silo";
     case "barn":
@@ -1597,6 +1615,8 @@ function isSameStructure(left: StructureSelection | null, right: StructureSelect
     return false;
   }
   switch (left.type) {
+    case "farmhouse":
+      return true;
     case "silo":
       return true;
     case "barn":

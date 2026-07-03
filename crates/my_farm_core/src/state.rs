@@ -1,4 +1,7 @@
-use crate::{CatalogDocument, ItemKind, ItemStack, MachineKind, ShelterDef, ShelterKind};
+use crate::{
+    CatalogDocument, FarmhouseUpgradeKind, ItemKind, ItemStack, MachineKind, ShelterDef,
+    ShelterKind,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -38,6 +41,8 @@ pub struct FarmState {
     pub claimed_crop_unlocks: Vec<String>,
     pub field_plots: Vec<FieldPlot>,
     pub machines: Vec<MachineState>,
+    #[serde(default)]
+    pub owned_farmhouse_upgrades: Vec<FarmhouseUpgradeKind>,
     pub shelters: Vec<AnimalShelterState>,
     pub delivery_board_built: bool,
     #[serde(default = "default_delivery_board_tile")]
@@ -196,6 +201,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         claimed_crop_unlocks: default_claimed_crop_unlocks(),
         field_plots: starting_plots(),
         machines: Vec::new(),
+        owned_farmhouse_upgrades: Vec::new(),
         shelters: Vec::new(),
         delivery_board_built: false,
         delivery_board_tile: default_delivery_board_tile(),

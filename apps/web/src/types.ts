@@ -6,6 +6,8 @@ export type {
   CommandResponse,
   DeliveryOrder,
   FarmCommand,
+  FarmhouseUpgradeDef,
+  FarmhouseUpgradeKind,
   FarmResident,
   FarmResponse,
   FarmView,

@@ -109,6 +109,13 @@
       "format": "uint64",
       "minimum": 0.0
     },
+    "owned_farmhouse_upgrades": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FarmhouseUpgradeKind"
+      }
+    },
     "resident_task_queues": {
       "default": {
         "man": [],
@@ -318,6 +325,12 @@
           "type": "string"
         }
       }
+    },
+    "FarmhouseUpgradeKind": {
+      "type": "string",
+      "enum": [
+        "oven"
+      ]
     },
     "FieldPlot": {
       "type": "object",

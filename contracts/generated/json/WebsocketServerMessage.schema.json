@@ -230,6 +230,7 @@
       "required": [
         "balance",
         "crops",
+        "farmhouse_upgrades",
         "items",
         "level_xp",
         "machines",
@@ -246,6 +247,12 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/CropDef"
+          }
+        },
+        "farmhouse_upgrades": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FarmhouseUpgradeDef"
           }
         },
         "items": {
@@ -436,6 +443,24 @@
               "enum": [
                 "structure_built"
               ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "upgrade_kind"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "farmhouse_upgrade_bought"
+              ]
+            },
+            "upgrade_kind": {
+              "$ref": "#/definitions/FarmhouseUpgradeKind"
             }
           }
         },
@@ -776,6 +801,7 @@
         "last_update_ms",
         "level",
         "machines",
+        "owned_farmhouse_upgrades",
         "resident_task_queues",
         "residents",
         "selected_resident_id",
@@ -850,6 +876,12 @@
             "$ref": "#/definitions/MachineState"
           }
         },
+        "owned_farmhouse_upgrades": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FarmhouseUpgradeKind"
+          }
+        },
         "resident_task_queues": {
           "type": "object",
           "additionalProperties": {
@@ -904,6 +936,45 @@
           "minimum": 0.0
         }
       }
+    },
+    "FarmhouseUpgradeDef": {
+      "type": "object",
+      "required": [
+        "cost_coins",
+        "kind",
+        "name",
+        "queue_limit",
+        "unlock_level"
+      ],
+      "properties": {
+        "cost_coins": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "kind": {
+          "$ref": "#/definitions/FarmhouseUpgradeKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "queue_limit": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "FarmhouseUpgradeKind": {
+      "type": "string",
+      "enum": [
+        "oven"
+      ]
     },
     "FieldPlot": {
       "type": "object",

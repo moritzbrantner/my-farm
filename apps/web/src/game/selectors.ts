@@ -11,6 +11,7 @@ import type {
 
 export type Selection =
   | { type: "plot"; id: string }
+  | { type: "farmhouse" }
   | { type: "silo" }
   | { type: "barn" }
   | { type: "machine"; id: string }
@@ -19,6 +20,7 @@ export type Selection =
   | null;
 
 export type StructureSelection =
+  | { type: "farmhouse" }
   | { type: "silo" }
   | { type: "barn" }
   | { type: "machine"; id: string }
@@ -128,6 +130,9 @@ export function structureFootprint(kind: StructureKind): StructureFootprint {
 }
 
 export function selectedStructureLabel(view: FarmView, selection: StructureSelection): string {
+  if (selection.type === "farmhouse") {
+    return "Farmhouse";
+  }
   if (selection.type === "silo") {
     return "Silo";
   }
@@ -146,6 +151,9 @@ export function selectedStructureLabel(view: FarmView, selection: StructureSelec
 }
 
 export function selectedStructureKind(view: FarmView, selection: StructureSelection): StructureKind | null {
+  if (selection.type === "farmhouse") {
+    return null;
+  }
   if (selection.type === "silo") {
     return "silo";
   }
@@ -170,6 +178,9 @@ export function structureFootprintForSelection(
 }
 
 export function selectedStructureTile(view: FarmView, selection: StructureSelection): Tile | null {
+  if (selection.type === "farmhouse") {
+    return FARM_HOUSE_TILE;
+  }
   if (selection.type === "silo") {
     return view.silo_tile;
   }
@@ -379,6 +390,8 @@ function isSameStructure(left: StructureSelection | null, right: StructureSelect
     return false;
   }
   switch (left.type) {
+    case "farmhouse":
+      return true;
     case "silo":
       return true;
     case "barn":

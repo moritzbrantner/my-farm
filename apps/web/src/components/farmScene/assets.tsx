@@ -113,7 +113,7 @@ function DirtPath() {
         </mesh>
       ))}
       <Html position={[0, 0.24, 0]} center zIndexRange={[20, 0]} wrapperClass="farm-scene-marker-wrapper">
-        <div className="farm-scene-marker" data-testid="farm-scene-dirt-path" aria-label="Dirt path to Farm House" />
+        <div className="farm-scene-marker" data-testid="farm-scene-dirt-path" aria-label="Dirt path to Farmhouse" />
       </Html>
     </group>
   );
