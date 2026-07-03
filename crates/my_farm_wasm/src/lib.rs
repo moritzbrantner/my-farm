@@ -156,6 +156,7 @@ fn unsupported_demo_command<'a>(farm: &FarmState, command: &'a FarmCommand) -> O
         | FarmCommand::SweepPlant { .. }
         | FarmCommand::HarvestCrop { .. }
         | FarmCommand::SweepHarvest { .. }
+        | FarmCommand::BuyFarmhouseUpgrade { .. }
         | FarmCommand::BuyFieldPlot { .. }
         | FarmCommand::SelectResident { .. }
         | FarmCommand::RenameResident { .. }

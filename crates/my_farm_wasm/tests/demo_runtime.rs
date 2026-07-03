@@ -1,5 +1,6 @@
 use my_farm_core::{
-    CommandRequest, CommandResponse, FarmCommand, FarmResponse, StructureKind, Tile,
+    CommandRequest, CommandResponse, FarmCommand, FarmResponse, FarmhouseUpgradeKind,
+    StructureKind, Tile,
 };
 use my_farm_wasm::{DemoFarmRuntime, demo_catalog};
 
@@ -42,6 +43,62 @@ fn demo_runtime_persists_a_local_save() {
 
     assert_eq!(farm.version, 1);
     assert_eq!(farm.view.field_plots.len(), 7);
+}
+
+#[test]
+fn demo_runtime_supports_buying_and_persisting_the_farmhouse_oven() {
+    let mut runtime = DemoFarmRuntime::new(None, 1_000.0);
+
+    command(
+        &mut runtime,
+        0,
+        FarmCommand::SweepPlant {
+            crop_id: "wheat".to_owned(),
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+                "plot-4".to_owned(),
+            ],
+        },
+        1_000.0,
+    );
+    command(
+        &mut runtime,
+        1,
+        FarmCommand::SweepHarvest {
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+                "plot-4".to_owned(),
+            ],
+            harvest_mode: None,
+        },
+        27_000.0,
+    );
+    let bought = command(
+        &mut runtime,
+        2,
+        FarmCommand::BuyFarmhouseUpgrade {
+            upgrade_kind: FarmhouseUpgradeKind::Oven,
+        },
+        35_000.0,
+    );
+
+    assert_eq!(bought.view.coins, 140);
+    assert_eq!(
+        bought.view.owned_farmhouse_upgrades,
+        vec![FarmhouseUpgradeKind::Oven]
+    );
+
+    let save = runtime.save_json();
+    let mut restored = DemoFarmRuntime::new(Some(save), 35_000.0);
+    let farm = farm(&mut restored, 35_000.0);
+    assert_eq!(
+        farm.view.owned_farmhouse_upgrades,
+        vec![FarmhouseUpgradeKind::Oven]
+    );
 }
 
 #[test]

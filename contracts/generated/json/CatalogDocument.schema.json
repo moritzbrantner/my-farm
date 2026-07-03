@@ -5,6 +5,7 @@
   "required": [
     "balance",
     "crops",
+    "farmhouse_upgrades",
     "items",
     "level_xp",
     "machines",
@@ -21,6 +22,12 @@
       "type": "array",
       "items": {
         "$ref": "#/definitions/CropDef"
+      }
+    },
+    "farmhouse_upgrades": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FarmhouseUpgradeDef"
       }
     },
     "items": {
@@ -122,6 +129,45 @@
           "minimum": 0.0
         }
       }
+    },
+    "FarmhouseUpgradeDef": {
+      "type": "object",
+      "required": [
+        "cost_coins",
+        "kind",
+        "name",
+        "queue_limit",
+        "unlock_level"
+      ],
+      "properties": {
+        "cost_coins": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "kind": {
+          "$ref": "#/definitions/FarmhouseUpgradeKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "queue_limit": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "unlock_level": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "FarmhouseUpgradeKind": {
+      "type": "string",
+      "enum": [
+        "oven"
+      ]
     },
     "ItemDef": {
       "type": "object",

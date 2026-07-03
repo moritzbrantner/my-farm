@@ -83,6 +83,24 @@
     {
       "type": "object",
       "required": [
+        "type",
+        "upgrade_kind"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "farmhouse_upgrade_bought"
+          ]
+        },
+        "upgrade_kind": {
+          "$ref": "#/definitions/FarmhouseUpgradeKind"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "capacity",
         "storage_kind",
         "tier",
@@ -386,6 +404,12 @@
     }
   ],
   "definitions": {
+    "FarmhouseUpgradeKind": {
+      "type": "string",
+      "enum": [
+        "oven"
+      ]
+    },
     "StorageKind": {
       "type": "string",
       "enum": [

@@ -33,6 +33,7 @@ import {
 import {
   buildFieldMenuModel,
   buildStructureMenuModel,
+  farmhouseOvenDisabledReason,
   isStructureTargetPresent,
   type StructureMenuItem,
   type StructureMenuModel,
@@ -531,6 +532,11 @@ export function App() {
   const placeMovingStructure = useCallback(
     async (tile: { x: number; y: number }) => {
       if (!view || !movingStructure) {
+        return;
+      }
+      if (movingStructure.type === "farmhouse") {
+        setMessage("Farmhouse cannot be moved");
+        setMovingStructure(null);
         return;
       }
       if (!isTileAvailableForStructure(view, tile, movingStructure)) {
@@ -2165,6 +2171,7 @@ function SelectionPanel({
   const plot = selectedPlot(view, selection);
   const machine = selectedMachine(view, selection);
   const shelter = selectedShelter(view, selection);
+  const isFarmhouse = selection?.type === "farmhouse";
   const isSilo = selection?.type === "silo";
   const isBarn = selection?.type === "barn";
   return (
@@ -2204,6 +2211,7 @@ function SelectionPanel({
           />
         )
       ) : null}
+      {isFarmhouse ? <FarmhouseActions catalog={catalog} view={view} send={send} /> : null}
       {plot ? <PlotActions catalog={catalog} view={view} plot={plot} nowMs={nowMs} send={send} /> : null}
       {machine ? (
         <MachineActions catalog={catalog} view={view} machine={machine} nowMs={nowMs} send={send} />
@@ -2212,14 +2220,46 @@ function SelectionPanel({
         <ShelterActions catalog={catalog} view={view} shelter={shelter} nowMs={nowMs} send={send} />
       ) : null}
       {!demoMode && selection?.type === "delivery_board" ? <p>Use delivery orders below.</p> : null}
-      {!plot && !machine && !shelter && !isSilo && !isBarn && selection?.type !== "delivery_board" ? (
+      {!plot && !machine && !shelter && !isFarmhouse && !isSilo && !isBarn && selection?.type !== "delivery_board" ? (
         <p>
           {demoMode
-            ? "Select a field, bakery, or storage."
+            ? "Select a field, Farmhouse, bakery, or storage."
             : "Select a field, machine, shelter, storage, or order board."}
         </p>
       ) : null}
     </section>
+  );
+}
+
+function FarmhouseActions({
+  catalog,
+  view,
+  send,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  send: SendCommand;
+}) {
+  const oven = catalog.farmhouse_upgrades.find((upgrade) => upgrade.kind === "oven");
+  const reason = farmhouseOvenDisabledReason(catalog, view);
+  return (
+    <div className="action-stack">
+      <p>Farmhouse</p>
+      {oven ? (
+        <p>Oven upgrade - {oven.cost_coins} coins, queue {oven.queue_limit}</p>
+      ) : (
+        <p>Oven upgrade unavailable</p>
+      )}
+      <button
+        type="button"
+        disabled={Boolean(reason)}
+        title={reason ?? "Buy Oven"}
+        onClick={() => send({ type: "buy_farmhouse_upgrade", upgrade_kind: "oven" })}
+      >
+        Buy Oven
+      </button>
+      {reason ? <small>{reason}</small> : null}
+    </div>
   );
 }
 

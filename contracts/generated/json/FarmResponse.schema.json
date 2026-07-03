@@ -175,6 +175,7 @@
         "last_update_ms",
         "level",
         "machines",
+        "owned_farmhouse_upgrades",
         "resident_task_queues",
         "residents",
         "selected_resident_id",
@@ -249,6 +250,12 @@
             "$ref": "#/definitions/MachineState"
           }
         },
+        "owned_farmhouse_upgrades": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FarmhouseUpgradeKind"
+          }
+        },
         "resident_task_queues": {
           "type": "object",
           "additionalProperties": {
@@ -303,6 +310,12 @@
           "minimum": 0.0
         }
       }
+    },
+    "FarmhouseUpgradeKind": {
+      "type": "string",
+      "enum": [
+        "oven"
+      ]
     },
     "FieldPlot": {
       "type": "object",

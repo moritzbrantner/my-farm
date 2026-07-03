@@ -2,12 +2,12 @@ use anyhow::{Context, bail};
 use my_farm_core::{
     AnimalShelterState, AnimalSlot, AnimalState, BalanceConfig, CatalogDocument, CatalogResponse,
     CommandRequest, CommandResponse, CropDef, DeliveryOrder, FarmCommand, FarmEvent, FarmResident,
-    FarmResponse, FarmState, FarmView, FieldPlot, HealthResponse, InventoryItemView, ItemDef,
-    ItemKind, ItemStack, MachineDef, MachineJob, MachineKind, MachineState, MarketItemDef,
-    PlantedCrop, RecipeDef, ReservedWorkTarget, ResidentTask, ResidentTaskKind, ResidentTaskStep,
-    ResidentTaskStepWork, ShelterDef, ShelterKind, StorageKind, StorageUpgradeDef, StructureKind,
-    StructureTarget, SweepHarvestMode, Tile, UnlockView, WebsocketClientMessage, WebsocketError,
-    WebsocketServerMessage,
+    FarmResponse, FarmState, FarmView, FarmhouseUpgradeDef, FarmhouseUpgradeKind, FieldPlot,
+    HealthResponse, InventoryItemView, ItemDef, ItemKind, ItemStack, MachineDef, MachineJob,
+    MachineKind, MachineState, MarketItemDef, PlantedCrop, RecipeDef, ReservedWorkTarget,
+    ResidentTask, ResidentTaskKind, ResidentTaskStep, ResidentTaskStepWork, ShelterDef,
+    ShelterKind, StorageKind, StorageUpgradeDef, StructureKind, StructureTarget, SweepHarvestMode,
+    Tile, UnlockView, WebsocketClientMessage, WebsocketError, WebsocketServerMessage,
 };
 use schemars::{JsonSchema, schema_for};
 use std::fs;
@@ -73,10 +73,12 @@ fn outputs() -> anyhow::Result<Vec<Output>> {
                 MachineKind::decl(),
                 ShelterKind::decl(),
                 StructureKind::decl(),
+                FarmhouseUpgradeKind::decl(),
                 StructureTarget::decl(),
                 SweepHarvestMode::decl(),
                 RecipeDef::decl(),
                 MachineDef::decl(),
+                FarmhouseUpgradeDef::decl(),
                 ShelterDef::decl(),
                 MarketItemDef::decl(),
                 StorageKind::decl(),

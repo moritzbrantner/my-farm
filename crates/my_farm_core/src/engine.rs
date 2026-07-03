@@ -1,9 +1,10 @@
 use crate::{
-    AnimalShelterState, AnimalState, CatalogDocument, DeliveryOrder, FarmState, FieldPlot,
-    ItemKind, ItemStack, MachineJob, MachineKind, MachineState, ReservedWorkTarget, ResidentTask,
-    ResidentTaskKind, ResidentTaskStep, ResidentTaskStepWork, ShelterKind, StorageKind,
-    StructureKind, Tile, add_inventory, add_shelter_animals, barn_storage_used, crop_storage_used,
-    gain_xp, next_id, remove_inventory, scaled_duration_ms, update_level,
+    AnimalShelterState, AnimalState, CatalogDocument, DeliveryOrder, FarmState,
+    FarmhouseUpgradeKind, FieldPlot, ItemKind, ItemStack, MachineJob, MachineKind, MachineState,
+    ReservedWorkTarget, ResidentTask, ResidentTaskKind, ResidentTaskStep, ResidentTaskStepWork,
+    ShelterKind, StorageKind, StructureKind, Tile, add_inventory, add_shelter_animals,
+    barn_storage_used, crop_storage_used, gain_xp, next_id, remove_inventory, scaled_duration_ms,
+    update_level,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -49,6 +50,9 @@ pub enum FarmCommand {
     BuyStructure {
         structure_kind: StructureKind,
         tile: Tile,
+    },
+    BuyFarmhouseUpgrade {
+        upgrade_kind: FarmhouseUpgradeKind,
     },
     UpgradeStorage {
         storage_kind: StorageKind,
@@ -135,6 +139,9 @@ pub enum FarmEvent {
     },
     StructureBuilt {
         structure_kind: StructureKind,
+    },
+    FarmhouseUpgradeBought {
+        upgrade_kind: FarmhouseUpgradeKind,
     },
     StorageUpgraded {
         storage_kind: StorageKind,
@@ -272,6 +279,9 @@ pub fn apply_command(
             structure_kind,
             tile,
         } => buy_structure(farm, catalog, structure_kind, tile),
+        FarmCommand::BuyFarmhouseUpgrade { upgrade_kind } => {
+            buy_farmhouse_upgrade(farm, catalog, upgrade_kind)
+        }
         FarmCommand::UpgradeStorage { storage_kind } => {
             upgrade_storage(farm, catalog, storage_kind)
         }
@@ -1049,6 +1059,23 @@ fn upgrade_storage(
         tier: upgrade.tier,
         capacity,
     }])
+}
+
+fn buy_farmhouse_upgrade(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    upgrade_kind: FarmhouseUpgradeKind,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    let upgrade = catalog
+        .farmhouse_upgrade(upgrade_kind)
+        .ok_or_else(|| CommandError::new("unknown farmhouse upgrade"))?;
+    require_level(farm, upgrade.unlock_level)?;
+    if farm.owned_farmhouse_upgrades.contains(&upgrade_kind) {
+        return Err(CommandError::new("farmhouse upgrade already owned"));
+    }
+    spend_coins(farm, upgrade.cost_coins)?;
+    farm.owned_farmhouse_upgrades.push(upgrade_kind);
+    Ok(vec![FarmEvent::FarmhouseUpgradeBought { upgrade_kind }])
 }
 
 fn move_structure(

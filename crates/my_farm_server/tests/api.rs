@@ -3,9 +3,9 @@ use axum::http::{Request, StatusCode, header};
 use futures_util::{SinkExt, StreamExt};
 use my_farm_core::{
     AnimalShelterState, AnimalSlot, AnimalState, CatalogDocument, CatalogResponse, CommandRequest,
-    CommandResponse, FarmCommand, FarmEvent, FarmResponse, FarmState, MachineJob, MachineKind,
-    MachineState, ShelterKind, StorageKind, Tile, WebsocketClientMessage, WebsocketServerMessage,
-    update_level,
+    CommandResponse, FarmCommand, FarmEvent, FarmResponse, FarmState, FarmhouseUpgradeKind,
+    MachineJob, MachineKind, MachineState, ShelterKind, StorageKind, Tile, WebsocketClientMessage,
+    WebsocketServerMessage, update_level,
 };
 use my_farm_server::{AppState, app, connect_database};
 use std::net::SocketAddr;
@@ -615,6 +615,66 @@ async fn post_storage_upgrade_persists_state_and_journal_through_restart() {
     assert_eq!(reloaded.view.silo_upgrade_tier, 1);
     assert_eq!(reloaded.view.silo_capacity, 60);
     assert_eq!(reloaded.view.coins, 120);
+    restarted_pool.close().await;
+}
+
+#[tokio::test]
+async fn post_farmhouse_oven_purchase_persists_state_and_journal_through_restart() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let url = format!("sqlite://{}", tempdir.path().join("farm.db").display());
+    let pool = connect_database(&url).await.unwrap();
+    let router = app(AppState::new(pool.clone()));
+    let initial = get_farm(router.clone()).await;
+
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = load_saved_farm(&pool).await;
+    farm.xp = 4;
+    update_level(&mut farm, &catalog);
+    save_test_farm(&pool, initial.version, &farm).await;
+
+    let bought = post_command(
+        router.clone(),
+        CommandRequest {
+            expected_version: initial.version,
+            command: FarmCommand::BuyFarmhouseUpgrade {
+                upgrade_kind: FarmhouseUpgradeKind::Oven,
+            },
+        },
+    )
+    .await;
+
+    assert!(bought.accepted);
+    assert_eq!(bought.version, 1);
+    assert_eq!(bought.view.coins, 140);
+    assert_eq!(
+        bought.view.owned_farmhouse_upgrades,
+        vec![FarmhouseUpgradeKind::Oven]
+    );
+    assert!(bought.events.contains(&FarmEvent::FarmhouseUpgradeBought {
+        upgrade_kind: FarmhouseUpgradeKind::Oven,
+    }));
+
+    let journal_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM command_journal WHERE command_json LIKE ?")
+            .bind("%buy_farmhouse_upgrade%")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(journal_count, 1);
+
+    drop(router);
+    pool.close().await;
+
+    let restarted_pool = connect_database(&url).await.unwrap();
+    let restarted_app = app(AppState::new(restarted_pool.clone()));
+    let reloaded = get_farm(restarted_app).await;
+
+    assert_eq!(reloaded.version, 1);
+    assert_eq!(reloaded.view.coins, 140);
+    assert_eq!(
+        reloaded.view.owned_farmhouse_upgrades,
+        vec![FarmhouseUpgradeKind::Oven]
+    );
     restarted_pool.close().await;
 }
 
