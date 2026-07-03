@@ -2530,8 +2530,13 @@ test("renders, selects, and moves a built Tool Shed without upgrade actions", as
   const toolShed = page.getByLabel("Tool Shed structure");
   await expect(toolShed).toBeVisible();
   await toolShed.click();
-  await expect(page.getByRole("heading", { name: "Selection" })).toBeVisible();
-  await expect(page.getByText("Tool Shed")).toBeVisible();
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+  await expect(selection.getByRole("heading", { name: "Selection" })).toBeVisible();
+  await expect(selection.getByText("Tool Shed")).toBeVisible();
+  await expect(selection.getByRole("button", { name: /Upgrade/ })).toHaveCount(0);
+  await expect(selection.getByText(/route|travel|timing/i)).toHaveCount(0);
 
   await toolShed.click({ button: "right" });
   const menu = page.getByTestId("structure-context-menu");
