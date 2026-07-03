@@ -24,7 +24,7 @@ Build the static Pages demo locally:
 bun run build:pages
 ```
 
-The Pages demo uses `VITE_MY_FARM_RUNTIME=wasm_demo`, compiles `crates/my_farm_wasm` with `wasm-pack`, and bundles the generated WASM through Vite. It supports fields, Wheat, Corn, the Bakery, Bread, storage display, reset, and browser-local saves.
+The Pages demo uses `VITE_MY_FARM_RUNTIME=wasm_demo`, compiles `crates/my_farm_wasm` with `wasm-pack`, and bundles the generated WASM through Vite. It supports fields, Wheat, Corn, the Farmhouse Oven, Bread, storage display, reset, and browser-local saves.
 
 ## Commands
 
