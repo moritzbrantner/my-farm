@@ -815,6 +815,84 @@
         {
           "type": "object",
           "required": [
+            "decoration_id",
+            "placement_id",
+            "room_id",
+            "tile",
+            "type"
+          ],
+          "properties": {
+            "decoration_id": {
+              "type": "string"
+            },
+            "placement_id": {
+              "type": "string"
+            },
+            "room_id": {
+              "type": "string"
+            },
+            "tile": {
+              "$ref": "#/definitions/RoomTile"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "decoration_placed"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "placement_id",
+            "room_id",
+            "tile",
+            "type"
+          ],
+          "properties": {
+            "placement_id": {
+              "type": "string"
+            },
+            "room_id": {
+              "type": "string"
+            },
+            "tile": {
+              "$ref": "#/definitions/RoomTile"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "decoration_moved"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "placement_id",
+            "room_id",
+            "type"
+          ],
+          "properties": {
+            "placement_id": {
+              "type": "string"
+            },
+            "room_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "decoration_removed"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "level",
             "type"
           ],

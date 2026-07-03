@@ -510,6 +510,80 @@
               ]
             }
           }
+        },
+        {
+          "type": "object",
+          "required": [
+            "decoration_id",
+            "room_id",
+            "tile",
+            "type"
+          ],
+          "properties": {
+            "decoration_id": {
+              "type": "string"
+            },
+            "room_id": {
+              "type": "string"
+            },
+            "tile": {
+              "$ref": "#/definitions/RoomTile"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "place_decoration"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "placement_id",
+            "room_id",
+            "tile",
+            "type"
+          ],
+          "properties": {
+            "placement_id": {
+              "type": "string"
+            },
+            "room_id": {
+              "type": "string"
+            },
+            "tile": {
+              "$ref": "#/definitions/RoomTile"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "move_decoration"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "placement_id",
+            "room_id",
+            "type"
+          ],
+          "properties": {
+            "placement_id": {
+              "type": "string"
+            },
+            "room_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "remove_decoration"
+              ]
+            }
+          }
         }
       ]
     },
@@ -518,6 +592,25 @@
       "enum": [
         "oven"
       ]
+    },
+    "RoomTile": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "y": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
     },
     "StorageKind": {
       "type": "string",

@@ -4,8 +4,8 @@ use futures_util::{SinkExt, StreamExt};
 use my_farm_core::{
     AnimalShelterState, AnimalSlot, AnimalState, CatalogDocument, CatalogResponse, CommandRequest,
     CommandResponse, FarmCommand, FarmEvent, FarmResponse, FarmState, FarmhouseUpgradeKind,
-    MachineJob, MachineKind, MachineState, ShelterKind, StorageKind, Tile, WebsocketClientMessage,
-    WebsocketServerMessage, update_level,
+    MachineJob, MachineKind, MachineState, RoomTile, ShelterKind, StorageKind, Tile,
+    WebsocketClientMessage, WebsocketServerMessage, update_level,
 };
 use my_farm_server::{AppState, app, connect_database};
 use std::net::SocketAddr;
@@ -674,6 +674,144 @@ async fn post_farmhouse_oven_purchase_persists_state_and_journal_through_restart
     assert_eq!(
         reloaded.view.owned_farmhouse_upgrades,
         vec![FarmhouseUpgradeKind::Oven]
+    );
+    restarted_pool.close().await;
+}
+
+#[tokio::test]
+async fn post_decoration_commands_persist_state_and_journal_through_restart() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let url = format!("sqlite://{}", tempdir.path().join("farm.db").display());
+    let pool = connect_database(&url).await.unwrap();
+    let router = app(AppState::new(pool.clone()));
+    let initial = get_farm(router.clone()).await;
+
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = load_saved_farm(&pool).await;
+    farm.xp = 55;
+    update_level(&mut farm, &catalog);
+    save_test_farm(&pool, initial.version, &farm).await;
+
+    let placed = post_command(
+        router.clone(),
+        CommandRequest {
+            expected_version: initial.version,
+            command: FarmCommand::PlaceDecoration {
+                room_id: "living_room".to_owned(),
+                decoration_id: "chair".to_owned(),
+                tile: RoomTile::new(0, 0),
+            },
+        },
+    )
+    .await;
+
+    assert!(placed.accepted);
+    assert_eq!(placed.version, 1);
+    assert!(placed.events.iter().any(|event| {
+        matches!(
+            event,
+            FarmEvent::DecorationPlaced {
+                room_id,
+                decoration_id,
+                tile,
+                ..
+            } if room_id == "living_room"
+                && decoration_id == "chair"
+                && *tile == RoomTile::new(0, 0)
+        )
+    }));
+    assert_eq!(
+        placed.view.house_interior.rooms[0]
+            .decoration_placements
+            .len(),
+        4
+    );
+    assert!(
+        placed
+            .view
+            .resident_task_queues
+            .values()
+            .all(|queue| queue.is_empty())
+    );
+
+    let placement_id = placed.view.house_interior.rooms[0]
+        .decoration_placements
+        .iter()
+        .find(|placement| placement.decoration_id == "chair")
+        .unwrap()
+        .id
+        .clone();
+
+    let moved = post_command(
+        router.clone(),
+        CommandRequest {
+            expected_version: placed.version,
+            command: FarmCommand::MoveDecoration {
+                room_id: "living_room".to_owned(),
+                placement_id: placement_id.clone(),
+                tile: RoomTile::new(0, 1),
+            },
+        },
+    )
+    .await;
+
+    assert!(moved.accepted);
+    assert_eq!(moved.version, 2);
+    assert!(
+        moved.view.house_interior.rooms[0]
+            .decoration_placements
+            .iter()
+            .any(|placement| placement.id == placement_id && placement.tile == RoomTile::new(0, 1))
+    );
+
+    let removed = post_command(
+        router.clone(),
+        CommandRequest {
+            expected_version: moved.version,
+            command: FarmCommand::RemoveDecoration {
+                room_id: "living_room".to_owned(),
+                placement_id: placement_id.clone(),
+            },
+        },
+    )
+    .await;
+
+    assert!(removed.accepted);
+    assert_eq!(removed.version, 3);
+    assert!(
+        removed.view.house_interior.rooms[0]
+            .decoration_placements
+            .iter()
+            .all(|placement| placement.id != placement_id)
+    );
+
+    let journal_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM command_journal WHERE command_json LIKE ?")
+            .bind("%decoration%")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(journal_count, 3);
+
+    drop(router);
+    pool.close().await;
+
+    let restarted_pool = connect_database(&url).await.unwrap();
+    let restarted_app = app(AppState::new(restarted_pool.clone()));
+    let reloaded = get_farm(restarted_app).await;
+
+    assert_eq!(reloaded.version, 3);
+    assert_eq!(
+        reloaded.view.house_interior.rooms[0]
+            .decoration_placements
+            .len(),
+        3
+    );
+    assert!(
+        CatalogDocument::default_catalog()
+            .decorations
+            .iter()
+            .any(|decoration| decoration.id == "chair")
     );
     restarted_pool.close().await;
 }

@@ -1,5 +1,5 @@
 use my_farm_core::{
-    CommandRequest, CommandResponse, FarmCommand, FarmResponse, FarmhouseUpgradeKind,
+    CommandRequest, CommandResponse, FarmCommand, FarmResponse, FarmhouseUpgradeKind, RoomTile,
     StructureKind, Tile,
 };
 use my_farm_wasm::{DemoFarmRuntime, demo_catalog};
@@ -116,6 +116,105 @@ fn demo_runtime_supports_buying_and_persisting_the_farmhouse_oven() {
     assert_eq!(
         farm.view.owned_farmhouse_upgrades,
         vec![FarmhouseUpgradeKind::Oven]
+    );
+}
+
+#[test]
+fn demo_runtime_supports_decoration_commands_and_persists_saved_placements() {
+    let mut runtime = DemoFarmRuntime::new(None, 1_000.0);
+
+    command(
+        &mut runtime,
+        0,
+        FarmCommand::SweepPlant {
+            crop_id: "wheat".to_owned(),
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+                "plot-4".to_owned(),
+            ],
+        },
+        1_000.0,
+    );
+    command(
+        &mut runtime,
+        1,
+        FarmCommand::SweepHarvest {
+            plot_ids: vec![
+                "plot-1".to_owned(),
+                "plot-2".to_owned(),
+                "plot-3".to_owned(),
+                "plot-4".to_owned(),
+            ],
+            harvest_mode: None,
+        },
+        27_000.0,
+    );
+
+    let placed = command(
+        &mut runtime,
+        2,
+        FarmCommand::PlaceDecoration {
+            room_id: "living_room".to_owned(),
+            decoration_id: "chair".to_owned(),
+            tile: RoomTile::new(0, 0),
+        },
+        36_000.0,
+    );
+
+    assert_eq!(placed.version, 3);
+    let placement_id = placed.view.house_interior.rooms[0]
+        .decoration_placements
+        .iter()
+        .find(|placement| placement.decoration_id == "chair")
+        .unwrap()
+        .id
+        .clone();
+
+    command(
+        &mut runtime,
+        3,
+        FarmCommand::MoveDecoration {
+            room_id: "living_room".to_owned(),
+            placement_id: placement_id.clone(),
+            tile: RoomTile::new(0, 1),
+        },
+        36_000.0,
+    );
+    let removed = command(
+        &mut runtime,
+        4,
+        FarmCommand::RemoveDecoration {
+            room_id: "living_room".to_owned(),
+            placement_id,
+        },
+        36_000.0,
+    );
+
+    assert_eq!(removed.version, 5);
+    assert_eq!(
+        removed.view.house_interior.rooms[0]
+            .decoration_placements
+            .len(),
+        3
+    );
+
+    let save = runtime.save_json();
+    let mut restored = DemoFarmRuntime::new(Some(save), 28_000.0);
+    let restored_farm = farm(&mut restored, 28_000.0);
+    assert_eq!(restored_farm.version, 5);
+    assert_eq!(
+        restored_farm.view.house_interior.rooms[0]
+            .decoration_placements
+            .len(),
+        3
+    );
+    assert!(
+        demo_catalog()
+            .decorations
+            .iter()
+            .any(|decoration| decoration.id == "chair")
     );
 }
 
