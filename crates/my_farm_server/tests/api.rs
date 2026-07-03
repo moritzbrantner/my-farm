@@ -2,8 +2,9 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
 use futures_util::{SinkExt, StreamExt};
 use my_farm_core::{
-    CatalogDocument, CatalogResponse, CommandRequest, CommandResponse, FarmCommand, FarmEvent,
-    FarmResponse, FarmState, StorageKind, WebsocketClientMessage, WebsocketServerMessage,
+    AnimalShelterState, AnimalSlot, AnimalState, CatalogDocument, CatalogResponse, CommandRequest,
+    CommandResponse, FarmCommand, FarmEvent, FarmResponse, FarmState, MachineJob, MachineKind,
+    MachineState, ShelterKind, StorageKind, Tile, WebsocketClientMessage, WebsocketServerMessage,
     update_level,
 };
 use my_farm_server::{AppState, app, connect_database};
@@ -287,6 +288,75 @@ async fn websocket_reset_persists_version_zero_and_broadcasts_new_farm() {
             .await
             .unwrap();
     assert_eq!(saved_version, 0);
+}
+
+#[tokio::test]
+async fn websocket_elapsed_time_broadcasts_one_visible_ready_snapshot_to_all_clients() {
+    let (addr, _server, pool) = websocket_test_server().await;
+    let (mut first_client, initial) = connect_gameplay_websocket(addr).await;
+    let (mut second_client, _) = connect_gameplay_websocket(addr).await;
+    let ready_at_ms = chrono::Utc::now().timestamp_millis() + 150;
+
+    let mut farm = load_saved_farm(&pool).await;
+    farm.last_update_ms = ready_at_ms - 1_000;
+    farm.field_plots[0].crop = Some(my_farm_core::PlantedCrop {
+        item_id: "wheat".to_owned(),
+        planted_at_ms: ready_at_ms - 2_000,
+        ready_at_ms,
+    });
+    farm.machines.push(MachineState {
+        id: "machine-1".to_owned(),
+        kind: MachineKind::Bakery,
+        tile: Tile::new(8, 2),
+        queue: vec![MachineJob {
+            id: "job-ready".to_owned(),
+            recipe_id: "bread".to_owned(),
+            started_at_ms: ready_at_ms - 2_000,
+            ready_at_ms,
+        }],
+    });
+    farm.shelters.push(AnimalShelterState {
+        id: "shelter-1".to_owned(),
+        kind: ShelterKind::ChickenCoop,
+        tile: Tile::new(5, 7),
+        animals: vec![AnimalSlot {
+            id: "animal-1".to_owned(),
+            state: AnimalState::Producing {
+                fed_at_ms: ready_at_ms - 2_000,
+                ready_at_ms,
+            },
+        }],
+    });
+    save_test_farm(&pool, initial.version, &farm).await;
+
+    let first_elapsed = websocket_farm_snapshot(&mut first_client).await;
+    let second_elapsed = websocket_farm_snapshot(&mut second_client).await;
+
+    assert_eq!(first_elapsed.version, 1);
+    assert_eq!(second_elapsed.version, 1);
+    assert!(
+        first_elapsed.view.field_plots[0]
+            .crop
+            .as_ref()
+            .unwrap()
+            .ready_at_ms
+            <= first_elapsed.view.last_update_ms
+    );
+    assert!(
+        first_elapsed.view.machines[0].queue[0].ready_at_ms <= first_elapsed.view.last_update_ms
+    );
+    assert!(matches!(
+        first_elapsed.view.shelters[0].animals[0].state,
+        AnimalState::Ready
+    ));
+    assert_eq!(second_elapsed.view, first_elapsed.view);
+
+    let no_duplicate = tokio::time::timeout(
+        std::time::Duration::from_millis(150),
+        websocket_json::<WebsocketServerMessage>(&mut first_client),
+    )
+    .await;
+    assert!(no_duplicate.is_err());
 }
 
 #[tokio::test]

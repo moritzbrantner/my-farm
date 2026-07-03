@@ -16,9 +16,11 @@ use sqlx::{Row, SqlitePool};
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast};
+use tokio::time::{Duration, MissedTickBehavior};
 use tower_http::cors::CorsLayer;
 
 const FARM_ID: &str = "local-farm";
+const ELAPSED_SNAPSHOT_TICK_MS: u64 = 100;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -108,6 +110,9 @@ async fn gameplay_websocket(
 
 async fn gameplay_session(mut socket: WebSocket, state: AppState) {
     let mut farm_updates = state.farm_updates.subscribe();
+    let mut elapsed_snapshot_tick =
+        tokio::time::interval(Duration::from_millis(ELAPSED_SNAPSHOT_TICK_MS));
+    elapsed_snapshot_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
     if let Err(error) = send_bootstrap(&mut socket, &state).await {
         let _ = send_websocket_message(
             &mut socket,
@@ -170,6 +175,20 @@ async fn gameplay_session(mut socket: WebSocket, state: AppState) {
                         }
                     }
                     Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            _ = elapsed_snapshot_tick.tick() => {
+                if let Err(error) = broadcast_elapsed_snapshot_if_visible(&state).await {
+                    let _ = send_websocket_message(
+                        &mut socket,
+                        &WebsocketServerMessage::Error {
+                            error: WebsocketError {
+                                code: "elapsed_snapshot_failed".to_owned(),
+                                message: error.error,
+                            },
+                        },
+                    )
+                    .await;
                 }
             }
         }
@@ -288,6 +307,64 @@ async fn send_current_farm_snapshot(
         },
     )
     .await
+}
+
+async fn broadcast_elapsed_snapshot_if_visible(state: &AppState) -> Result<(), ApiError> {
+    let _lock = state.mutation_lock.lock().await;
+    let now_ms = now_ms();
+    let (version, mut farm) = load_or_create_farm(state, now_ms)
+        .await
+        .map_err(api_error)?;
+    let last_update_ms = farm.last_update_ms;
+    if !has_elapsed_visible_ready_transition(&farm, last_update_ms, now_ms) {
+        return Ok(());
+    }
+
+    apply_elapsed(&mut farm, &state.catalog, now_ms);
+    let next_version = version + 1;
+    save_farm(&state.pool, next_version, &farm, now_ms)
+        .await
+        .map_err(api_error)?;
+    let _ = state
+        .farm_updates
+        .send(WebsocketServerMessage::FarmSnapshot {
+            version: next_version,
+            view: farm_view(&farm, &state.catalog),
+        });
+    Ok(())
+}
+
+fn has_elapsed_visible_ready_transition(
+    farm: &FarmState,
+    last_update_ms: i64,
+    now_ms: i64,
+) -> bool {
+    if now_ms <= last_update_ms {
+        return false;
+    }
+
+    farm.field_plots.iter().any(|plot| {
+        plot.crop
+            .as_ref()
+            .is_some_and(|crop| elapsed_crossed_ready_at(crop.ready_at_ms, last_update_ms, now_ms))
+    }) || farm.machines.iter().any(|machine| {
+        machine
+            .queue
+            .first()
+            .is_some_and(|job| elapsed_crossed_ready_at(job.ready_at_ms, last_update_ms, now_ms))
+    }) || farm.shelters.iter().any(|shelter| {
+        shelter.animals.iter().any(|animal| {
+            matches!(
+                animal.state,
+                my_farm_core::AnimalState::Producing { ready_at_ms, .. }
+                    if elapsed_crossed_ready_at(ready_at_ms, last_update_ms, now_ms)
+            )
+        })
+    })
+}
+
+fn elapsed_crossed_ready_at(ready_at_ms: i64, last_update_ms: i64, now_ms: i64) -> bool {
+    last_update_ms < ready_at_ms && ready_at_ms <= now_ms
 }
 
 async fn send_websocket_message(
