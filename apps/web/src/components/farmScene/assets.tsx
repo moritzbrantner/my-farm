@@ -15,7 +15,8 @@ export type FarmAssetKind =
   | "feed_mill"
   | "chicken_coop"
   | "cow_pasture"
-  | "delivery_board";
+  | "delivery_board"
+  | "tool_shed";
 
 export type FarmAssetState = {
   selected: boolean;
@@ -387,6 +388,8 @@ function renderStructure(kind: Exclude<FarmAssetKind, "ground_tile" | "field_plo
       return <CowPasture footprint={footprint} />;
     case "delivery_board":
       return <DeliveryBoard />;
+    case "tool_shed":
+      return <ToolShed />;
   }
 }
 
@@ -548,6 +551,30 @@ function DeliveryBoard() {
       <mesh castShadow position={[0, 0.72, -0.02]}>
         <boxGeometry args={[0.82, 0.08, 0.14]} />
         <meshStandardMaterial color="#fff1a8" roughness={0.78} metalness={0} />
+      </mesh>
+    </group>
+  );
+}
+
+function ToolShed() {
+  return (
+    <group position={[0, 0.08, 0]}>
+      <mesh castShadow receiveShadow position={[0, 0.26, 0]}>
+        <boxGeometry args={[0.66, 0.42, 0.56]} />
+        <meshStandardMaterial color="#6f8f88" roughness={0.82} metalness={0} />
+      </mesh>
+      <GableRoof width={0.78} height={0.34} depth={0.66} position={[0, 0.51, 0]} color="#455d58" />
+      <mesh castShadow position={[-0.18, 0.2, -0.3]}>
+        <boxGeometry args={[0.18, 0.28, 0.04]} />
+        <meshStandardMaterial color="#f1d2a4" roughness={0.84} metalness={0} />
+      </mesh>
+      <mesh castShadow position={[0.24, 0.32, -0.31]} rotation={[0, 0, -0.72]}>
+        <boxGeometry args={[0.08, 0.46, 0.06]} />
+        <meshStandardMaterial color="#d8b65a" roughness={0.68} metalness={0.04} />
+      </mesh>
+      <mesh castShadow position={[0.34, 0.18, -0.29]}>
+        <boxGeometry args={[0.18, 0.08, 0.06]} />
+        <meshStandardMaterial color={outlineColor} roughness={0.72} metalness={0} />
       </mesh>
     </group>
   );

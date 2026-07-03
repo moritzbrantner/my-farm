@@ -28,6 +28,7 @@ test("pages demo runs from WASM without server API calls", async ({ page }) => {
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Field Plot/ })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Feed Mill/ })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Tool Shed/ })).toHaveCount(0);
   expect(apiRequests).toEqual([]);
 });
 
