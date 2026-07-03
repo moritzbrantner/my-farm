@@ -537,6 +537,103 @@ button[aria-disabled="true"] {
   gap: 8px;
 }
 
+.resident-selector {
+  display: grid;
+  gap: 8px;
+}
+
+.resident-selector__list {
+  display: grid;
+  gap: 8px;
+}
+
+.resident-card {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(32, 49, 43, 0.16);
+  border-radius: 7px;
+  background: #fbf6e8;
+}
+
+.resident-card--selected {
+  border-color: rgba(68, 109, 56, 0.72);
+  background: #fff7d0;
+  outline: 2px solid rgba(68, 109, 56, 0.28);
+  outline-offset: -2px;
+}
+
+.resident-card__topline,
+.resident-card__status div,
+.resident-task-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.resident-card__topline strong,
+.resident-card__status dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.resident-card__topline button,
+.resident-card__rename {
+  min-height: 30px;
+  padding: 4px 8px;
+}
+
+.resident-card__name {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.resident-card__name span,
+.resident-card__status dt,
+.resident-card__error,
+.resident-task-progress span {
+  color: #536a5e;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.resident-card__name input {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 5px 7px;
+  border: 1px solid rgba(32, 49, 43, 0.24);
+  border-radius: 6px;
+  background: #fffdf5;
+  color: #20312b;
+  font: inherit;
+  font-size: 13px;
+}
+
+.resident-card__error {
+  color: #8f332f;
+}
+
+.resident-card__status {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.resident-card__status dt,
+.resident-card__status dd {
+  margin: 0;
+}
+
+.resident-task-progress progress {
+  width: 100%;
+  min-width: 0;
+  accent-color: #446d38;
+}
+
 h1,
 h2,
 p {

@@ -4,6 +4,8 @@ import type {
   CommandResponse,
   FarmResponse,
   FarmView,
+  FarmResident,
+  ResidentTask,
   Tile,
 } from "./types";
 import type {
@@ -15,13 +17,23 @@ const defaultApiPort = "8081";
 const defaultSiloTile: Tile = { x: 14, y: 2 };
 const defaultBarnTile: Tile = { x: 16, y: 2 };
 const defaultDeliveryBoardTile: Tile = { x: 2, y: 7 };
+const defaultResidents: FarmResident[] = [
+  { id: "woman", display_name: "Woman" },
+  { id: "man", display_name: "Man" },
+];
 const demoSaveKey = "my-farm.demo.save.v1";
 const reconnectDelayMs = 1_000;
 
-type LegacyFarmView = Omit<FarmView, "silo_tile" | "barn_tile" | "delivery_board_tile"> & {
+type LegacyFarmView = Omit<
+  FarmView,
+  "silo_tile" | "barn_tile" | "delivery_board_tile" | "residents" | "selected_resident_id" | "resident_task_queues"
+> & {
   silo_tile?: Tile | null;
   barn_tile?: Tile | null;
   delivery_board_tile?: Tile | null;
+  residents?: FarmResident[] | null;
+  selected_resident_id?: string | null;
+  resident_task_queues?: FarmView["resident_task_queues"] | null;
 };
 
 type LegacyFarmResponse = Omit<FarmResponse, "view"> & {
@@ -296,13 +308,12 @@ function defaultBaseUrl(): string {
   return `${window.location.protocol}//${hostname}:${defaultApiPort}`;
 }
 
-function websocketUrl(baseUrl: string): string {
+export function websocketUrl(baseUrl: string): string {
   const override = import.meta.env.VITE_GAMEPLAY_WS_URL;
   if (override) {
     return override;
   }
-  const sourceUrl = import.meta.env.VITE_API_BASE_URL ? baseUrl : window.location.origin;
-  const url = new URL("/api/gameplay", sourceUrl);
+  const url = new URL("/api/gameplay", baseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 }
@@ -322,6 +333,14 @@ function normalizeCommandResponse(response: LegacyCommandResponse): CommandRespo
 }
 
 function normalizeFarmView(view: LegacyFarmView): FarmView {
+  const residents = validResidents(view.residents) ? view.residents : defaultResidents;
+  const selectedResidentId = residents.some((resident) => resident.id === view.selected_resident_id)
+    ? view.selected_resident_id
+    : residents[0]?.id ?? "woman";
+  const residentTaskQueues = validResidentTaskQueues(view.resident_task_queues)
+    ? view.resident_task_queues
+    : Object.fromEntries(residents.map((resident) => [resident.id, []]));
+
   return {
     ...view,
     silo_tile: validTile(view.silo_tile) ? view.silo_tile : defaultSiloTile,
@@ -329,9 +348,26 @@ function normalizeFarmView(view: LegacyFarmView): FarmView {
     delivery_board_tile: validTile(view.delivery_board_tile)
       ? view.delivery_board_tile
       : defaultDeliveryBoardTile,
+    residents,
+    selected_resident_id: selectedResidentId ?? "woman",
+    resident_task_queues: residentTaskQueues,
   };
 }
 
 function validTile(tile: Tile | null | undefined): tile is Tile {
   return tile !== undefined && tile !== null && Number.isFinite(tile.x) && Number.isFinite(tile.y);
+}
+
+function validResidents(residents: FarmResident[] | null | undefined): residents is FarmResident[] {
+  return (
+    Array.isArray(residents) &&
+    residents.length >= 2 &&
+    residents.every((resident) => typeof resident.id === "string" && typeof resident.display_name === "string")
+  );
+}
+
+function validResidentTaskQueues(
+  queues: FarmView["resident_task_queues"] | null | undefined,
+): queues is FarmView["resident_task_queues"] {
+  return queues !== undefined && queues !== null && typeof queues === "object";
 }
