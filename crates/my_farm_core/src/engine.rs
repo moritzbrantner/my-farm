@@ -23,6 +23,8 @@ const FIELD_PLOT_COST: u32 = 12;
 const TOOL_SHED_COST: u32 = 45;
 const TOOL_SHED_UNLOCK_LEVEL: u32 = 3;
 const DECORATION_EDITING_UNLOCK_LEVEL: u32 = 5;
+const RESIDENT_FIELD_WORK_BASE_DURATION_MS: i64 = 1_000;
+const RESIDENT_FIELD_WORK_WALKED_TILE_DURATION_MS: i64 = 250;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StructureFootprint {
@@ -657,7 +659,7 @@ fn enqueue_resident_work(
         .map(resident_task_tail_ready_at)
         .unwrap_or(now_ms)
         .max(now_ms);
-    let steps = snapshot_resident_task_step_durations(farm, steps);
+    let steps = snapshot_resident_task_step_durations(farm, &kind, steps);
     let ready_at_ms = started_at_ms
         + steps
             .first()
@@ -689,8 +691,13 @@ fn resident_task_tail_ready_at(task: &ResidentTask) -> i64 {
 
 fn snapshot_resident_task_step_durations(
     farm: &FarmState,
+    kind: &ResidentTaskKind,
     steps: Vec<ResidentTaskStep>,
 ) -> Vec<ResidentTaskStep> {
+    if *kind == ResidentTaskKind::FieldWork {
+        return snapshot_field_work_step_durations(farm, steps);
+    }
+
     steps
         .into_iter()
         .map(|mut step| {
@@ -702,6 +709,88 @@ fn snapshot_resident_task_step_durations(
 
 fn duration_from_farmhouse_tool_source(_farm: &FarmState, _step: &ResidentTaskStep) -> i64 {
     default_resident_task_step_duration_ms()
+}
+
+fn snapshot_field_work_step_durations(
+    farm: &FarmState,
+    steps: Vec<ResidentTaskStep>,
+) -> Vec<ResidentTaskStep> {
+    let Some(first_target_center) = steps
+        .first()
+        .and_then(|step| field_work_target_center(farm, step))
+    else {
+        return steps;
+    };
+
+    let farmhouse_source_center = footprint_center(
+        &Tile::new(FARM_HOUSE_TILE_X, FARM_HOUSE_TILE_Y),
+        FARM_HOUSE_FOOTPRINT,
+    );
+    let mut source_center = farmhouse_source_center;
+    let farmhouse_distance =
+        manhattan_distance_between_centers(farmhouse_source_center, first_target_center);
+    if let Some(tool_shed) = &farm.tool_shed {
+        let tool_shed_center = footprint_center(
+            &tool_shed.tile,
+            structure_footprint(&StructureKind::ToolShed),
+        );
+        let tool_shed_distance =
+            manhattan_distance_between_centers(tool_shed_center, first_target_center);
+        if tool_shed_distance <= farmhouse_distance {
+            source_center = tool_shed_center;
+        }
+    }
+
+    let mut previous_center = source_center;
+    steps
+        .into_iter()
+        .map(|mut step| {
+            if let Some(target_center) = field_work_target_center(farm, &step) {
+                let walked_tiles =
+                    manhattan_distance_between_centers(previous_center, target_center);
+                step.duration_ms = duration_from_walked_tiles(walked_tiles);
+                previous_center = target_center;
+            }
+            step
+        })
+        .collect()
+}
+
+fn field_work_target_center(farm: &FarmState, step: &ResidentTaskStep) -> Option<FootprintCenter> {
+    let ReservedWorkTarget::FieldPlot { plot_id } = &step.reserved_work_target else {
+        return None;
+    };
+    let plot = farm.field_plots.iter().find(|plot| plot.id == *plot_id)?;
+    Some(footprint_center(
+        &plot.tile,
+        StructureFootprint {
+            width: 1,
+            height: 1,
+        },
+    ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FootprintCenter {
+    doubled_x: i32,
+    doubled_y: i32,
+}
+
+fn footprint_center(origin: &Tile, footprint: StructureFootprint) -> FootprintCenter {
+    FootprintCenter {
+        doubled_x: origin.x * 2 + footprint.width,
+        doubled_y: origin.y * 2 + footprint.height,
+    }
+}
+
+fn manhattan_distance_between_centers(left: FootprintCenter, right: FootprintCenter) -> i64 {
+    i64::from((left.doubled_x - right.doubled_x).abs() + (left.doubled_y - right.doubled_y).abs())
+        / 2
+}
+
+fn duration_from_walked_tiles(walked_tiles: i64) -> i64 {
+    RESIDENT_FIELD_WORK_BASE_DURATION_MS
+        + walked_tiles * RESIDENT_FIELD_WORK_WALKED_TILE_DURATION_MS
 }
 
 fn resident_task_step_duration_ms(step: &ResidentTaskStep) -> i64 {
