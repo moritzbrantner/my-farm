@@ -112,6 +112,16 @@ fn demo_runtime_supports_crop_and_bakery_loop() {
             .iter()
             .find(|item| item.item_id == "bread")
             .map(|item| item.quantity),
+        None
+    );
+
+    let farm = farm(&mut runtime, 62_000.0);
+    assert_eq!(
+        farm.view
+            .inventory
+            .iter()
+            .find(|item| item.item_id == "bread")
+            .map(|item| item.quantity),
         Some(1)
     );
 }

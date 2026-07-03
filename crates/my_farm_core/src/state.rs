@@ -143,6 +143,7 @@ pub struct ResidentTask {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResidentTaskKind {
     FieldWork,
+    ProductionWork,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -156,6 +157,9 @@ pub struct ResidentTaskStep {
 pub enum ResidentTaskStepWork {
     PlantCrop { crop_id: String },
     HarvestCrop { crop_id: String, quantity: u32 },
+    CollectMachineJob { job_id: String, recipe_id: String },
+    FeedAnimal,
+    CollectAnimalProduct { item_id: String, quantity: u32 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]

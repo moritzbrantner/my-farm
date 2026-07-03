@@ -549,6 +549,20 @@
               ]
             }
           }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "production_work"
+              ]
+            }
+          }
         }
       ]
     },
@@ -607,6 +621,66 @@
               "type": "string",
               "enum": [
                 "harvest_crop"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "job_id",
+            "recipe_id",
+            "type"
+          ],
+          "properties": {
+            "job_id": {
+              "type": "string"
+            },
+            "recipe_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "collect_machine_job"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "feed_animal"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "item_id",
+            "quantity",
+            "type"
+          ],
+          "properties": {
+            "item_id": {
+              "type": "string"
+            },
+            "quantity": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "collect_animal_product"
               ]
             }
           }
