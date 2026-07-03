@@ -48,6 +48,90 @@ test("bootstraps from the gameplay websocket without polling farm snapshots", as
   expect(urls.at(-1)).toBe("ws://127.0.0.1:8091/api/gameplay");
 });
 
+test("sends commands and reset over the gameplay websocket without REST gameplay calls", async ({ page }) => {
+  const resetView = {
+    ...farmView,
+    inventory: [{ item_id: "wheat", name: "Wheat", quantity: 6, kind: "crop" }],
+  } satisfies FarmView;
+  await installMockGameplayWebSocket(
+    page,
+    [{ version: 1, view: farmView, catalog }],
+    {
+      messageHandlerName: "__recordGameplayWebSocketMessage",
+      commandResponses: [
+        {
+          accepted: true,
+          version: 2,
+          view: {
+            ...farmView,
+            inventory: [{ item_id: "wheat", name: "Wheat", quantity: 5, kind: "crop" }],
+            field_plots: farmView.field_plots.map((plot) =>
+              plot.id === "plot-1"
+                ? {
+                    ...plot,
+                    crop: {
+                      item_id: "wheat",
+                      planted_at_ms: Date.now(),
+                      ready_at_ms: Date.now() + 60_000,
+                    },
+                  }
+                : plot,
+            ),
+          },
+        },
+      ],
+      resetResponse: { version: 0, view: resetView },
+    },
+  );
+  await page.exposeFunction("__recordGameplayWebSocketMessage", (message: unknown) => {
+    return null;
+  });
+  await page.addInitScript(() => {
+    const windowWithMessages = window as unknown as {
+      __gameplayWebSocketMessages: unknown[];
+      __recordGameplayWebSocketMessage: (message: unknown) => null;
+    };
+    windowWithMessages.__gameplayWebSocketMessages = [];
+    const original = windowWithMessages.__recordGameplayWebSocketMessage;
+    windowWithMessages.__recordGameplayWebSocketMessage = (message: unknown) => {
+      windowWithMessages.__gameplayWebSocketMessages.push(message);
+      return original(message);
+    };
+  });
+  await rejectRestGameplay(page);
+
+  await openFarm(page);
+  await selectSeedTool(page, "Wheat");
+  await page.getByLabel("Field Plot plot-1").click({ force: true });
+
+  const inventoryPanel = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Inventory" }),
+  });
+  await expect(page.getByText("Command accepted")).toBeVisible();
+  await expect(resourceAmount(inventoryPanel, "Wheat", "5")).toBeVisible();
+
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByRole("button", { name: "New Farm" }).click();
+
+  await expect(page.getByText("Farm reset")).toBeVisible();
+  await expect(resourceAmount(inventoryPanel, "Wheat", "6")).toBeVisible();
+  const websocketMessages = await page.evaluate(
+    () => (window as unknown as { __gameplayWebSocketMessages: unknown[] }).__gameplayWebSocketMessages,
+  );
+  expect(websocketMessages).toMatchObject([
+    {
+      type: "submit_command",
+      request_id: expect.any(String),
+      expected_version: 1,
+      command: { type: "sweep_plant", crop_id: "wheat", plot_ids: [expect.stringMatching(/^plot-/)] },
+    },
+    {
+      type: "reset_farm",
+      request_id: expect.any(String),
+    },
+  ]);
+});
+
 test("reconnect reloads catalog and farm snapshot from the gameplay websocket", async ({ page }) => {
   await installMockGameplayWebSocket(page, [
     { version: 1, view: farmView, catalog },
@@ -920,19 +1004,12 @@ test("dragging across ready matching crops sends one sweep harvest command", asy
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
   const commands: CommandRequest[] = [];
-  let currentView = oneReadyOneEmptyFieldView();
-  await mockMutableFarmApi(page, () => currentView, catalog, (request) => {
+  await mockMutableFarmApi(page, () => twoReadyWheatFieldView(), catalog, (request) => {
     commands.push(request);
   });
   await openFarm(page);
 
   const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
-
-  currentView = twoReadyWheatFieldView();
-  await installMockGameplayWebSocket(page, [{ version: 1, view: currentView, catalog }]);
-  await page.reload();
-  await startFarm(page);
-  await expect(page.getByText("Local farm synced")).toBeVisible();
   const readyStartPoint = await fieldTargetPoint(page, "plot-1");
 
   await page.locator(".field-tools").getByRole("button", { name: "Harvest" }).click();
@@ -1138,7 +1215,13 @@ test("accepted seed sweep does not trigger periodic farm polling", async ({
   const plantedView = plantedFieldView(emptyView, ["plot-4", "plot-5", "plot-6"]);
   let farmRequests = 0;
 
-  await installMockGameplayWebSocket(page, [{ version: 0, view: emptyView, catalog }]);
+  await installMockGameplayWebSocket(
+    page,
+    [{ version: 0, view: emptyView, catalog }],
+    {
+      commandResponses: [{ accepted: true, version: 1, events: [], view: plantedView, error: null }],
+    },
+  );
   await page.route("**/api/catalog", async (route) => {
     await route.fulfill({ json: { catalog } });
   });
@@ -1150,9 +1233,7 @@ test("accepted seed sweep does not trigger periodic farm polling", async ({
     await route.fulfill({ json: { version: 0, view: emptyView } });
   });
   await page.route("**/api/commands", async (route) => {
-    await route.fulfill({
-      json: { accepted: true, version: 1, events: [], view: plantedView, error: null },
-    });
+    throw new Error(`Unexpected REST command call: ${route.request().url()}`);
   });
 
   await openFarm(page);
@@ -1181,7 +1262,29 @@ test("seed sweep retries once after a version mismatch", async ({ page }, testIn
   const plantedView = plantedFieldView(emptyView, ["plot-4", "plot-5", "plot-6"]);
   let commandAttempts = 0;
 
-  await installMockGameplayWebSocket(page, [{ version: 0, view: emptyView, catalog }]);
+  await installMockGameplayWebSocket(
+    page,
+    [{ version: 0, view: emptyView, catalog }],
+    {
+      messageHandlerName: "__countStaleRetryCommand",
+      commandResponses: [
+        {
+          accepted: false,
+          version: 1,
+          events: [],
+          view: emptyView,
+          error: "version mismatch: expected 0, found 1",
+        },
+        { accepted: true, version: 2, events: [], view: plantedView, error: null },
+      ],
+    },
+  );
+  await page.exposeFunction("__countStaleRetryCommand", (message: import("../../../contracts/generated/ts/my-farm").WebsocketClientMessage) => {
+    if (message.type === "submit_command") {
+      commandAttempts += 1;
+    }
+    return null;
+  });
   await page.route("**/api/catalog", async (route) => {
     await route.fulfill({ json: { catalog } });
   });
@@ -1194,22 +1297,7 @@ test("seed sweep retries once after a version mismatch", async ({ page }, testIn
     await route.fulfill({ json: { version: 0, view: emptyView } });
   });
   await page.route("**/api/commands", async (route) => {
-    commandAttempts += 1;
-    if (commandAttempts === 1) {
-      await route.fulfill({
-        json: {
-          accepted: false,
-          version: 1,
-          events: [],
-          view: emptyView,
-          error: "version mismatch: expected 0, found 1",
-        },
-      });
-      return;
-    }
-    await route.fulfill({
-      json: { accepted: true, version: 2, events: [], view: plantedView, error: null },
-    });
+    throw new Error(`Unexpected REST command call: ${route.request().url()}`);
   });
 
   await openFarm(page);
@@ -1806,7 +1894,29 @@ async function mockMutableFarmApi(
   customCatalog: CatalogDocument = catalog,
   onCommand?: (request: CommandRequest) => void,
 ) {
-  await installMockGameplayWebSocket(page, [{ version: 1, view: getView(), catalog: customCatalog }]);
+  const handlerName = `__mockFarmCommandResponse_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  await page.exposeFunction(handlerName, (message: import("../../../contracts/generated/ts/my-farm").WebsocketClientMessage) => {
+    if (message.type === "submit_command") {
+      onCommand?.({
+        expected_version: message.expected_version,
+        command: message.command,
+      });
+      return {
+        accepted: true,
+        version: message.expected_version + 1,
+        view: getView(),
+      };
+    }
+    return null;
+  });
+  await installMockGameplayWebSocket(
+    page,
+    [{ version: 1, view: getView(), catalog: customCatalog }],
+    {
+      messageHandlerName: handlerName,
+      resetResponse: { version: 1, view: getView() },
+    },
+  );
   await page.route("**/api/catalog", async (route) => {
     await route.fulfill({ json: { catalog: customCatalog } });
   });
@@ -1825,8 +1935,13 @@ async function mockMutableFarmApi(
 async function installMockGameplayWebSocket(
   page: Page,
   bootstraps: Array<{ version: number; view: FarmView; catalog: CatalogDocument; delayMs?: number }>,
+  options: {
+    messageHandlerName?: string;
+    commandResponses?: Array<Partial<import("../../../contracts/generated/ts/my-farm").CommandResponse>>;
+    resetResponse?: Partial<import("../../../contracts/generated/ts/my-farm").FarmResponse>;
+  } = {},
 ) {
-  await page.addInitScript(({ bootstraps }) => {
+  await page.addInitScript(({ bootstraps, options }) => {
     type Listener = (event: { data?: string }) => void;
     type Bootstrap = {
       version: number;
@@ -1834,6 +1949,20 @@ async function installMockGameplayWebSocket(
       catalog: CatalogDocument;
       delayMs?: number;
     };
+    type ClientMessage = import("../../../contracts/generated/ts/my-farm").WebsocketClientMessage;
+    type SubmitCommandMessage = Extract<ClientMessage, { type: "submit_command" }>;
+    type CommandResponse = Partial<import("../../../contracts/generated/ts/my-farm").CommandResponse>;
+    type FarmResponse = Partial<import("../../../contracts/generated/ts/my-farm").FarmResponse>;
+    type MockOptions = {
+      messageHandlerName?: string;
+      commandResponses?: CommandResponse[];
+      resetResponse?: FarmResponse;
+    };
+
+    const mockOptions = options as MockOptions;
+    let responseVersion = bootstraps[0]?.version ?? 0;
+    let responseView = bootstraps[0]?.view as FarmView;
+    let commandResponseIndex = 0;
 
     const NativeWebSocket = window.WebSocket;
 
@@ -1898,6 +2027,72 @@ async function installMockGameplayWebSocket(
         this.closeFromServer();
       }
 
+      send(payload: string) {
+        const message = JSON.parse(payload) as ClientMessage;
+        const handler = mockOptions.messageHandlerName
+          ? (window as unknown as Record<string, ((message: ClientMessage) => Promise<CommandResponse | null>) | undefined>)[
+              mockOptions.messageHandlerName
+            ]
+          : undefined;
+        window.setTimeout(async () => {
+          const handlerResponse = (await handler?.(message)) ?? null;
+          this.respondToClientMessage(message, handlerResponse);
+        }, 0);
+      }
+
+      private respondToClientMessage(message: ClientMessage, handlerResponse: CommandResponse | null) {
+        if (message.type === "submit_command") {
+          const configured =
+            mockOptions.commandResponses?.[commandResponseIndex++] ??
+            handlerResponse ??
+            {};
+          responseVersion = configured.version ?? message.expected_version + 1;
+          responseView = configured.view ?? responseView;
+          const response = {
+            type: "command_response",
+            request_id: message.request_id,
+            accepted: configured.accepted ?? true,
+            version: responseVersion,
+            events: configured.events ?? [],
+            view: responseView,
+            error: configured.error ?? null,
+          };
+          this.emit("message", { data: JSON.stringify(response) });
+          if (response.accepted) {
+            this.emit("message", {
+              data: JSON.stringify({
+                type: "farm_snapshot",
+                version: response.version,
+                view: response.view,
+              }),
+            });
+          }
+          return;
+        }
+        if (message.type === "reset_farm") {
+          const configured = mockOptions.resetResponse ?? {};
+          responseVersion = configured.version ?? 0;
+          responseView = configured.view ?? responseView;
+          const response = {
+            type: "command_response",
+            request_id: message.request_id,
+            accepted: true,
+            version: responseVersion,
+            events: [],
+            view: responseView,
+            error: null,
+          };
+          this.emit("message", { data: JSON.stringify(response) });
+          this.emit("message", {
+            data: JSON.stringify({
+              type: "farm_snapshot",
+              version: response.version,
+              view: response.view,
+            }),
+          });
+        }
+      }
+
       closeFromServer() {
         if (this.readyState === MockGameplayWebSocket.CLOSED) {
           return;
@@ -1929,7 +2124,22 @@ async function installMockGameplayWebSocket(
       mockWindow.__gameplayWebSocketInstances.at(-1)?.closeFromServer();
     };
     mockWindow.WebSocket = MockGameplayWebSocket;
-  }, { bootstraps });
+  }, { bootstraps, options });
+}
+
+async function rejectRestGameplay(page: Page) {
+  await page.route("**/api/catalog", async (route) => {
+    throw new Error(`Unexpected REST catalog call: ${route.request().url()}`);
+  });
+  await page.route("**/api/farm", async (route) => {
+    throw new Error(`Unexpected REST farm call: ${route.request().url()}`);
+  });
+  await page.route("**/api/farm/reset", async (route) => {
+    throw new Error(`Unexpected REST reset call: ${route.request().url()}`);
+  });
+  await page.route("**/api/commands", async (route) => {
+    throw new Error(`Unexpected REST command call: ${route.request().url()}`);
+  });
 }
 
 async function openFarm(page: Page) {
