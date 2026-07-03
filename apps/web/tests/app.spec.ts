@@ -1282,6 +1282,24 @@ test("enters the Farmhouse interior, switches rooms, and returns to the farm sce
   await expect(page.getByLabel("Farmhouse structure")).toBeVisible();
 });
 
+test("frames the House Interior scene and controls on desktop and mobile", async ({ page }) => {
+  await mockFarmApi(page, { ...farmView, level: 5 });
+  await openFarm(page);
+
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+
+  await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
+  await expectCanvasToRenderNonBlank(page);
+  await expect(page.getByTestId("house-room-living_room")).toBeVisible();
+  await expectElementFramed(page, page.getByTestId("house-room-living_room"));
+  await expectElementFramed(page, page.locator(".house-room-tiles"));
+  await expectHouseInteriorControlsFramedWithoutOverlap(page);
+  await expectReadableButtons(page.getByRole("navigation", { name: "Rooms" }).getByRole("button"));
+  await expectReadableButtons(page.getByRole("navigation", { name: "Decorations" }).getByRole("button"));
+  await expect(page.getByTestId("farm-scene-resident-woman")).toHaveCount(0);
+  await expect(page.getByTestId("farm-scene-resident-man")).toHaveCount(0);
+});
+
 test("house interior decoration controls are locked before Farm level 5", async ({ page }) => {
   await mockFarmApi(page, { ...farmView, level: 4 });
   await openFarm(page);
@@ -3396,6 +3414,56 @@ async function expectElementFramed(page: Page, target: Locator) {
   expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
 }
 
+async function expectHouseInteriorControlsFramedWithoutOverlap(page: Page) {
+  const controls = [
+    { name: "title", locator: page.locator(".house-interior__title") },
+    { name: "back", locator: page.locator(".house-interior__back") },
+    { name: "rooms", locator: page.getByRole("navigation", { name: "Rooms" }) },
+    { name: "decoration status", locator: page.getByTestId("decoration-placement-status") },
+    { name: "decorations", locator: page.getByRole("navigation", { name: "Decorations" }) },
+  ];
+
+  const boxes: Array<{ name: string; box: SearchBox }> = [];
+  for (const control of controls) {
+    await expectElementFramed(page, control.locator);
+    const box = await control.locator.boundingBox();
+    if (!box) {
+      throw new Error("House Interior control has no bounding box");
+    }
+    boxes.push({ name: control.name, box });
+  }
+
+  for (let leftIndex = 0; leftIndex < boxes.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < boxes.length; rightIndex += 1) {
+      expect(
+        boxesOverlap(boxes[leftIndex].box, boxes[rightIndex].box),
+        `${boxes[leftIndex].name} overlaps ${boxes[rightIndex].name}`,
+      ).toBe(false);
+    }
+  }
+}
+
+async function expectReadableButtons(buttons: Locator) {
+  const count = await buttons.count();
+  for (let index = 0; index < count; index += 1) {
+    const button = buttons.nth(index);
+    await expect(button).toBeVisible();
+    const metrics = await button.evaluate((element) => {
+      if (!(element instanceof HTMLElement)) {
+        throw new Error("Expected button element");
+      }
+      return {
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
+      };
+    });
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+    expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1);
+  }
+}
+
 async function elementCenter(target: Locator) {
   const box = await target.boundingBox();
   if (!box) {
@@ -3443,6 +3511,15 @@ async function visibleAppChromeBoxes(page: Page): Promise<SearchBox[]> {
 function isPointInBoxes(boxes: SearchBox[], x: number, y: number) {
   return boxes.some(
     (box) => x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height,
+  );
+}
+
+function boxesOverlap(left: SearchBox, right: SearchBox) {
+  return !(
+    left.x + left.width <= right.x ||
+    right.x + right.width <= left.x ||
+    left.y + left.height <= right.y ||
+    right.y + right.height <= left.y
   );
 }
 

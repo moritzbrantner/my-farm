@@ -1918,6 +1918,24 @@ h2 {
     padding: 8px;
   }
 
+  .decoration-dock {
+    left: 8px;
+    right: 8px;
+    bottom: 86px;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .decoration-dock__status {
+    min-height: 48px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .decoration-tray {
+    padding: 8px;
+  }
+
   .structure-build-card {
     width: 154px;
     min-width: 154px;
