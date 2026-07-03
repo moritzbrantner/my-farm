@@ -24,9 +24,13 @@ type Props = {
   view: FarmView;
   selectedRoom: HouseRoomId;
   selectedDecorationId: string | null;
+  selectedPlacementId: string | null;
   onSelectRoom: (room: HouseRoomId) => void;
   onSelectDecoration: (decorationId: string) => void;
+  onSelectPlacement: (roomId: string, placementId: string) => void;
   onPlaceDecoration: (roomId: string, decorationId: string, tile: RoomTile) => void;
+  onMoveDecoration: (roomId: string, placementId: string, tile: RoomTile) => void;
+  onRemoveDecoration: (roomId: string, placementId: string) => void;
   onBackToFarm: () => void;
 };
 
@@ -73,9 +77,13 @@ export function HouseInteriorScene({
   view,
   selectedRoom,
   selectedDecorationId,
+  selectedPlacementId,
   onSelectRoom,
   onSelectDecoration,
+  onSelectPlacement,
   onPlaceDecoration,
+  onMoveDecoration,
+  onRemoveDecoration,
   onBackToFarm,
 }: Props) {
   const [hoverTile, setHoverTile] = useState<RoomTile | null>(null);
@@ -87,12 +95,22 @@ export function HouseInteriorScene({
   const selectedDecoration = selectedDecorationId
     ? catalog.decorations.find((entry) => entry.id === selectedDecorationId) ?? null
     : null;
+  const selectedPlacement =
+    selectedPlacementId !== null
+      ? room.decoration_placements.find((entry) => entry.id === selectedPlacementId) ?? null
+      : null;
+  const selectedPlacementDecoration = selectedPlacement
+    ? catalog.decorations.find((entry) => entry.id === selectedPlacement.decoration_id) ?? null
+    : null;
+  const activeDecoration = selectedDecoration ?? selectedPlacementDecoration;
   const preview =
-    canEditDecorations && selectedDecoration && hoverTile
+    canEditDecorations && activeDecoration && hoverTile
       ? {
           tile: hoverTile,
-          decoration: selectedDecoration,
-          status: decorationPlacementStatus(catalog, room, selectedDecoration.id, hoverTile),
+          decoration: activeDecoration,
+          status: decorationPlacementStatus(catalog, room, activeDecoration.id, hoverTile, {
+            ignorePlacementId: selectedPlacement?.id,
+          }),
         }
       : null;
 
@@ -114,11 +132,15 @@ export function HouseInteriorScene({
         <RoomSet catalog={catalog} room={room} roomStyle={roomStyle} preview={preview} />
       </Canvas>
       <RoomTileGrid
+        catalog={catalog}
         room={room}
-        selectedDecoration={selectedDecoration}
+        selectedDecoration={activeDecoration}
+        selectedPlacementId={selectedPlacement?.id ?? null}
         canEditDecorations={canEditDecorations}
         onHoverTile={setHoverTile}
+        onSelectPlacement={onSelectPlacement}
         onPlaceDecoration={onPlaceDecoration}
+        onMoveDecoration={onMoveDecoration}
       />
       <div className="house-interior__hud">
         <div className="house-interior__title">
@@ -145,8 +167,15 @@ export function HouseInteriorScene({
         catalog={catalog}
         preview={preview}
         selectedDecorationId={selectedDecorationId}
+        selectedPlacement={selectedPlacement}
+        selectedPlacementDecoration={selectedPlacementDecoration}
         canEditDecorations={canEditDecorations}
         onSelectDecoration={onSelectDecoration}
+        onRemoveDecoration={() => {
+          if (selectedPlacement) {
+            onRemoveDecoration(room.id, selectedPlacement.id);
+          }
+        }}
       />
     </section>
   );
@@ -278,17 +307,25 @@ function DecorationObject({
 }
 
 function RoomTileGrid({
+  catalog,
   room,
   selectedDecoration,
+  selectedPlacementId,
   canEditDecorations,
   onHoverTile,
+  onSelectPlacement,
   onPlaceDecoration,
+  onMoveDecoration,
 }: {
+  catalog: CatalogDocument;
   room: HouseInteriorRoom;
   selectedDecoration: DecorationDefinition | null;
+  selectedPlacementId: string | null;
   canEditDecorations: boolean;
   onHoverTile: (tile: RoomTile | null) => void;
+  onSelectPlacement: (roomId: string, placementId: string) => void;
   onPlaceDecoration: (roomId: string, decorationId: string, tile: RoomTile) => void;
+  onMoveDecoration: (roomId: string, placementId: string, tile: RoomTile) => void;
 }) {
   const tiles = useMemo(
     () =>
@@ -321,12 +358,53 @@ function RoomTileGrid({
           onPointerLeave={() => onHoverTile(null)}
           onBlur={() => onHoverTile(null)}
           onClick={() => {
+            if (selectedPlacementId) {
+              onMoveDecoration(room.id, selectedPlacementId, tile);
+              return;
+            }
             if (selectedDecoration) {
               onPlaceDecoration(room.id, selectedDecoration.id, tile);
             }
           }}
         />
       ))}
+      {room.decoration_placements.map((placement) => {
+        const decoration = catalog.decorations.find((entry) => entry.id === placement.decoration_id);
+        if (!decoration) {
+          return null;
+        }
+        return (
+          <button
+            key={placement.id}
+            type="button"
+            className={
+              placement.id === selectedPlacementId
+                ? "house-room-placement house-room-placement--selected"
+                : "house-room-placement"
+            }
+            style={{
+              gridColumn: `${placement.tile.x + 1} / span ${decoration.footprint.width}`,
+              gridRow: `${placement.tile.y + 1} / span ${decoration.footprint.height}`,
+            }}
+            aria-label={`${decoration.name} placement at Room Tile ${placement.tile.x},${placement.tile.y}`}
+            aria-pressed={placement.id === selectedPlacementId}
+            disabled={!canEditDecorations}
+            onPointerEnter={() => onHoverTile(placement.tile)}
+            onFocus={() => onHoverTile(placement.tile)}
+            onPointerLeave={() => onHoverTile(null)}
+            onBlur={() => onHoverTile(null)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onHoverTile(null);
+              if (selectedPlacementId && selectedPlacementId !== placement.id) {
+                onMoveDecoration(room.id, selectedPlacementId, placement.tile);
+                return;
+              }
+              onSelectPlacement(room.id, placement.id);
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -335,20 +413,36 @@ function DecorationCatalogTray({
   catalog,
   preview,
   selectedDecorationId,
+  selectedPlacement,
+  selectedPlacementDecoration,
   canEditDecorations,
   onSelectDecoration,
+  onRemoveDecoration,
 }: {
   catalog: CatalogDocument;
   preview: { tile: RoomTile; status: ReturnType<typeof decorationPlacementStatus> } | null;
   selectedDecorationId: string | null;
+  selectedPlacement: HouseInteriorRoom["decoration_placements"][number] | null;
+  selectedPlacementDecoration: DecorationDefinition | null;
   canEditDecorations: boolean;
   onSelectDecoration: (decorationId: string) => void;
+  onRemoveDecoration: () => void;
 }) {
-  const statusText = placementStatusText(canEditDecorations, preview);
+  const statusText = placementStatusText(
+    canEditDecorations,
+    preview,
+    selectedPlacement,
+    selectedPlacementDecoration,
+  );
   return (
     <section className="decoration-dock" aria-label="Decoration catalog">
       <div className="decoration-dock__status" data-testid="decoration-placement-status">
         {statusText}
+        {selectedPlacement && selectedPlacementDecoration ? (
+          <button type="button" className="decoration-dock__remove" onClick={onRemoveDecoration}>
+            Remove {selectedPlacementDecoration.name}
+          </button>
+        ) : null}
       </div>
       <nav className="decoration-tray" aria-label="Decorations">
         {catalog.decorations.map((decoration) => (
@@ -379,11 +473,16 @@ function DecorationCatalogTray({
 function placementStatusText(
   canEditDecorations: boolean,
   preview: { tile: RoomTile; status: ReturnType<typeof decorationPlacementStatus> } | null,
+  selectedPlacement: HouseInteriorRoom["decoration_placements"][number] | null,
+  selectedPlacementDecoration: DecorationDefinition | null,
 ) {
   if (!canEditDecorations) {
     return "Decoration placement unlocks at Farm level 5";
   }
   if (!preview) {
+    if (selectedPlacement && selectedPlacementDecoration) {
+      return `Selected ${selectedPlacementDecoration.name} at Room Tile ${selectedPlacement.tile.x},${selectedPlacement.tile.y}. Choose a Room Tile to move it.`;
+    }
     return "Choose a Decoration, then choose a Room Tile";
   }
   if (preview.status.fits) {

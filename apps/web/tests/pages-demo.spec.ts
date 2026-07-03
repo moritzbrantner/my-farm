@@ -46,6 +46,30 @@ test("pages demo places a House Interior Decoration through the WASM runtime", a
   await expect.poll(() => livingRoomPlacementCount(page)).toBe(4);
 });
 
+test("pages demo persists moved and removed House Interior Decorations", async ({ page }) => {
+  await page.goto("/");
+  await seedLevelFiveSave(page);
+  await page.reload();
+  await page.getByRole("button", { name: "Start Farm" }).click();
+
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await page.getByLabel("Sofa placement at Room Tile 1,1").click();
+  await page.getByLabel("Room Tile 5,0").click();
+  await expect.poll(() => livingRoomPlacementTile(page, "living-room-sofa")).toEqual({ x: 5, y: 0 });
+
+  await page.getByRole("navigation", { name: "Decorations" }).getByRole("button", { name: /Chair/ }).click();
+  await page.getByLabel("Rug placement at Room Tile 2,3").click();
+  await page.getByRole("button", { name: "Remove Rug" }).click();
+  await expect.poll(() => livingRoomPlacementTile(page, "living-room-rug")).toBeNull();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Start Farm" }).click();
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+
+  await expect(page.getByLabel("Sofa placement at Room Tile 5,0")).toBeVisible();
+  await expect(page.getByLabel("Rug placement at Room Tile 2,3")).toHaveCount(0);
+});
+
 test("pages demo persists a Farmhouse Oven production save in localStorage", async ({ page }) => {
   await page.goto("/");
   await seedBreadSave(page);
@@ -155,6 +179,33 @@ async function livingRoomPlacementCount(page: Page) {
         ?.decoration_placements.length ?? 0
     );
   }, demoSaveKey);
+}
+
+async function livingRoomPlacementTile(page: Page, placementId: string) {
+  return page.evaluate(
+    ({ key, placementId }) => {
+      const rawSave = window.localStorage.getItem(key);
+      if (!rawSave) {
+        return null;
+      }
+      const save = JSON.parse(rawSave) as {
+        farm?: {
+          house_interior?: {
+            rooms?: Array<{
+              id: string;
+              decoration_placements: Array<{ id: string; tile: { x: number; y: number } }>;
+            }>;
+          };
+        };
+      };
+      return (
+        save.farm?.house_interior?.rooms
+          ?.find((room) => room.id === "living_room")
+          ?.decoration_placements.find((placement) => placement.id === placementId)?.tile ?? null
+      );
+    },
+    { key: demoSaveKey, placementId },
+  );
 }
 
 async function seedLevelFiveSave(page: Page) {

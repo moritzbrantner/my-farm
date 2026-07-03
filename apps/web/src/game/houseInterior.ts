@@ -13,6 +13,7 @@ export function decorationPlacementStatus(
   room: HouseInteriorRoom,
   decorationId: string,
   tile: RoomTile,
+  options: { ignorePlacementId?: string | null } = {},
 ): DecorationPlacementStatus {
   const decoration = catalog.decorations.find((entry) => entry.id === decorationId);
   if (!decoration) {
@@ -25,6 +26,9 @@ export function decorationPlacementStatus(
   }
 
   for (const placement of room.decoration_placements) {
+    if (placement.id === options.ignorePlacementId) {
+      continue;
+    }
     const other = catalog.decorations.find((entry) => entry.id === placement.decoration_id);
     if (!other) {
       continue;
