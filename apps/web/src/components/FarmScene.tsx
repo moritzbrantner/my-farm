@@ -27,6 +27,7 @@ import {
 } from "./farmScene/framing";
 import {
   machineProductionStatus,
+  ovenProductionStatus,
   productionStatusLabel,
   shelterProductionStatus,
   type StructureProductionStatus,
@@ -151,6 +152,9 @@ export function FarmScene({
           />
         ))}
         <StaticFarmHouse
+          catalog={catalog}
+          view={view}
+          nowMs={nowMs}
           selected={selection?.type === "farmhouse"}
           buildPlacement={buildPlacement}
           movingStructure={movingStructure}
@@ -317,6 +321,9 @@ function FarmResidents({ view, nowMs }: { view: FarmView; nowMs: number }) {
 }
 
 function StaticFarmHouse({
+  catalog,
+  view,
+  nowMs,
   selected,
   buildPlacement,
   movingStructure,
@@ -325,6 +332,9 @@ function StaticFarmHouse({
   onPlaceNewStructure,
   onPlaceStructure,
 }: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  nowMs: number;
   selected: boolean;
   buildPlacement: BuildPlacementState;
   movingStructure: StructureSelection | null;
@@ -334,6 +344,9 @@ function StaticFarmHouse({
   onPlaceStructure: (tile: Tile) => void;
 }) {
   const center = footprintCenter(FARM_HOUSE_TILE, FARM_HOUSE_FOOTPRINT);
+  const productionStatus = ovenProductionStatus(catalog, view, nowMs);
+  const statusLabel = productionStatusLabel("Farmhouse Oven", catalog, productionStatus);
+  const statusTestId = statusLabel ? `structure-status-${statusId("Farmhouse Oven")}` : null;
   const clearFixedInteraction = (event: React.MouseEvent<HTMLButtonElement> | React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -387,6 +400,14 @@ function StaticFarmHouse({
           onPointerDown={clearFixedInteraction}
         />
       </Html>
+      {statusLabel && statusTestId ? (
+        <StructureStatusCue
+          position={[0, 1.32, 0]}
+          status={productionStatus}
+          statusLabel={statusLabel}
+          statusTestId={statusTestId}
+        />
+      ) : null}
     </group>
   );
 }
@@ -1425,33 +1446,54 @@ function StructureSprite({
         />
       </Html>
       {productionStatusLabel && statusTestId ? (
-        <Html
+        <StructureStatusCue
           position={[tileToWorld(center.x), 1.08, tileToWorld(center.y)]}
-          center
-          zIndexRange={[95, 0]}
-          wrapperClass="structure-status-wrapper"
-        >
-          <div
-            className={`structure-status structure-status--${productionStatus.type}`}
-            data-testid={statusTestId}
-            role="img"
-            aria-label={productionStatusLabel}
-          >
-            <span className="structure-status__dot" />
-            {productionStatus.type === "producing" ? (
-              <span
-                className="structure-status__progress"
-                data-testid={`${statusTestId}-progress`}
-                style={{ "--progress": productionStatus.progress } as CSSProperties}
-              />
-            ) : null}
-            {productionStatus.type === "ready" && productionStatus.blockedByStorage ? (
-              <span className="structure-status__warning" data-testid={`${statusTestId}-blocked`} />
-            ) : null}
-          </div>
-        </Html>
+          status={productionStatus}
+          statusLabel={productionStatusLabel}
+          statusTestId={statusTestId}
+        />
       ) : null}
     </>
+  );
+}
+
+function StructureStatusCue({
+  position,
+  status,
+  statusLabel,
+  statusTestId,
+}: {
+  position: [number, number, number];
+  status: StructureProductionStatus;
+  statusLabel: string;
+  statusTestId: string;
+}) {
+  return (
+    <Html
+      position={position}
+      center
+      zIndexRange={[95, 0]}
+      wrapperClass="structure-status-wrapper"
+    >
+      <div
+        className={`structure-status structure-status--${status.type}`}
+        data-testid={statusTestId}
+        role="img"
+        aria-label={statusLabel}
+      >
+        <span className="structure-status__dot" />
+        {status.type === "producing" ? (
+          <span
+            className="structure-status__progress"
+            data-testid={`${statusTestId}-progress`}
+            style={{ "--progress": status.progress } as CSSProperties}
+          />
+        ) : null}
+        {status.type === "ready" && status.blockedByStorage ? (
+          <span className="structure-status__warning" data-testid={`${statusTestId}-blocked`} />
+        ) : null}
+      </div>
+    </Html>
   );
 }
 

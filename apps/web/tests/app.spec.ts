@@ -612,6 +612,55 @@ test("ready machines show product identity and storage warnings", async ({ page 
   ).toBeDisabled();
 });
 
+test("Farmhouse Oven status cue reflects producing ready and storage-full states", async ({ page }) => {
+  const now = Date.now();
+  const producingView = {
+    ...farmView,
+    owned_farmhouse_upgrades: ["oven"],
+    oven: {
+      id: "oven",
+      queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 5_000, ready_at_ms: now + 5_000 }],
+    },
+  } satisfies FarmView;
+  const readyView = {
+    ...producingView,
+    oven: {
+      id: "oven",
+      queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
+    },
+  } satisfies FarmView;
+  const blockedView = {
+    ...readyView,
+    barn_used: 30,
+    barn_capacity: 30,
+  } satisfies FarmView;
+  await installMockGameplayWebSocket(page, [{ version: 1, view: producingView, catalog }]);
+  await rejectRestGameplay(page);
+  await openFarm(page);
+
+  const status = page.getByTestId("structure-status-farmhouse-oven");
+  await expect(status).toBeVisible();
+  await expect(status).toHaveAttribute("aria-label", "Farmhouse Oven status: Producing Bread");
+  await expect(page.getByTestId("structure-status-farmhouse-oven-progress")).toBeVisible();
+  await expectElementFramed(page, status);
+
+  await page.evaluate((view) => {
+    (window as unknown as {
+      __pushLatestGameplayFarmSnapshot: (snapshot: { version: number; view: FarmView }) => void;
+    }).__pushLatestGameplayFarmSnapshot({ version: 2, view });
+  }, readyView);
+  await expect(status).toHaveAttribute("aria-label", "Farmhouse Oven status: Ready Bread");
+
+  await page.evaluate((view) => {
+    (window as unknown as {
+      __pushLatestGameplayFarmSnapshot: (snapshot: { version: number; view: FarmView }) => void;
+    }).__pushLatestGameplayFarmSnapshot({ version: 3, view });
+  }, blockedView);
+  await expect(status).toHaveAttribute("aria-label", "Farmhouse Oven status: Ready Bread, storage full");
+  await expect(page.getByTestId("structure-status-farmhouse-oven-blocked")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toHaveCount(0);
+});
+
 test("shelters show producing and ready animal product status", async ({ page }) => {
   const now = Date.now();
   await mockFarmApi(page, {
