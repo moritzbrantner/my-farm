@@ -176,6 +176,7 @@ export function App() {
   const versionRef = useRef(0);
   const plantSweepRef = useRef<PlantSweepState>(null);
   const harvestSweepRef = useRef<HarvestSweepState>(null);
+  const gameplayPaused = guidedTutorialStep !== null;
 
   useLayoutEffect(() => {
     versionRef.current = version;
@@ -217,6 +218,9 @@ export function App() {
   }, [load]);
 
   useEffect(() => {
+    if (gameplayPaused) {
+      return;
+    }
     const timer = window.setInterval(() => {
       setNowMs(Date.now());
       if (!demoMode) {
@@ -230,7 +234,7 @@ export function App() {
         .catch((error) => setMessage(error.message));
     }, 2500);
     return () => window.clearInterval(timer);
-  }, [applyFarmSnapshot]);
+  }, [applyFarmSnapshot, gameplayPaused]);
 
   useEffect(() => {
     if (demoMode || !client.connect) {
@@ -409,6 +413,9 @@ export function App() {
 
   const send = useCallback(
     async (command: FarmCommand): Promise<boolean> => {
+      if (gameplayPaused) {
+        return false;
+      }
       try {
         let response = await client.command({ expected_version: versionRef.current, command });
         if (!response.accepted && response.error?.startsWith("version mismatch")) {
@@ -423,7 +430,7 @@ export function App() {
         return false;
       }
     },
-    [applyFarmSnapshot],
+    [applyFarmSnapshot, gameplayPaused],
   );
 
   const reset = useCallback(async () => {
@@ -901,129 +908,131 @@ export function App() {
 
   return (
     <main className={`app ${appToolClass}`}>
-      <FarmScene
-        catalog={catalog}
-        view={view}
-        nowMs={nowMs}
-        selection={selection}
-        activeFieldTool={activeFieldTool}
-        buildPlacement={buildPlacement}
-        movingStructure={movingStructure}
-        plantSweep={plantSweep}
-        harvestSweep={harvestSweep}
-        onSelect={select}
-        onOpenFieldMenu={openFieldMenu}
-        onOpenStructureMenu={openStructureMenu}
-        onPlaceNewStructure={placeNewStructure}
-        onPlaceStructure={placeMovingStructure}
-        onStartPlantSweep={startPlantSweep}
-        onEnterPlantSweepPlot={enterPlantSweepPlot}
-        onStartHarvestSweep={startHarvestSweep}
-        onEnterHarvestSweepPlot={enterHarvestSweepPlot}
-        onCancelFieldToolAction={cancelFieldToolAction}
-      />
-      {screen === "playing" ? (
-        <>
-          <TopBar
+      <div className="gameplay-surface" {...(gameplayPaused ? { inert: "" } : {})}>
+        <FarmScene
+          catalog={catalog}
+          view={view}
+          nowMs={nowMs}
+          selection={selection}
+          activeFieldTool={activeFieldTool}
+          buildPlacement={buildPlacement}
+          movingStructure={movingStructure}
+          plantSweep={plantSweep}
+          harvestSweep={harvestSweep}
+          onSelect={select}
+          onOpenFieldMenu={openFieldMenu}
+          onOpenStructureMenu={openStructureMenu}
+          onPlaceNewStructure={placeNewStructure}
+          onPlaceStructure={placeMovingStructure}
+          onStartPlantSweep={startPlantSweep}
+          onEnterPlantSweepPlot={enterPlantSweepPlot}
+          onStartHarvestSweep={startHarvestSweep}
+          onEnterHarvestSweepPlot={enterHarvestSweepPlot}
+          onCancelFieldToolAction={cancelFieldToolAction}
+        />
+        {screen === "playing" ? (
+          <>
+            <TopBar
+              view={view}
+              message={message}
+              connectionStatus={connectionStatus}
+              onOpenMenu={openMainMenu}
+            />
+            <aside className="side-panel">
+              <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
+              <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
+              {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
+              <FieldTools
+                catalog={catalog}
+                view={view}
+                activeFieldTool={activeFieldTool}
+                buildToolSelected={buildToolSelected}
+                harvestMode={harvestMode}
+                plantSweep={plantSweep}
+                onDefault={selectDefaultFieldTool}
+                onPlant={selectPlantFieldTool}
+                onHarvest={selectHarvestFieldTool}
+                onHarvestMode={selectHarvestMode}
+                onBuild={selectBuildTool}
+              />
+              <SelectionPanel
+                catalog={catalog}
+                view={view}
+                selection={selection}
+                nowMs={nowMs}
+                send={send}
+                demoMode={demoMode}
+              />
+              {!demoMode && selection?.type === "delivery_board" ? (
+                <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
+              ) : null}
+            </aside>
+            {!demoMode && marketOpen ? (
+              <FarmersMarket
+                catalog={catalog}
+                view={view}
+                send={send}
+                onClose={() => setMarketOpen(false)}
+              />
+            ) : null}
+            {buildToolSelected ? (
+              <BuildTray
+                catalog={catalog}
+                view={view}
+                selectedKind={selectedBuildKind}
+                buildPlacement={buildPlacement}
+                demoMode={demoMode}
+                onInspectKind={inspectBuildKind}
+                onSelectKind={selectBuildKind}
+              />
+            ) : null}
+          </>
+        ) : (
+          <MainMenu
             view={view}
             message={message}
-            connectionStatus={connectionStatus}
-            onOpenMenu={openMainMenu}
+            demoMode={demoMode}
+            onContinue={() => setScreen("playing")}
+            onNewFarm={startNewFarm}
           />
-          <aside className="side-panel">
-            <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
-            <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
-            {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
-            <FieldTools
-              catalog={catalog}
-              view={view}
-              activeFieldTool={activeFieldTool}
-              buildToolSelected={buildToolSelected}
-              harvestMode={harvestMode}
-              plantSweep={plantSweep}
-              onDefault={selectDefaultFieldTool}
-              onPlant={selectPlantFieldTool}
-              onHarvest={selectHarvestFieldTool}
-              onHarvestMode={selectHarvestMode}
-              onBuild={selectBuildTool}
-            />
-            <SelectionPanel
-              catalog={catalog}
-              view={view}
-              selection={selection}
-              nowMs={nowMs}
-              send={send}
-              demoMode={demoMode}
-            />
-            {!demoMode && selection?.type === "delivery_board" ? (
-              <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
-            ) : null}
-          </aside>
-          {!demoMode && marketOpen ? (
-            <FarmersMarket
-              catalog={catalog}
-              view={view}
-              send={send}
-              onClose={() => setMarketOpen(false)}
-            />
-          ) : null}
-          {buildToolSelected ? (
-            <BuildTray
-              catalog={catalog}
-              view={view}
-              selectedKind={selectedBuildKind}
-              buildPlacement={buildPlacement}
-              demoMode={demoMode}
-              onInspectKind={inspectBuildKind}
-              onSelectKind={selectBuildKind}
-            />
-          ) : null}
-          {guidedTutorialStep !== null ? (
-            <GuidedTutorial
-              step={guidedTutorialStep}
-              onGotIt={() => {
-                setGuidedTutorialStep((currentStep) => {
-                  if (currentStep === null || currentStep >= guidedTutorialCards.length - 1) {
-                    return null;
-                  }
-                  return currentStep + 1;
-                });
-              }}
-            />
-          ) : null}
-        </>
-      ) : (
-        <MainMenu
-          view={view}
-          message={message}
-          demoMode={demoMode}
-          onContinue={() => setScreen("playing")}
-          onNewFarm={startNewFarm}
-        />
-      )}
-      {screen === "playing" && menuPoint && menuModel ? (
-        <StructureContextMenu
-          targetType={structureMenu ? "structure" : "field"}
-          model={menuModel}
-          x={menuPoint.x}
-          y={menuPoint.y}
-          onClose={() => {
-            setFieldMenu(null);
-            setStructureMenu(null);
-          }}
-          onCommand={async (command) => {
-            const accepted = await send(command);
-            if (accepted) {
+        )}
+        {screen === "playing" && menuPoint && menuModel ? (
+          <StructureContextMenu
+            targetType={structureMenu ? "structure" : "field"}
+            model={menuModel}
+            x={menuPoint.x}
+            y={menuPoint.y}
+            onClose={() => {
               setFieldMenu(null);
               setStructureMenu(null);
-            }
+            }}
+            onCommand={async (command) => {
+              const accepted = await send(command);
+              if (accepted) {
+                setFieldMenu(null);
+                setStructureMenu(null);
+              }
+            }}
+            onStartMove={() => {
+              if (structureMenu) {
+                startMovingStructure(structureMenu.target);
+              }
+            }}
+            onViewOrders={viewDeliveryOrders}
+          />
+        ) : null}
+      </div>
+      {guidedTutorialStep !== null ? (
+        <GuidedTutorial
+          step={guidedTutorialStep}
+          onGotIt={() => {
+            setGuidedTutorialStep((currentStep) => {
+              if (currentStep === null || currentStep >= guidedTutorialCards.length - 1) {
+                return null;
+              }
+              return currentStep + 1;
+            });
           }}
-          onStartMove={() => {
-            if (structureMenu) {
-              startMovingStructure(structureMenu.target);
-            }
-          }}
-          onViewOrders={viewDeliveryOrders}
         />
       ) : null}
     </main>

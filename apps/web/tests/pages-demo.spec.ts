@@ -49,6 +49,59 @@ test("pages demo persists a bakery production save in localStorage", async ({ pa
   );
 });
 
+test("pages demo suspends refresh polling while the guided tutorial is open", async ({ page }) => {
+  await countDemoFarmRefreshes(page);
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Main menu" })).toBeVisible();
+
+  await page.getByRole("button", { name: "New Farm" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
+  await expect(dialog).toBeVisible();
+  const initialRefreshes = await demoFarmRefreshCount(page);
+  await page.waitForTimeout(2800);
+  expect(await demoFarmRefreshCount(page)).toBe(initialRefreshes);
+
+  await closeGuidedTutorial(page);
+  await expect.poll(() => demoFarmRefreshCount(page), { timeout: 3_500 }).toBeGreaterThan(initialRefreshes);
+});
+
+async function countDemoFarmRefreshes(page: Page) {
+  await page.addInitScript(async () => {
+    type WasmRuntime = {
+      farm_json(nowMs: number): string;
+    };
+    type WasmModule = {
+      default(): Promise<unknown>;
+      DemoFarmRuntime: new (savedJson: string | undefined, nowMs: number) => WasmRuntime;
+    };
+    type DemoRefreshWindow = Window & {
+      __demoFarmRefreshes: number;
+    };
+
+    const wasm = (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
+    await wasm.default();
+    const originalFarmJson = wasm.DemoFarmRuntime.prototype.farm_json;
+    (window as unknown as DemoRefreshWindow).__demoFarmRefreshes = 0;
+    wasm.DemoFarmRuntime.prototype.farm_json = function farmJsonWithCount(this: WasmRuntime, nowMs: number) {
+      (window as unknown as DemoRefreshWindow).__demoFarmRefreshes += 1;
+      return originalFarmJson.call(this, nowMs);
+    };
+  });
+}
+
+async function demoFarmRefreshCount(page: Page) {
+  return page.evaluate(() => (window as unknown as { __demoFarmRefreshes: number }).__demoFarmRefreshes);
+}
+
+async function closeGuidedTutorial(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
+  for (let step = 0; step < 5; step += 1) {
+    await dialog.getByRole("button", { name: "Got it" }).click();
+  }
+  await expect(dialog).toHaveCount(0);
+}
+
 async function seedBreadSave(page: Page) {
   await page.evaluate(async (key) => {
     type WasmRuntime = {

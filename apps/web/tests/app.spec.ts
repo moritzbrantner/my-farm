@@ -444,13 +444,99 @@ test("reset clears transient gameplay UI before showing the guided tutorial", as
   await page.getByRole("button", { name: "Open Farmers Market" }).click();
   await expect(page.getByRole("region", { name: "Farmers Market" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Reset" }).click({ force: true });
+  await page.getByRole("button", { name: "Reset" }).evaluate((button) => {
+    if (button instanceof HTMLButtonElement) {
+      button.click();
+    }
+  });
 
   const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
   await expect(dialog).toBeVisible();
   await expect(page.getByRole("region", { name: "Farmers Market" })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Structures" })).toBeHidden();
   await expect(page.getByText("Place Field Plot")).toHaveCount(0);
+});
+
+test("guided tutorial blocks gameplay commands until it closes", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, farmView, catalog, (request) => {
+    commands.push(request);
+  });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "New Farm" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
+  await expect(dialog).toBeVisible();
+  const plot = page.getByLabel("Field Plot plot-1");
+  const selectionPanel = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+  await plot.click({ force: true });
+  await expect(selectionPanel.getByRole("button", { name: "Plant Wheat" })).toHaveCount(0);
+
+  await plot.click({ force: true });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  expect(commands).toHaveLength(0);
+
+  await closeGuidedTutorial(page);
+  await plot.click({ force: true });
+  await expect(selectionPanel.getByRole("button", { name: "Plant Wheat" })).toBeVisible();
+  await selectSeedTool(page, "Wheat");
+  await plot.click({ force: true });
+  await page.mouse.up();
+  await expect.poll(() => commands.at(-1)?.command).toMatchObject({
+    type: "sweep_plant",
+    crop_id: "wheat",
+  });
+});
+
+test("guided tutorial pauses the client clock until gameplay resumes", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop field selection is covered here.");
+  const openedAt = Date.now();
+  await mockFarmApi(page, {
+    ...farmView,
+    machines: [
+      {
+        id: "machine-1",
+        kind: "bakery",
+        tile: { x: 8, y: 2 },
+        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: openedAt - 5_000, ready_at_ms: openedAt + 20_000 }],
+      },
+      farmView.machines[1],
+    ],
+  });
+  await openFarm(page);
+  const progress = page.getByTestId("structure-status-bakery-progress");
+  await expect(progress).toBeVisible();
+  const initialProgress = await progress.evaluate((element) =>
+    element instanceof HTMLElement ? element.style.getPropertyValue("--progress") : "",
+  );
+
+  await page.getByRole("button", { name: "Reset" }).click();
+  const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
+  await expect(dialog).toBeVisible();
+
+  await page.waitForTimeout(2800);
+  await expect
+    .poll(() =>
+      progress.evaluate((element) =>
+        element instanceof HTMLElement ? element.style.getPropertyValue("--progress") : "",
+      ),
+    )
+    .toBe(initialProgress);
+
+  await closeGuidedTutorial(page);
+  await expect
+    .poll(
+      () =>
+        progress.evaluate((element) =>
+          element instanceof HTMLElement ? element.style.getPropertyValue("--progress") : "",
+        ),
+      { timeout: 3_500 },
+    )
+    .not.toBe(initialProgress);
 });
 
 test("barn and silo are preplaced storage structures", async ({ page }) => {
@@ -2272,6 +2358,14 @@ async function openFarm(page: Page) {
 
 async function startFarm(page: Page) {
   await page.getByRole("button", { name: "Start Farm" }).click();
+}
+
+async function closeGuidedTutorial(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
+  for (let step = 0; step < 5; step += 1) {
+    await dialog.getByRole("button", { name: "Got it" }).click();
+  }
+  await expect(dialog).toHaveCount(0);
 }
 
 async function openBuildMenu(page: Page) {
