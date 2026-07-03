@@ -13,13 +13,13 @@ export type ItemDef = { id: string, name: string, kind: ItemKind, unlock_level: 
 
 export type CropDef = { item_id: string, reference_seconds: number, harvest_quantity: number, xp: number, unlock_level: number, };
 
-export type MachineKind = "bakery" | "feed_mill";
+export type MachineKind = "feed_mill";
 
 export type RecipeTarget = { "type": "oven" } | { "type": "machine", machine_kind: MachineKind, };
 
 export type ShelterKind = "chicken_coop" | "cow_pasture";
 
-export type StructureKind = "silo" | "barn" | "bakery" | "feed_mill" | "chicken_coop" | "cow_pasture" | "delivery_board";
+export type StructureKind = "silo" | "barn" | "feed_mill" | "chicken_coop" | "cow_pasture" | "delivery_board";
 
 export type FarmhouseUpgradeKind = "oven";
 

@@ -3,7 +3,7 @@ use crate::{
     ShelterKind,
 };
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
 
@@ -19,7 +19,7 @@ impl Tile {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct FarmState {
     #[ts(type = "number")]
     pub last_update_ms: i64,
@@ -58,6 +58,132 @@ pub struct FarmState {
     pub resident_task_queues: BTreeMap<String, Vec<ResidentTask>>,
     #[ts(type = "number")]
     pub next_id: u64,
+}
+
+impl<'de> Deserialize<'de> for FarmState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = FarmStateSerde::deserialize(deserializer)?;
+        Ok(raw.into_farm_state())
+    }
+}
+
+#[derive(Deserialize)]
+struct FarmStateSerde {
+    last_update_ms: i64,
+    xp: u32,
+    level: u32,
+    coins: u32,
+    silo_capacity: u32,
+    #[serde(default = "default_storage_upgrade_tier")]
+    silo_upgrade_tier: u32,
+    #[serde(default = "default_silo_tile")]
+    silo_tile: Tile,
+    barn_capacity: u32,
+    #[serde(default = "default_storage_upgrade_tier")]
+    barn_upgrade_tier: u32,
+    #[serde(default = "default_barn_tile")]
+    barn_tile: Tile,
+    inventory: BTreeMap<String, u32>,
+    #[serde(default = "default_claimed_crop_unlocks")]
+    claimed_crop_unlocks: Vec<String>,
+    field_plots: Vec<FieldPlot>,
+    #[serde(default)]
+    machines: Vec<LegacyMachineState>,
+    #[serde(default)]
+    owned_farmhouse_upgrades: Vec<FarmhouseUpgradeKind>,
+    #[serde(default)]
+    oven: Option<OvenState>,
+    shelters: Vec<AnimalShelterState>,
+    delivery_board_built: bool,
+    #[serde(default = "default_delivery_board_tile")]
+    delivery_board_tile: Tile,
+    delivery_orders: Vec<DeliveryOrder>,
+    #[serde(default = "default_residents")]
+    residents: Vec<FarmResident>,
+    #[serde(default = "default_selected_resident_id")]
+    selected_resident_id: String,
+    #[serde(default = "default_resident_task_queues")]
+    resident_task_queues: BTreeMap<String, Vec<ResidentTask>>,
+    next_id: u64,
+}
+
+impl FarmStateSerde {
+    fn into_farm_state(self) -> FarmState {
+        let forward_oven_present = self.oven.is_some();
+        let legacy_bakery = self
+            .machines
+            .iter()
+            .find(|machine| machine.kind == LegacyMachineKind::Bakery)
+            .cloned();
+        let mut farm = FarmState {
+            last_update_ms: self.last_update_ms,
+            xp: self.xp,
+            level: self.level,
+            coins: self.coins,
+            silo_capacity: self.silo_capacity,
+            silo_upgrade_tier: self.silo_upgrade_tier,
+            silo_tile: self.silo_tile,
+            barn_capacity: self.barn_capacity,
+            barn_upgrade_tier: self.barn_upgrade_tier,
+            barn_tile: self.barn_tile,
+            inventory: self.inventory,
+            claimed_crop_unlocks: self.claimed_crop_unlocks,
+            field_plots: self.field_plots,
+            machines: self
+                .machines
+                .into_iter()
+                .filter_map(LegacyMachineState::into_forward_machine)
+                .collect(),
+            owned_farmhouse_upgrades: self.owned_farmhouse_upgrades,
+            oven: self.oven.unwrap_or_else(default_oven_state),
+            shelters: self.shelters,
+            delivery_board_built: self.delivery_board_built,
+            delivery_board_tile: self.delivery_board_tile,
+            delivery_orders: self.delivery_orders,
+            residents: self.residents,
+            selected_resident_id: self.selected_resident_id,
+            resident_task_queues: self.resident_task_queues,
+            next_id: self.next_id,
+        };
+
+        if let Some(legacy_bakery) = legacy_bakery {
+            migrate_legacy_bakery(&mut farm, legacy_bakery, forward_oven_present);
+        }
+
+        farm
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct LegacyMachineState {
+    id: String,
+    kind: LegacyMachineKind,
+    tile: Tile,
+    queue: Vec<MachineJob>,
+}
+
+impl LegacyMachineState {
+    fn into_forward_machine(self) -> Option<MachineState> {
+        match self.kind {
+            LegacyMachineKind::Bakery => None,
+            LegacyMachineKind::FeedMill => Some(MachineState {
+                id: self.id,
+                kind: MachineKind::FeedMill,
+                tile: self.tile,
+                queue: self.queue,
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum LegacyMachineKind {
+    Bakery,
+    FeedMill,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -389,5 +515,46 @@ pub fn default_oven_state() -> OvenState {
     OvenState {
         id: "oven".to_owned(),
         queue: Vec::new(),
+    }
+}
+
+fn migrate_legacy_bakery(
+    farm: &mut FarmState,
+    legacy_bakery: LegacyMachineState,
+    forward_oven_present: bool,
+) {
+    if !farm
+        .owned_farmhouse_upgrades
+        .contains(&FarmhouseUpgradeKind::Oven)
+    {
+        farm.owned_farmhouse_upgrades
+            .push(FarmhouseUpgradeKind::Oven);
+    }
+
+    if !forward_oven_present {
+        farm.oven = OvenState {
+            id: legacy_bakery.id.clone(),
+            queue: legacy_bakery.queue,
+        };
+    }
+
+    for step in farm
+        .resident_task_queues
+        .values_mut()
+        .flat_map(|queue| queue.iter_mut())
+        .flat_map(|task| task.steps.iter_mut())
+    {
+        if matches!(
+            &step.reserved_work_target,
+            ReservedWorkTarget::Machine { machine_id } if machine_id == &legacy_bakery.id
+        ) {
+            step.reserved_work_target = ReservedWorkTarget::Oven;
+            if let ResidentTaskStepWork::CollectMachineJob { job_id, recipe_id } = &step.work {
+                step.work = ResidentTaskStepWork::CollectOvenJob {
+                    job_id: job_id.clone(),
+                    recipe_id: recipe_id.clone(),
+                };
+            }
+        }
     }
 }

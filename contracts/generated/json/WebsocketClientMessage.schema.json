@@ -531,7 +531,6 @@
       "enum": [
         "silo",
         "barn",
-        "bakery",
         "feed_mill",
         "chicken_coop",
         "cow_pasture",
