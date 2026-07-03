@@ -626,6 +626,46 @@
         {
           "type": "object",
           "required": [
+            "resident_id",
+            "type"
+          ],
+          "properties": {
+            "resident_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "resident_selected"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "display_name",
+            "resident_id",
+            "type"
+          ],
+          "properties": {
+            "display_name": {
+              "type": "string"
+            },
+            "resident_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "resident_renamed"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "coins_spent",
             "item_id",
             "quantity",
@@ -705,6 +745,21 @@
         }
       ]
     },
+    "FarmResident": {
+      "type": "object",
+      "required": [
+        "display_name",
+        "id"
+      ],
+      "properties": {
+        "display_name": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    },
     "FarmView": {
       "type": "object",
       "required": [
@@ -721,6 +776,9 @@
         "last_update_ms",
         "level",
         "machines",
+        "resident_task_queues",
+        "residents",
+        "selected_resident_id",
         "shelters",
         "silo_capacity",
         "silo_tile",
@@ -791,6 +849,24 @@
           "items": {
             "$ref": "#/definitions/MachineState"
           }
+        },
+        "resident_task_queues": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ResidentTask"
+            }
+          }
+        },
+        "residents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FarmResident"
+          }
+        },
+        "selected_resident_id": {
+          "type": "string"
         },
         "shelters": {
           "type": "array",
@@ -1123,6 +1199,93 @@
           "type": "integer",
           "format": "uint32",
           "minimum": 0.0
+        }
+      }
+    },
+    "ReservedWorkTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "plot_id",
+            "type"
+          ],
+          "properties": {
+            "plot_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "field_plot"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "machine_id",
+            "type"
+          ],
+          "properties": {
+            "machine_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "machine"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "animal_slot",
+            "shelter_id",
+            "type"
+          ],
+          "properties": {
+            "animal_slot": {
+              "type": "string"
+            },
+            "shelter_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "animal"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ResidentTask": {
+      "type": "object",
+      "required": [
+        "id",
+        "ready_at_ms",
+        "reserved_work_target",
+        "started_at_ms"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ready_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "reserved_work_target": {
+          "$ref": "#/definitions/ReservedWorkTarget"
+        },
+        "started_at_ms": {
+          "type": "integer",
+          "format": "int64"
         }
       }
     },

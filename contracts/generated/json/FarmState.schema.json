@@ -109,6 +109,39 @@
       "format": "uint64",
       "minimum": 0.0
     },
+    "resident_task_queues": {
+      "default": {
+        "man": [],
+        "woman": []
+      },
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/ResidentTask"
+        }
+      }
+    },
+    "residents": {
+      "default": [
+        {
+          "display_name": "Woman",
+          "id": "woman"
+        },
+        {
+          "display_name": "Man",
+          "id": "man"
+        }
+      ],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FarmResident"
+      }
+    },
+    "selected_resident_id": {
+      "default": "woman",
+      "type": "string"
+    },
     "shelters": {
       "type": "array",
       "items": {
@@ -271,6 +304,21 @@
         }
       }
     },
+    "FarmResident": {
+      "type": "object",
+      "required": [
+        "display_name",
+        "id"
+      ],
+      "properties": {
+        "display_name": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    },
     "FieldPlot": {
       "type": "object",
       "required": [
@@ -387,6 +435,93 @@
           "format": "int64"
         },
         "ready_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "ReservedWorkTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "plot_id",
+            "type"
+          ],
+          "properties": {
+            "plot_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "field_plot"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "machine_id",
+            "type"
+          ],
+          "properties": {
+            "machine_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "machine"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "animal_slot",
+            "shelter_id",
+            "type"
+          ],
+          "properties": {
+            "animal_slot": {
+              "type": "string"
+            },
+            "shelter_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "animal"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ResidentTask": {
+      "type": "object",
+      "required": [
+        "id",
+        "ready_at_ms",
+        "reserved_work_target",
+        "started_at_ms"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ready_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "reserved_work_target": {
+          "$ref": "#/definitions/ReservedWorkTarget"
+        },
+        "started_at_ms": {
           "type": "integer",
           "format": "int64"
         }

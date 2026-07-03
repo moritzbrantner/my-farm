@@ -267,6 +267,46 @@
     {
       "type": "object",
       "required": [
+        "resident_id",
+        "type"
+      ],
+      "properties": {
+        "resident_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "resident_selected"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "display_name",
+        "resident_id",
+        "type"
+      ],
+      "properties": {
+        "display_name": {
+          "type": "string"
+        },
+        "resident_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "resident_renamed"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "coins_spent",
         "item_id",
         "quantity",

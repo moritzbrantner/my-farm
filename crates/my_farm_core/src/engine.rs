@@ -83,6 +83,13 @@ pub enum FarmCommand {
         item_id: String,
         quantity: u32,
     },
+    SelectResident {
+        resident_id: String,
+    },
+    RenameResident {
+        resident_id: String,
+        display_name: String,
+    },
     BuyMarketItem {
         item_id: String,
         quantity: u32,
@@ -157,6 +164,13 @@ pub enum FarmEvent {
     InventoryDiscarded {
         item_id: String,
         quantity: u32,
+    },
+    ResidentSelected {
+        resident_id: String,
+    },
+    ResidentRenamed {
+        resident_id: String,
+        display_name: String,
     },
     MarketItemBought {
         item_id: String,
@@ -270,6 +284,11 @@ pub fn apply_command(
         FarmCommand::DiscardInventory { item_id, quantity } => {
             discard_inventory(farm, &item_id, quantity)
         }
+        FarmCommand::SelectResident { resident_id } => select_resident(farm, &resident_id),
+        FarmCommand::RenameResident {
+            resident_id,
+            display_name,
+        } => rename_resident(farm, &resident_id, &display_name),
         FarmCommand::BuyMarketItem { item_id, quantity } => {
             buy_market_item(farm, catalog, &item_id, quantity)
         }
@@ -894,6 +913,51 @@ fn discard_inventory(
         item_id: item_id.to_owned(),
         quantity,
     }])
+}
+
+fn select_resident(
+    farm: &mut FarmState,
+    resident_id: &str,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    find_resident_index(farm, resident_id)?;
+    farm.selected_resident_id = resident_id.to_owned();
+    Ok(vec![FarmEvent::ResidentSelected {
+        resident_id: resident_id.to_owned(),
+    }])
+}
+
+fn rename_resident(
+    farm: &mut FarmState,
+    resident_id: &str,
+    display_name: &str,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    let resident_index = find_resident_index(farm, resident_id)?;
+    let display_name = validated_resident_display_name(display_name)?;
+    farm.residents[resident_index].display_name = display_name.clone();
+    Ok(vec![FarmEvent::ResidentRenamed {
+        resident_id: resident_id.to_owned(),
+        display_name,
+    }])
+}
+
+fn find_resident_index(farm: &FarmState, resident_id: &str) -> Result<usize, CommandError> {
+    farm.residents
+        .iter()
+        .position(|resident| resident.id == resident_id)
+        .ok_or_else(|| CommandError::new("resident not found"))
+}
+
+fn validated_resident_display_name(display_name: &str) -> Result<String, CommandError> {
+    let trimmed = display_name.trim();
+    if trimmed.is_empty() {
+        return Err(CommandError::new("resident name cannot be empty"));
+    }
+    if trimmed.chars().count() > 20 {
+        return Err(CommandError::new(
+            "resident name cannot exceed 20 characters",
+        ));
+    }
+    Ok(trimmed.to_owned())
 }
 
 fn buy_market_item(
