@@ -17,8 +17,8 @@ A durable improvement bought for the Farmhouse rather than placed on the farm gr
 _Avoid_: Structure upgrade, house building
 
 **Oven**:
-The Farmhouse Upgrade that unlocks bread-family production from the Farmhouse kitchen. It keeps the old Bakery balance but is not a placed or movable Structure.
-_Avoid_: Bakery, kitchen building
+The Farmhouse Upgrade that unlocks bread-family production from the Farmhouse kitchen. It keeps the prior bread-production balance but is not a placed or movable Structure.
+_Avoid_: placed kitchen Structure
 
 **Farm Resident**:
 One of the two saved household members who can perform work on the Farm. Farm Residents have stable ids `woman` and `man` and editable display names.
