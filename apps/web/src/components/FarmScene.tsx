@@ -1149,14 +1149,14 @@ function MachineMesh({
   onPlaceStructure: (tile: Tile) => void;
 }) {
   const status = machineProductionStatus(catalog, view, machine, nowMs);
-  const label = machine.kind === "bakery" ? "Bakery" : "Feed Mill";
+  const label = "Feed Mill";
   return (
     <StructureSprite
       target={{ type: "machine", id: machine.id }}
       label={label}
       hitLabel={label}
       tile={machine.tile}
-      color={machine.kind === "bakery" ? "#c97a48" : "#79955b"}
+      color="#79955b"
       footprint={structureFootprint(machine.kind)}
       productionStatus={status}
       productionStatusLabel={productionStatusLabel(label, catalog, status)}
@@ -1604,7 +1604,7 @@ function assetKindForTarget(target: StructureSelection, label: string): Exclude<
     case "delivery_board":
       return "delivery_board";
     case "machine":
-      return label === "Bakery" ? "bakery" : "feed_mill";
+      return "feed_mill";
     case "shelter":
       return label === "Chickens" ? "chicken_coop" : "cow_pasture";
   }

@@ -12,7 +12,6 @@ export type FarmAssetKind =
   | "farm_house"
   | "silo"
   | "barn"
-  | "bakery"
   | "feed_mill"
   | "chicken_coop"
   | "cow_pasture"
@@ -380,8 +379,6 @@ function renderStructure(kind: Exclude<FarmAssetKind, "ground_tile" | "field_plo
       return <Silo footprint={footprint} />;
     case "barn":
       return <Barn footprint={footprint} state={state} />;
-    case "bakery":
-      return <Bakery />;
     case "feed_mill":
       return <FeedMill />;
     case "chicken_coop":
@@ -471,29 +468,6 @@ function GableRoof({
     <mesh castShadow receiveShadow position={position} geometry={geometry}>
       <meshStandardMaterial color={color} roughness={0.82} metalness={0} />
     </mesh>
-  );
-}
-
-function Bakery() {
-  return (
-    <group position={[0, 0.08, 0]}>
-      <mesh castShadow receiveShadow position={[0, 0.28, 0]}>
-        <boxGeometry args={[1.28, 0.46, 1.0]} />
-        <meshStandardMaterial color="#c97a48" roughness={0.78} metalness={0} />
-      </mesh>
-      <mesh castShadow position={[0, 0.58, 0]}>
-        <boxGeometry args={[1.4, 0.26, 1.1]} />
-        <meshStandardMaterial color="#e6a36e" roughness={0.82} metalness={0} />
-      </mesh>
-      <mesh castShadow position={[0.42, 0.86, 0.28]}>
-        <boxGeometry args={[0.18, 0.45, 0.18]} />
-        <meshStandardMaterial color="#754231" roughness={0.85} metalness={0} />
-      </mesh>
-      <mesh castShadow position={[-0.35, 0.28, -0.52]}>
-        <boxGeometry args={[0.36, 0.26, 0.035]} />
-        <meshStandardMaterial color="#f6d39f" roughness={0.8} metalness={0} />
-      </mesh>
-    </group>
   );
 }
 
@@ -776,7 +750,7 @@ function StorageBlockedMarker({ y }: { y: number }) {
 }
 
 function isMachineAsset(kind: FarmAssetKind) {
-  return kind === "bakery" || kind === "feed_mill";
+  return kind === "feed_mill";
 }
 
 function usePrefersReducedMotion() {

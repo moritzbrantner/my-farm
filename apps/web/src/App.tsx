@@ -68,7 +68,6 @@ const demoMode = client.runtime === "wasm_demo";
 const fieldPlotBuildCost = 12;
 const buildKinds: BuildableKind[] = [
   "field_plot",
-  "bakery",
   "feed_mill",
   "chicken_coop",
   "delivery_board",
@@ -106,11 +105,6 @@ const structureBuildCardMetas: Record<BuildableKind, StructureBuildCardMeta> = {
     kind: "field_plot",
     role: "Adds another field plot for crop growing.",
     accentClass: "field-plot",
-  },
-  bakery: {
-    kind: "bakery",
-    role: "Turns wheat into bread for delivery orders.",
-    accentClass: "bakery",
   },
   feed_mill: {
     kind: "feed_mill",
@@ -2236,7 +2230,7 @@ function SelectionPanel({
       {!plot && !machine && !shelter && !isFarmhouse && !isSilo && !isBarn && selection?.type !== "delivery_board" ? (
         <p>
           {demoMode
-            ? "Select a field, Farmhouse, bakery, or storage."
+            ? "Select a field, Farmhouse, or storage."
             : "Select a field, machine, shelter, storage, or order board."}
         </p>
       ) : null}
@@ -2486,7 +2480,7 @@ function MachineActions({
   const reservedReason = reservedMachineReason(view, machine.id);
   return (
     <div className="action-stack">
-      <p>{machine.kind === "bakery" ? "Bakery" : "Feed Mill"} - queue {machine.queue.length}/{queueLimit}</p>
+      <p>Feed Mill - queue {machine.queue.length}/{queueLimit}</p>
       {first ? (
         <button
           type="button"
@@ -2738,7 +2732,7 @@ function BuildTray({
 }
 
 function isDemoBuildKind(kind: BuildableKind): boolean {
-  return kind === "field_plot" || kind === "bakery";
+  return kind === "field_plot";
 }
 
 type StructureBuildCardState = StructureBuildCardMeta & {
@@ -2837,7 +2831,7 @@ function unlockLevelForBuildKind(catalog: CatalogDocument, kind: BuildableKind):
   if (kind === "field_plot") {
     return 1;
   }
-  if (kind === "bakery" || kind === "feed_mill") {
+  if (kind === "feed_mill") {
     return catalog.machines.find((machine) => machine.kind === kind)?.unlock_level ?? 1;
   }
   if (kind === "delivery_board") {
@@ -2851,7 +2845,7 @@ function buildCostForBuildKind(catalog: CatalogDocument, kind: BuildableKind): n
   if (kind === "field_plot") {
     return fieldPlotBuildCost;
   }
-  if (kind === "bakery" || kind === "feed_mill") {
+  if (kind === "feed_mill") {
     return catalog.machines.find((machine) => machine.kind === kind)?.build_cost ?? 0;
   }
   if (kind === "delivery_board") {

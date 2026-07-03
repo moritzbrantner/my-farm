@@ -1310,10 +1310,6 @@ h2 {
   border-left: 8px solid #8a5a35;
 }
 
-.build-detail-strip--bakery {
-  border-left: 8px solid #c97a48;
-}
-
 .build-detail-strip--feed-mill {
   border-left: 8px solid #79955b;
 }
@@ -1401,10 +1397,6 @@ h2 {
   color: #20312b;
   font-size: 14px;
   font-weight: 900;
-}
-
-.structure-build-card--bakery .structure-build-card__art {
-  background: #d99668;
 }
 
 .structure-build-card--field-plot .structure-build-card__art {

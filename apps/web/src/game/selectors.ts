@@ -80,8 +80,6 @@ export function structureLabel(kind: StructureKind): string {
       return "Silo";
     case "barn":
       return "Barn";
-    case "bakery":
-      return "Bakery";
     case "feed_mill":
       return "Feed Mill";
     case "chicken_coop":
@@ -99,8 +97,6 @@ export function structureTile(kind: StructureKind): Tile {
       return { x: 14, y: 2 };
     case "barn":
       return { x: 16, y: 2 };
-    case "bakery":
-      return { x: 8, y: 2 };
     case "feed_mill":
       return { x: 10, y: 3 };
     case "chicken_coop":
@@ -116,8 +112,6 @@ export function structureFootprint(kind: StructureKind): StructureFootprint {
   switch (kind) {
     case "silo":
     case "barn":
-      return { width: 2, height: 2 };
-    case "bakery":
       return { width: 2, height: 2 };
     case "chicken_coop":
       return { width: 2, height: 3 };
@@ -322,7 +316,7 @@ export function builtStructureKinds(view: FarmView): Set<StructureKind> {
   built.add("silo");
   built.add("barn");
   for (const machine of view.machines) {
-    built.add(machine.kind === "bakery" ? "bakery" : "feed_mill");
+    built.add(machine.kind);
   }
   for (const shelter of view.shelters) {
     built.add(shelter.kind === "chicken_coop" ? "chicken_coop" : "cow_pasture");
