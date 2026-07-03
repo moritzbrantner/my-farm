@@ -277,6 +277,7 @@ test("resident selector shows queue counts and live task progress", async ({ pag
             {
               reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
               work: { type: "plant_crop", crop_id: "wheat" },
+              duration_ms: 20_000,
             },
           ],
         },
@@ -289,6 +290,7 @@ test("resident selector shows queue counts and live task progress", async ({ pag
             {
               reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
               work: { type: "harvest_crop", crop_id: "corn", quantity: 2 },
+              duration_ms: 10_000,
             },
           ],
         },
@@ -342,6 +344,7 @@ test("reserved work targets disable direct actions with a pending reason", async
             {
               reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
               work: { type: "harvest_crop", crop_id: "wheat", quantity: 2 },
+              duration_ms: 10_000,
             },
           ],
         },
@@ -354,6 +357,7 @@ test("reserved work targets disable direct actions with a pending reason", async
             {
               reserved_work_target: { type: "machine", machine_id: "machine-1" },
               work: { type: "collect_machine_job", job_id: "job-1", recipe_id: "chicken_feed" },
+              duration_ms: 10_000,
             },
           ],
         },
@@ -366,6 +370,7 @@ test("reserved work targets disable direct actions with a pending reason", async
             {
               reserved_work_target: { type: "animal", shelter_id: "shelter-1", animal_slot: "animal-2" },
               work: { type: "collect_animal_product", item_id: "egg", quantity: 1 },
+              duration_ms: 10_000,
             },
           ],
         },
@@ -466,6 +471,7 @@ test("moves a resident toward the current task target over authoritative task ti
             {
               reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
               work: { type: "plant_crop", crop_id: "wheat" },
+              duration_ms: 2_400,
             },
           ],
         },
@@ -505,10 +511,12 @@ test("uses the first remaining batch task step as the scene movement target", as
             {
               reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
               work: { type: "plant_crop", crop_id: "wheat" },
+              duration_ms: 2_000,
             },
             {
               reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
               work: { type: "plant_crop", crop_id: "wheat" },
+              duration_ms: 2_000,
             },
           ],
         },
@@ -536,6 +544,7 @@ test("uses the first remaining batch task step as the scene movement target", as
             {
               reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
               work: { type: "plant_crop", crop_id: "wheat" },
+              duration_ms: 2_000,
             },
           ],
         },

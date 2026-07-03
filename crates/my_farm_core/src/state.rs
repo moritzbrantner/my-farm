@@ -7,6 +7,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
 
+pub const DEFAULT_RESIDENT_TASK_STEP_DURATION_MS: i64 = 2_000;
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct Tile {
     pub x: i32,
@@ -340,6 +342,9 @@ pub enum ResidentTaskKind {
 pub struct ResidentTaskStep {
     pub reserved_work_target: ReservedWorkTarget,
     pub work: ResidentTaskStepWork,
+    #[serde(default = "default_resident_task_step_duration_ms")]
+    #[ts(type = "number")]
+    pub duration_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -562,6 +567,10 @@ pub fn default_resident_task_queues() -> BTreeMap<String, Vec<ResidentTask>> {
         ("woman".to_owned(), Vec::new()),
         ("man".to_owned(), Vec::new()),
     ])
+}
+
+pub fn default_resident_task_step_duration_ms() -> i64 {
+    DEFAULT_RESIDENT_TASK_STEP_DURATION_MS
 }
 
 pub fn default_oven_state() -> OvenState {

@@ -4,7 +4,8 @@ use crate::{
     MachineKind, MachineState, RecipeTarget, ReservedWorkTarget, ResidentTask, ResidentTaskKind,
     ResidentTaskStep, ResidentTaskStepWork, Room, RoomTile, ShelterKind, StorageKind,
     StructureKind, Tile, ToolShedState, add_inventory, add_shelter_animals, barn_storage_used,
-    crop_storage_used, gain_xp, next_id, remove_inventory, scaled_duration_ms, update_level,
+    crop_storage_used, default_resident_task_step_duration_ms, gain_xp, next_id, remove_inventory,
+    scaled_duration_ms, update_level,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -21,7 +22,6 @@ const CROP_STARTER_STOCK: u32 = 2;
 const FIELD_PLOT_COST: u32 = 12;
 const TOOL_SHED_COST: u32 = 45;
 const TOOL_SHED_UNLOCK_LEVEL: u32 = 3;
-const RESIDENT_TASK_STEP_MS: i64 = 2_000;
 const DECORATION_EDITING_UNLOCK_LEVEL: u32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -429,14 +429,14 @@ fn plant_crop(
         farm,
         now_ms,
         ResidentTaskKind::FieldWork,
-        vec![ResidentTaskStep {
-            reserved_work_target: ReservedWorkTarget::FieldPlot {
+        vec![resident_task_step(
+            ReservedWorkTarget::FieldPlot {
                 plot_id: plot_id.to_owned(),
             },
-            work: ResidentTaskStepWork::PlantCrop {
+            ResidentTaskStepWork::PlantCrop {
                 crop_id: crop_id.to_owned(),
             },
-        }],
+        )],
     )?;
     Ok(Vec::new())
 }
@@ -470,12 +470,12 @@ fn sweep_plant(
             break;
         }
         available_seeds -= 1;
-        steps.push(ResidentTaskStep {
-            reserved_work_target: ReservedWorkTarget::FieldPlot { plot_id },
-            work: ResidentTaskStepWork::PlantCrop {
+        steps.push(resident_task_step(
+            ReservedWorkTarget::FieldPlot { plot_id },
+            ResidentTaskStepWork::PlantCrop {
                 crop_id: crop_id.to_owned(),
             },
-        });
+        ));
     }
 
     if steps.is_empty() {
@@ -523,15 +523,15 @@ fn harvest_crop(
         farm,
         now_ms,
         ResidentTaskKind::FieldWork,
-        vec![ResidentTaskStep {
-            reserved_work_target: ReservedWorkTarget::FieldPlot {
+        vec![resident_task_step(
+            ReservedWorkTarget::FieldPlot {
                 plot_id: plot_id.to_owned(),
             },
-            work: ResidentTaskStepWork::HarvestCrop {
+            ResidentTaskStepWork::HarvestCrop {
                 crop_id: planted.item_id,
                 quantity: crop.harvest_quantity,
             },
-        }],
+        )],
     )?;
     Ok(Vec::new())
 }
@@ -589,15 +589,15 @@ fn sweep_harvest(
         }
 
         reserved_outputs.push(output);
-        steps.push(ResidentTaskStep {
-            reserved_work_target: ReservedWorkTarget::FieldPlot {
+        steps.push(resident_task_step(
+            ReservedWorkTarget::FieldPlot {
                 plot_id: plot_id.to_owned(),
             },
-            work: ResidentTaskStepWork::HarvestCrop {
+            ResidentTaskStepWork::HarvestCrop {
                 crop_id: planted.item_id,
                 quantity: crop.harvest_quantity,
             },
-        });
+        ));
     }
 
     if steps.is_empty() {
@@ -631,6 +631,17 @@ fn dedupe_plot_ids(plot_ids: &[String]) -> Vec<&str> {
     ordered
 }
 
+fn resident_task_step(
+    reserved_work_target: ReservedWorkTarget,
+    work: ResidentTaskStepWork,
+) -> ResidentTaskStep {
+    ResidentTaskStep {
+        reserved_work_target,
+        work,
+        duration_ms: default_resident_task_step_duration_ms(),
+    }
+}
+
 fn enqueue_resident_work(
     farm: &mut FarmState,
     now_ms: i64,
@@ -646,12 +657,18 @@ fn enqueue_resident_work(
         .map(resident_task_tail_ready_at)
         .unwrap_or(now_ms)
         .max(now_ms);
+    let steps = snapshot_resident_task_step_durations(farm, steps);
+    let ready_at_ms = started_at_ms
+        + steps
+            .first()
+            .map(resident_task_step_duration_ms)
+            .unwrap_or(0);
     let task = ResidentTask {
         id: next_id(farm, "task"),
         kind,
         steps,
         started_at_ms,
-        ready_at_ms: started_at_ms + RESIDENT_TASK_STEP_MS,
+        ready_at_ms,
     };
     farm.resident_task_queues
         .entry(selected_resident_id)
@@ -661,7 +678,34 @@ fn enqueue_resident_work(
 }
 
 fn resident_task_tail_ready_at(task: &ResidentTask) -> i64 {
-    task.ready_at_ms + (task.steps.len().saturating_sub(1) as i64 * RESIDENT_TASK_STEP_MS)
+    task.ready_at_ms
+        + task
+            .steps
+            .iter()
+            .skip(1)
+            .map(resident_task_step_duration_ms)
+            .sum::<i64>()
+}
+
+fn snapshot_resident_task_step_durations(
+    farm: &FarmState,
+    steps: Vec<ResidentTaskStep>,
+) -> Vec<ResidentTaskStep> {
+    steps
+        .into_iter()
+        .map(|mut step| {
+            step.duration_ms = duration_from_farmhouse_tool_source(farm, &step);
+            step
+        })
+        .collect()
+}
+
+fn duration_from_farmhouse_tool_source(_farm: &FarmState, _step: &ResidentTaskStep) -> i64 {
+    default_resident_task_step_duration_ms()
+}
+
+fn resident_task_step_duration_ms(step: &ResidentTaskStep) -> i64 {
+    step.duration_ms.max(0)
 }
 
 fn complete_resident_tasks(
@@ -713,7 +757,12 @@ fn pop_ready_resident_task_step(
         queue.remove(0);
     } else {
         task.started_at_ms = completed_at;
-        task.ready_at_ms = completed_at + RESIDENT_TASK_STEP_MS;
+        task.ready_at_ms = completed_at
+            + task
+                .steps
+                .first()
+                .map(resident_task_step_duration_ms)
+                .unwrap_or(0);
     }
     Some((step, completed_at))
 }
@@ -1387,15 +1436,15 @@ fn collect_machine_job(
         farm,
         now_ms,
         ResidentTaskKind::ProductionWork,
-        vec![ResidentTaskStep {
-            reserved_work_target: ReservedWorkTarget::Machine {
+        vec![resident_task_step(
+            ReservedWorkTarget::Machine {
                 machine_id: machine_id.to_owned(),
             },
-            work: ResidentTaskStepWork::CollectMachineJob {
+            ResidentTaskStepWork::CollectMachineJob {
                 job_id: job.id,
                 recipe_id: recipe.id.clone(),
             },
-        }],
+        )],
     )?;
     Ok(Vec::new())
 }
@@ -1425,13 +1474,13 @@ fn collect_oven_job(
         farm,
         now_ms,
         ResidentTaskKind::ProductionWork,
-        vec![ResidentTaskStep {
-            reserved_work_target: ReservedWorkTarget::Oven,
-            work: ResidentTaskStepWork::CollectOvenJob {
+        vec![resident_task_step(
+            ReservedWorkTarget::Oven,
+            ResidentTaskStepWork::CollectOvenJob {
                 job_id: job.id,
                 recipe_id: recipe.id.clone(),
             },
-        }],
+        )],
     )?;
     Ok(Vec::new())
 }
@@ -1461,13 +1510,13 @@ fn feed_animal(
         farm,
         now_ms,
         ResidentTaskKind::ProductionWork,
-        vec![ResidentTaskStep {
-            reserved_work_target: ReservedWorkTarget::Animal {
+        vec![resident_task_step(
+            ReservedWorkTarget::Animal {
                 shelter_id: shelter_id.to_owned(),
                 animal_slot: animal_slot.to_owned(),
             },
-            work: ResidentTaskStepWork::FeedAnimal,
-        }],
+            ResidentTaskStepWork::FeedAnimal,
+        )],
     )?;
     Ok(Vec::new())
 }
@@ -1500,16 +1549,16 @@ fn collect_animal_product(
         farm,
         now_ms,
         ResidentTaskKind::ProductionWork,
-        vec![ResidentTaskStep {
-            reserved_work_target: ReservedWorkTarget::Animal {
+        vec![resident_task_step(
+            ReservedWorkTarget::Animal {
                 shelter_id: shelter_id.to_owned(),
                 animal_slot: animal_slot.to_owned(),
             },
-            work: ResidentTaskStepWork::CollectAnimalProduct {
+            ResidentTaskStepWork::CollectAnimalProduct {
                 item_id: output.item_id,
                 quantity: output.quantity,
             },
-        }],
+        )],
     )?;
     Ok(Vec::new())
 }

@@ -1648,6 +1648,11 @@
         "work"
       ],
       "properties": {
+        "duration_ms": {
+          "default": 2000,
+          "type": "integer",
+          "format": "int64"
+        },
         "reserved_work_target": {
           "$ref": "#/definitions/ReservedWorkTarget"
         },

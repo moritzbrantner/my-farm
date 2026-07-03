@@ -69,7 +69,7 @@ export type ResidentTaskKind = { "type": "field_work" } | { "type": "production_
 
 export type ResidentTaskStepWork = { "type": "plant_crop", crop_id: string, } | { "type": "harvest_crop", crop_id: string, quantity: number, } | { "type": "collect_machine_job", job_id: string, recipe_id: string, } | { "type": "collect_oven_job", job_id: string, recipe_id: string, } | { "type": "feed_animal" } | { "type": "collect_animal_product", item_id: string, quantity: number, };
 
-export type ResidentTaskStep = { reserved_work_target: ReservedWorkTarget, work: ResidentTaskStepWork, };
+export type ResidentTaskStep = { reserved_work_target: ReservedWorkTarget, work: ResidentTaskStepWork, duration_ms: number, };
 
 export type ResidentTask = { id: string, kind: ResidentTaskKind, steps: Array<ResidentTaskStep>, started_at_ms: number, ready_at_ms: number, };
 
