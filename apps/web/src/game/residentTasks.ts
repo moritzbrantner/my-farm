@@ -31,7 +31,7 @@ export function residentTaskStatus(
   return {
     currentTask,
     queuedCount: queue.length,
-    progress: currentTask ? progressBetween(currentTask.started_at_ms, currentTask.ready_at_ms, nowMs) : 0,
+    progress: currentTask ? residentTaskProgress(currentTask, nowMs) : 0,
     label: currentTask ? taskLabel(catalog, currentTask) : "Idle",
   };
 }

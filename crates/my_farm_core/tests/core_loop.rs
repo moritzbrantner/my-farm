@@ -1,8 +1,9 @@
 use my_farm_core::{
-    AnimalState, CatalogDocument, FarmCommand, FarmEvent, FarmState, FarmhouseUpgradeKind,
-    ItemStack, MachineKind, RecipeTarget, Room, RoomTile, ShelterKind, StorageKind, StructureKind,
-    StructureTarget, SweepHarvestMode, Tile, add_inventory, apply_command, apply_elapsed,
-    farm_view, inventory_quantity, new_farm, scaled_duration_ms, update_level,
+    AnimalState, CatalogDocument, DEFAULT_RESIDENT_TASK_STEP_DURATION_MS, FarmCommand, FarmEvent,
+    FarmState, FarmhouseUpgradeKind, ItemStack, MachineKind, RecipeTarget, Room, RoomTile,
+    ShelterKind, StorageKind, StructureKind, StructureTarget, SweepHarvestMode, Tile,
+    add_inventory, apply_command, apply_elapsed, farm_view, inventory_quantity, new_farm,
+    scaled_duration_ms, update_level,
 };
 
 #[test]
@@ -23,6 +24,12 @@ fn player_can_plant_and_harvest_wheat() {
     assert_eq!(inventory_quantity(&farm, "wheat"), 5);
     assert!(farm.field_plots[0].crop.is_none());
     assert_eq!(farm.resident_task_queues["woman"].len(), 1);
+    let task = &farm.resident_task_queues["woman"][0];
+    assert_eq!(
+        task.steps[0].duration_ms,
+        DEFAULT_RESIDENT_TASK_STEP_DURATION_MS
+    );
+    assert_eq!(task.ready_at_ms, DEFAULT_RESIDENT_TASK_STEP_DURATION_MS);
 
     apply_elapsed(&mut farm, &catalog, 1_999);
     assert!(farm.field_plots[0].crop.is_none());
@@ -45,6 +52,11 @@ fn player_can_plant_and_harvest_wheat() {
     assert!(harvested.accepted);
     assert_eq!(inventory_quantity(&farm, "wheat"), 5);
     assert!(farm.field_plots[0].crop.is_some());
+    assert!(farm.tool_shed.is_none());
+    assert_eq!(
+        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        DEFAULT_RESIDENT_TASK_STEP_DURATION_MS
+    );
 
     apply_elapsed(&mut farm, &catalog, ready_at + 1_999);
     assert_eq!(inventory_quantity(&farm, "wheat"), 5);
@@ -1945,6 +1957,11 @@ fn machine_collection_is_queued_and_reserves_job_and_barn_capacity() {
     assert_eq!(farm.machines[0].queue.len(), 1);
     assert_eq!(inventory_quantity(&farm, "chicken_feed"), 0);
     assert_eq!(farm.xp, 14);
+    assert!(farm.tool_shed.is_none());
+    assert_eq!(
+        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        DEFAULT_RESIDENT_TASK_STEP_DURATION_MS
+    );
 
     let duplicate_collect = apply_command(
         &mut farm,
@@ -2028,6 +2045,11 @@ fn animals_convert_feed_into_products() {
         farm.shelters[0].animals[0].state,
         AnimalState::Idle
     ));
+    assert!(farm.tool_shed.is_none());
+    assert_eq!(
+        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        DEFAULT_RESIDENT_TASK_STEP_DURATION_MS
+    );
 
     let duplicate_feed = apply_command(
         &mut farm,
@@ -2069,6 +2091,11 @@ fn animals_convert_feed_into_products() {
     assert!(collected.accepted);
     assert!(collected.events.is_empty());
     assert_eq!(inventory_quantity(&farm, "egg"), 0);
+    assert!(farm.tool_shed.is_none());
+    assert_eq!(
+        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        DEFAULT_RESIDENT_TASK_STEP_DURATION_MS
+    );
 
     apply_elapsed(
         &mut farm,
@@ -3067,6 +3094,52 @@ fn new_and_existing_farms_have_default_residents_and_empty_queues() {
     assert_eq!(restored.residents[1].id, "man");
     assert_eq!(restored.resident_task_queues["woman"].len(), 0);
     assert_eq!(restored.resident_task_queues["man"].len(), 0);
+}
+
+#[test]
+fn legacy_resident_task_steps_without_duration_use_two_seconds() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let queued = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(queued.accepted);
+
+    let mut save_json = serde_json::to_value(&farm).unwrap();
+    save_json["resident_task_queues"]["woman"][0]["steps"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("duration_ms");
+
+    let mut restored: FarmState = serde_json::from_value(save_json).unwrap();
+
+    assert_eq!(
+        restored.resident_task_queues["woman"][0].steps[0].duration_ms,
+        DEFAULT_RESIDENT_TASK_STEP_DURATION_MS
+    );
+    apply_elapsed(
+        &mut restored,
+        &catalog,
+        DEFAULT_RESIDENT_TASK_STEP_DURATION_MS - 1,
+    );
+    assert!(restored.field_plots[0].crop.is_none());
+
+    apply_elapsed(
+        &mut restored,
+        &catalog,
+        DEFAULT_RESIDENT_TASK_STEP_DURATION_MS,
+    );
+    assert_eq!(
+        restored.field_plots[0].crop.as_ref().unwrap().item_id,
+        "wheat"
+    );
 }
 
 #[test]
