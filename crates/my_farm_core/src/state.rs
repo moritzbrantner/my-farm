@@ -43,6 +43,12 @@ pub struct FarmState {
     #[serde(default = "default_delivery_board_tile")]
     pub delivery_board_tile: Tile,
     pub delivery_orders: Vec<DeliveryOrder>,
+    #[serde(default = "default_residents")]
+    pub residents: Vec<FarmResident>,
+    #[serde(default = "default_selected_resident_id")]
+    pub selected_resident_id: String,
+    #[serde(default = "default_resident_task_queues")]
+    pub resident_task_queues: BTreeMap<String, Vec<ResidentTask>>,
     #[ts(type = "number")]
     pub next_id: u64,
 }
@@ -116,6 +122,37 @@ pub struct DeliveryOrder {
     pub reward_xp: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct FarmResident {
+    pub id: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct ResidentTask {
+    pub id: String,
+    pub reserved_work_target: ReservedWorkTarget,
+    #[ts(type = "number")]
+    pub started_at_ms: i64,
+    #[ts(type = "number")]
+    pub ready_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ReservedWorkTarget {
+    FieldPlot {
+        plot_id: String,
+    },
+    Machine {
+        machine_id: String,
+    },
+    Animal {
+        shelter_id: String,
+        animal_slot: String,
+    },
+}
+
 pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
     let mut inventory = BTreeMap::new();
     inventory.insert("wheat".to_owned(), 6);
@@ -139,6 +176,9 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         delivery_board_built: false,
         delivery_board_tile: default_delivery_board_tile(),
         delivery_orders: Vec::new(),
+        residents: default_residents(),
+        selected_resident_id: default_selected_resident_id(),
+        resident_task_queues: default_resident_task_queues(),
         next_id: 1,
     };
     update_level(&mut farm, catalog);
@@ -278,4 +318,28 @@ pub fn default_claimed_crop_unlocks() -> Vec<String> {
 
 pub fn default_barn_tile() -> Tile {
     Tile::new(16, 2)
+}
+
+pub fn default_residents() -> Vec<FarmResident> {
+    vec![
+        FarmResident {
+            id: "woman".to_owned(),
+            display_name: "Woman".to_owned(),
+        },
+        FarmResident {
+            id: "man".to_owned(),
+            display_name: "Man".to_owned(),
+        },
+    ]
+}
+
+pub fn default_selected_resident_id() -> String {
+    "woman".to_owned()
+}
+
+pub fn default_resident_task_queues() -> BTreeMap<String, Vec<ResidentTask>> {
+    BTreeMap::from([
+        ("woman".to_owned(), Vec::new()),
+        ("man".to_owned(), Vec::new()),
+    ])
 }

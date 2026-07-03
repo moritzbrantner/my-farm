@@ -150,6 +150,8 @@ fn unsupported_demo_command<'a>(farm: &FarmState, command: &'a FarmCommand) -> O
         | FarmCommand::HarvestCrop { .. }
         | FarmCommand::SweepHarvest { .. }
         | FarmCommand::BuyFieldPlot { .. }
+        | FarmCommand::SelectResident { .. }
+        | FarmCommand::RenameResident { .. }
         | FarmCommand::CollectMachineJob { .. } => None,
         FarmCommand::BuyStructure { structure_kind, .. } => {
             if *structure_kind == StructureKind::Bakery {

@@ -1,8 +1,8 @@
 use my_farm_core::{
     AnimalState, CatalogDocument, FarmCommand, FarmEvent, FarmState, ItemStack, MachineKind,
     ShelterKind, StorageKind, StructureKind, StructureTarget, SweepHarvestMode, Tile,
-    add_inventory, apply_command, apply_elapsed, inventory_quantity, new_farm, scaled_duration_ms,
-    update_level,
+    add_inventory, apply_command, apply_elapsed, farm_view, inventory_quantity, new_farm,
+    scaled_duration_ms, update_level,
 };
 
 #[test]
@@ -1626,4 +1626,131 @@ fn barn_and_silo_block_structure_placement() {
         bought_silo.error.unwrap().message,
         "structure already built".to_owned()
     );
+}
+
+#[test]
+fn new_and_existing_farms_have_default_residents_and_empty_queues() {
+    let catalog = CatalogDocument::default_catalog();
+    let farm = new_farm(0, &catalog);
+
+    assert_eq!(farm.selected_resident_id, "woman");
+    assert_eq!(farm.residents.len(), 2);
+    assert_eq!(farm.residents[0].id, "woman");
+    assert_eq!(farm.residents[1].id, "man");
+    assert_eq!(farm.resident_task_queues["woman"].len(), 0);
+    assert_eq!(farm.resident_task_queues["man"].len(), 0);
+
+    let mut save_json = serde_json::to_value(&farm).unwrap();
+    let save = save_json.as_object_mut().unwrap();
+    save.remove("residents");
+    save.remove("selected_resident_id");
+    save.remove("resident_task_queues");
+
+    let restored: FarmState = serde_json::from_value(save_json).unwrap();
+
+    assert_eq!(restored.selected_resident_id, "woman");
+    assert_eq!(restored.residents.len(), 2);
+    assert_eq!(restored.residents[0].id, "woman");
+    assert_eq!(restored.residents[1].id, "man");
+    assert_eq!(restored.resident_task_queues["woman"].len(), 0);
+    assert_eq!(restored.resident_task_queues["man"].len(), 0);
+}
+
+#[test]
+fn player_can_select_and_rename_farm_residents() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let selected = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SelectResident {
+            resident_id: "man".to_owned(),
+        },
+        0,
+    );
+
+    assert!(selected.accepted);
+    assert_eq!(farm.selected_resident_id, "man");
+    assert_eq!(
+        selected.events,
+        vec![FarmEvent::ResidentSelected {
+            resident_id: "man".to_owned(),
+        }]
+    );
+
+    let renamed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::RenameResident {
+            resident_id: "man".to_owned(),
+            display_name: "  Eli  ".to_owned(),
+        },
+        0,
+    );
+
+    assert!(renamed.accepted);
+    assert_eq!(farm.residents[1].display_name, "Eli");
+    assert_eq!(
+        renamed.events,
+        vec![FarmEvent::ResidentRenamed {
+            resident_id: "man".to_owned(),
+            display_name: "Eli".to_owned(),
+        }]
+    );
+
+    let view = farm_view(&farm, &catalog);
+    assert_eq!(view.selected_resident_id, "man");
+    assert_eq!(view.residents[1].display_name, "Eli");
+}
+
+#[test]
+fn invalid_resident_commands_are_rejected_without_mutating_residents() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let before = farm.clone();
+    let selected = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SelectResident {
+            resident_id: "child".to_owned(),
+        },
+        0,
+    );
+    assert!(!selected.accepted);
+    assert_eq!(selected.error.unwrap().message, "resident not found");
+    assert_eq!(farm, before);
+
+    let empty_name = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::RenameResident {
+            resident_id: "woman".to_owned(),
+            display_name: "   ".to_owned(),
+        },
+        0,
+    );
+    assert!(!empty_name.accepted);
+    assert_eq!(
+        empty_name.error.unwrap().message,
+        "resident name cannot be empty"
+    );
+    assert_eq!(farm, before);
+
+    let long_name = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::RenameResident {
+            resident_id: "woman".to_owned(),
+            display_name: "abcdefghijklmnopqrstu".to_owned(),
+        },
+        0,
+    );
+    assert!(!long_name.accepted);
+    assert_eq!(
+        long_name.error.unwrap().message,
+        "resident name cannot exceed 20 characters"
+    );
+    assert_eq!(farm, before);
 }

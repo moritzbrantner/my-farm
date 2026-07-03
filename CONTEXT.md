@@ -8,6 +8,30 @@ My Farm is a local farming sim prototype about building an early production chai
 The single playable world owned by the active runtime.
 _Avoid_: Account, realm, world
 
+**Farmhouse**:
+The fixed home base for the Farm household. It anchors the Farm Residents in the playable Farm and is not a player-built production Structure.
+_Avoid_: House building, home structure
+
+**Farm Resident**:
+One of the two saved household members who can perform work on the Farm. Farm Residents have stable ids `woman` and `man` and editable display names.
+_Avoid_: Character, avatar, worker
+
+**Selected Resident**:
+The currently active Farm Resident for player intent. The active runtime persists this selection so later Commands can attach work to the intended resident.
+_Avoid_: Active character, current avatar
+
+**Resident Task**:
+A saved unit of Farm work assigned to a Farm Resident and advanced by elapsed Farm time. Resident Tasks are authoritative Farm state, not browser-only animation.
+_Avoid_: Animation job, client task
+
+**Resident Task Queue**:
+The per-resident FIFO list of Resident Tasks saved on the Farm. Later work may enqueue physical production tasks here; empty queues still exist for each Farm Resident.
+_Avoid_: Local queue, animation queue
+
+**Reserved Work Target**:
+The Farm object reserved by a Resident Task while that task is pending or producing, such as a Field Plot, Machine, or animal slot.
+_Avoid_: Client lock, UI reservation
+
 **Demo Farm**:
 A browser-local sample Farm used to show an early production slice without requiring the full local Farm setup.
 _Avoid_: Mock farm, fake farm

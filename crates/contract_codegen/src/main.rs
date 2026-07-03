@@ -1,12 +1,12 @@
 use anyhow::{Context, bail};
 use my_farm_core::{
     AnimalShelterState, AnimalSlot, AnimalState, BalanceConfig, CatalogDocument, CatalogResponse,
-    CommandRequest, CommandResponse, CropDef, DeliveryOrder, FarmCommand, FarmEvent, FarmResponse,
-    FarmState, FarmView, FieldPlot, HealthResponse, InventoryItemView, ItemDef, ItemKind,
-    ItemStack, MachineDef, MachineJob, MachineKind, MachineState, MarketItemDef, PlantedCrop,
-    RecipeDef, ShelterDef, ShelterKind, StorageKind, StorageUpgradeDef, StructureKind,
-    StructureTarget, SweepHarvestMode, Tile, UnlockView, WebsocketClientMessage, WebsocketError,
-    WebsocketServerMessage,
+    CommandRequest, CommandResponse, CropDef, DeliveryOrder, FarmCommand, FarmEvent, FarmResident,
+    FarmResponse, FarmState, FarmView, FieldPlot, HealthResponse, InventoryItemView, ItemDef,
+    ItemKind, ItemStack, MachineDef, MachineJob, MachineKind, MachineState, MarketItemDef,
+    PlantedCrop, RecipeDef, ReservedWorkTarget, ResidentTask, ShelterDef, ShelterKind, StorageKind,
+    StorageUpgradeDef, StructureKind, StructureTarget, SweepHarvestMode, Tile, UnlockView,
+    WebsocketClientMessage, WebsocketError, WebsocketServerMessage,
 };
 use schemars::{JsonSchema, schema_for};
 use std::fs;
@@ -87,6 +87,9 @@ fn outputs() -> anyhow::Result<Vec<Output>> {
                 MachineJob::decl(),
                 AnimalState::decl(),
                 AnimalSlot::decl(),
+                FarmResident::decl(),
+                ReservedWorkTarget::decl(),
+                ResidentTask::decl(),
                 FarmState::decl(),
                 FieldPlot::decl(),
                 MachineState::decl(),
