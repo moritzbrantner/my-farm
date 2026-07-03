@@ -55,6 +55,20 @@ test("pages demo persists a Farmhouse Oven production save in localStorage", asy
   );
 });
 
+test("pages demo shows Farmhouse Oven status from a WASM save", async ({ page }) => {
+  await page.goto("/");
+  await seedQueuedBreadSave(page);
+  await page.reload();
+
+  await expect(page.getByRole("region", { name: "Main menu" })).toBeVisible();
+  await page.getByRole("button", { name: "Start Farm" }).click();
+
+  const status = page.getByTestId("structure-status-farmhouse-oven");
+  await expect(status).toBeVisible();
+  await expect(status).toHaveAttribute("aria-label", "Farmhouse Oven status: Ready Bread");
+  await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toHaveCount(0);
+});
+
 test("pages demo suspends refresh polling while the guided tutorial is open", async ({ page }) => {
   await countDemoFarmRefreshes(page);
   await page.goto("/");
@@ -158,6 +172,59 @@ async function seedBreadSave(page: Page) {
     send({ type: "queue_oven_recipe", recipe_id: "bread" }, 65_000);
     send({ type: "collect_oven_job" }, 100_000);
     tick(110_000);
+    window.localStorage.setItem(key, runtime.save_json());
+  }, demoSaveKey);
+}
+
+async function seedQueuedBreadSave(page: Page) {
+  await page.evaluate(async (key) => {
+    type WasmRuntime = {
+      command_json(requestJson: string, nowMs: number): string;
+      farm_json(nowMs: number): string;
+      save_json(): string;
+    };
+    type WasmModule = {
+      default(): Promise<unknown>;
+      DemoFarmRuntime: new (savedJson: string | undefined, nowMs: number) => WasmRuntime;
+    };
+
+    const wasm = (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
+    await wasm.default();
+    const runtime = new wasm.DemoFarmRuntime(undefined, 1_000);
+    let version = 0;
+    const send = (command: unknown, nowMs: number) => {
+      const response = JSON.parse(
+        runtime.command_json(JSON.stringify({ expected_version: version, command }), nowMs),
+      ) as { accepted: boolean; error: string | null; version: number };
+      if (!response.accepted) {
+        throw new Error(response.error ?? "command rejected");
+      }
+      version = response.version;
+      return response;
+    };
+    const tick = (nowMs: number) => {
+      version = (JSON.parse(runtime.farm_json(nowMs)) as { version: number }).version;
+    };
+
+    send(
+      {
+        type: "sweep_plant",
+        crop_id: "wheat",
+        plot_ids: ["plot-1", "plot-2", "plot-3", "plot-4"],
+      },
+      1_000,
+    );
+    send(
+      {
+        type: "sweep_harvest",
+        plot_ids: ["plot-1", "plot-2", "plot-3", "plot-4"],
+      },
+      40_000,
+    );
+    tick(65_000);
+    send({ type: "buy_farmhouse_upgrade", upgrade_kind: "oven" }, 65_000);
+    send({ type: "queue_oven_recipe", recipe_id: "bread" }, 65_000);
+    tick(70_000);
     window.localStorage.setItem(key, runtime.save_json());
   }, demoSaveKey);
 }

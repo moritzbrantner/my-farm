@@ -57,6 +57,43 @@ export function machineProductionStatus(
   };
 }
 
+export function ovenProductionStatus(
+  catalog: CatalogDocument,
+  view: FarmView,
+  nowMs: number,
+): StructureProductionStatus {
+  if (!view.owned_farmhouse_upgrades.includes("oven")) {
+    return { type: "idle" };
+  }
+  const firstJob = view.oven.queue[0];
+  if (!firstJob) {
+    return { type: "idle" };
+  }
+
+  const recipe = catalog.recipes.find((entry) => entry.id === firstJob.recipe_id && entry.target.type === "oven");
+  const output = recipe?.outputs[0];
+  if (!output) {
+    return { type: "idle" };
+  }
+
+  const outputItemKind = itemKind(catalog, output.item_id);
+  if (nowMs >= firstJob.ready_at_ms) {
+    return {
+      type: "ready",
+      outputItemId: output.item_id,
+      outputItemKind,
+      blockedByStorage: !hasStorageRoom(catalog, view, recipe.outputs),
+    };
+  }
+
+  return {
+    type: "producing",
+    progress: progressBetween(firstJob.started_at_ms, firstJob.ready_at_ms, nowMs),
+    outputItemId: output.item_id,
+    outputItemKind,
+  };
+}
+
 export function shelterProductionStatus(
   catalog: CatalogDocument,
   view: FarmView,
