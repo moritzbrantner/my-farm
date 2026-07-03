@@ -7,12 +7,15 @@
   "scripts": {
     "dev": "cd apps/web && bun run dev",
     "build:web": "cd apps/web && bun run build",
+    "build:wasm-demo": "cd crates/my_farm_wasm && wasm-pack build --target web --out-dir ../../apps/web/src/generated/my_farm_wasm --out-name my_farm_wasm",
+    "build:pages": "cd apps/web && VITE_MY_FARM_RUNTIME=wasm_demo VITE_BASE_PATH=/my-farm/ bun run build",
     "dev:web": "cd apps/web && bun run dev",
     "test:e2e": "cd apps/web && bun run test:e2e",
+    "test:e2e:pages-demo": "cd apps/web && bun run test:e2e:pages-demo",
     "contracts": "cargo run -p contract_codegen",
     "contracts:check": "cargo run -p contract_codegen -- --check",
     "test:rust": "cargo test --workspace",
-    "check": "cargo test --workspace && bun run build:web && bun run contracts:check"
+    "check": "cargo test --workspace && bun run build:web && bun run build:pages && bun run contracts:check"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

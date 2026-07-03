@@ -942,6 +942,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "my_farm_wasm"
+version = "0.1.0"
+dependencies = [
+ "my_farm_core",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "num-bigint-dig"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

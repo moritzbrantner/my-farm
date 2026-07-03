@@ -55,6 +55,7 @@ type BuildableStructureKind = Exclude<StructureKind, "silo" | "barn">;
 type BuildableKind = "field_plot" | BuildableStructureKind;
 
 const client = createFarmClient();
+const demoMode = client.runtime === "wasm_demo";
 const fieldPlotBuildCost = 12;
 const buildKinds: BuildableKind[] = [
   "field_plot",
@@ -140,7 +141,9 @@ export function App() {
   const [harvestMode, setHarvestMode] = useState<SweepHarvestMode>("matching_crop");
   const [screen, setScreen] = useState<GameScreen>("main_menu");
   const [marketOpen, setMarketOpen] = useState(false);
-  const [message, setMessage] = useState("Connecting to local server...");
+  const [message, setMessage] = useState(
+    demoMode ? "Loading browser demo..." : "Connecting to local server...",
+  );
   const [nowMs, setNowMs] = useState(Date.now());
   const ordersRef = useRef<HTMLElement | null>(null);
   const versionRef = useRef(0);
@@ -176,7 +179,7 @@ export function App() {
     const [catalogResponse, farmResponse] = await Promise.all([client.catalog(), client.farm()]);
     setCatalog(catalogResponse);
     applyFarmSnapshot(farmResponse.version, farmResponse.view);
-    setMessage("Local farm synced");
+    setMessage(demoMode ? "Demo farm loaded" : "Local farm synced");
   }, [applyFarmSnapshot]);
 
   useEffect(() => {
@@ -361,7 +364,7 @@ export function App() {
     harvestSweepRef.current = null;
     setPlantSweep(null);
     setHarvestSweep(null);
-    setMessage("Farm reset");
+    setMessage(demoMode ? "Demo farm reset" : "Farm reset");
   }, [applyFarmSnapshot]);
 
   const startNewFarm = useCallback(async () => {
@@ -385,6 +388,10 @@ export function App() {
   }, []);
 
   const openMarket = useCallback(() => {
+    if (demoMode) {
+      setMessage("Farmers Market is not available in the demo");
+      return;
+    }
     setMarketOpen(true);
     setFieldMenu(null);
     setStructureMenu(null);
@@ -811,7 +818,7 @@ export function App() {
         : activeFieldTool.type === "harvest"
           ? "app--tool-harvest"
           : "app--tool-default";
-  const menuModel = fieldMenu
+  const fullMenuModel = fieldMenu
     ? buildFieldMenuModel(
         catalog,
         view,
@@ -821,6 +828,7 @@ export function App() {
     : structureMenu
       ? buildStructureMenuModel(catalog, view, structureMenu.target, nowMs)
       : null;
+  const menuModel = demoMode && fullMenuModel ? demoMenuModel(fullMenuModel) : fullMenuModel;
   const menuPoint = fieldMenu ?? structureMenu;
 
   return (
@@ -850,9 +858,9 @@ export function App() {
         <>
           <TopBar view={view} message={message} onOpenMenu={openMainMenu} />
           <aside className="side-panel">
-            <PanelHeader view={view} version={version} onReset={reset} />
-            <Inventory catalog={catalog} view={view} selection={selection} send={send} />
-            <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} />
+            <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
+            <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
+            {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
             <FieldTools
               catalog={catalog}
               view={view}
@@ -872,12 +880,13 @@ export function App() {
               selection={selection}
               nowMs={nowMs}
               send={send}
+              demoMode={demoMode}
             />
-            {selection?.type === "delivery_board" ? (
+            {!demoMode && selection?.type === "delivery_board" ? (
               <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
             ) : null}
           </aside>
-          {marketOpen ? (
+          {!demoMode && marketOpen ? (
             <FarmersMarket
               catalog={catalog}
               view={view}
@@ -891,6 +900,7 @@ export function App() {
               view={view}
               selectedKind={selectedBuildKind}
               buildPlacement={buildPlacement}
+              demoMode={demoMode}
               onInspectKind={inspectBuildKind}
               onSelectKind={selectBuildKind}
             />
@@ -900,6 +910,7 @@ export function App() {
         <MainMenu
           view={view}
           message={message}
+          demoMode={demoMode}
           onContinue={() => setScreen("playing")}
           onNewFarm={startNewFarm}
         />
@@ -933,14 +944,23 @@ export function App() {
   );
 }
 
+function demoMenuModel(model: StructureMenuModel): StructureMenuModel {
+  return {
+    ...model,
+    items: model.items.filter((item) => !item.id.startsWith("upgrade-") && item.id !== "view-orders"),
+  };
+}
+
 function MainMenu({
   view,
   message,
+  demoMode,
   onContinue,
   onNewFarm,
 }: {
   view: FarmView;
   message: string;
+  demoMode: boolean;
   onContinue: () => void;
   onNewFarm: () => void;
 }) {
@@ -957,7 +977,7 @@ function MainMenu({
         {panel === "home" ? (
           <>
             <div className="main-menu__title">
-              <span>Local Farm</span>
+              <span>{demoMode ? "Browser Demo" : "Local Farm"}</span>
               <h1>My Farm</h1>
             </div>
             <div className="main-menu__stats" aria-label="Farm status">
@@ -1033,21 +1053,33 @@ function MainMenu({
                 <span>Use Harvest and drag across ready crops. Right-click Harvest to switch between matching crops and all crops.</span>
               </li>
               <li>
-                <strong>Fill delivery orders.</strong>
-                <span>Select the Delivery Board or its Orders menu, then ship matching goods for coins and XP.</span>
+                <strong>{demoMode ? "Build bread production." : "Fill delivery orders."}</strong>
+                <span>
+                  {demoMode
+                    ? "Reach level 2, place the Bakery, then turn Wheat into Bread."
+                    : "Select the Delivery Board or its Orders menu, then ship matching goods for coins and XP."}
+                </span>
               </li>
               <li>
                 <strong>Build the chain.</strong>
-                <span>Use Build to place Field Plots, Machines, Shelters, and the Delivery Board as levels and coins allow.</span>
+                <span>
+                  {demoMode
+                    ? "Use Build to place Field Plots and the Bakery as levels and coins allow."
+                    : "Use Build to place Field Plots, Machines, Shelters, and the Delivery Board as levels and coins allow."}
+                </span>
               </li>
-              <li>
-                <strong>Run structures.</strong>
-                <span>Click a Machine or Shelter to queue recipes, feed animals, collect ready output, or move the structure.</span>
-              </li>
-              <li>
-                <strong>Upgrade storage.</strong>
-                <span>Select the Silo or Barn to spend coins on capacity tiers as levels allow.</span>
-              </li>
+              {!demoMode ? (
+                <>
+                  <li>
+                    <strong>Run structures.</strong>
+                    <span>Click a Machine or Shelter to queue recipes, feed animals, collect ready output, or move the structure.</span>
+                  </li>
+                  <li>
+                    <strong>Upgrade storage.</strong>
+                    <span>Select the Silo or Barn to spend coins on capacity tiers as levels allow.</span>
+                  </li>
+                </>
+              ) : null}
             </ol>
             <button className="main-menu__primary" type="button" onClick={onContinue}>
               Start Farm
@@ -1070,13 +1102,19 @@ function MainMenu({
                 <dd>A structure with a recipe queue for farm products.</dd>
               </div>
               <div>
-                <dt>Delivery Order</dt>
-                <dd>A request that pays coins and XP for goods.</dd>
+                <dt>{demoMode ? "Demo Farm" : "Delivery Order"}</dt>
+                <dd>
+                  {demoMode
+                    ? "A browser-local farm saved on this device."
+                    : "A request that pays coins and XP for goods."}
+                </dd>
               </div>
-              <div>
-                <dt>Storage Upgrade</dt>
-                <dd>A coin purchase that raises Silo or Barn capacity after reaching its unlock level.</dd>
-              </div>
+              {!demoMode ? (
+                <div>
+                  <dt>Storage Upgrade</dt>
+                  <dd>A coin purchase that raises Silo or Barn capacity after reaching its unlock level.</dd>
+                </div>
+              ) : null}
             </dl>
           </MainMenuSubpanel>
         ) : null}
@@ -1086,7 +1124,7 @@ function MainMenu({
               <strong>Local Player</strong>
               <span>Farm level {view.level}</span>
               <span>{view.xp} XP earned</span>
-              <span>{view.delivery_orders.length} delivery orders</span>
+              <span>{demoMode ? "Browser-local save" : `${view.delivery_orders.length} delivery orders`}</span>
               <button className="main-menu__primary" type="button" onClick={onContinue}>
                 Continue
               </button>
@@ -1167,16 +1205,21 @@ function PanelHeader({
   view,
   version,
   onReset,
+  demoMode,
 }: {
   view: FarmView;
   version: number;
   onReset: () => void;
+  demoMode: boolean;
 }) {
   return (
     <section className="panel-section compact">
       <div>
         <h1>Farm Control</h1>
-        <p>Save v{version} - {view.delivery_orders.length} orders</p>
+        <p>
+          Save v{version}
+          {demoMode ? " - browser demo" : ` - ${view.delivery_orders.length} orders`}
+        </p>
       </div>
       <button type="button" onClick={onReset}>
         Reset
@@ -1512,11 +1555,13 @@ function Inventory({
   view,
   selection,
   send,
+  demoMode,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
   selection: Selection;
   send: SendCommand;
+  demoMode: boolean;
 }) {
   const items = relevantInventoryItems(catalog, view, selection);
   if (selection?.type === "silo" || selection?.type === "barn") {
@@ -1525,7 +1570,7 @@ function Inventory({
         <h2>Inventory</h2>
         <div className="storage-inventory-list">
           {items.map((item) => (
-            <StorageInventoryItem key={item.item_id} item={item} send={send} />
+            <StorageInventoryItem key={item.item_id} item={item} send={send} demoMode={demoMode} />
           ))}
         </div>
       </section>
@@ -1544,7 +1589,15 @@ function Inventory({
   );
 }
 
-function StorageInventoryItem({ item, send }: { item: InventoryItemView; send: SendCommand }) {
+function StorageInventoryItem({
+  item,
+  send,
+  demoMode,
+}: {
+  item: InventoryItemView;
+  send: SendCommand;
+  demoMode: boolean;
+}) {
   const hasAny = item.quantity > 0;
   return (
     <div className="storage-inventory-item">
@@ -1553,17 +1606,19 @@ function StorageInventoryItem({ item, send }: { item: InventoryItemView; send: S
         <span className="storage-inventory-item__name">{item.name}</span>
         <span className="storage-inventory-item__meta">{item.quantity} stored</span>
       </div>
-      <button
-        type="button"
-        className="storage-inventory-item__discard"
-        disabled={!hasAny}
-        aria-label={`Throw away 1 ${item.name}`}
-        title={`Throw away 1 ${item.name}`}
-        onClick={() => send({ type: "discard_inventory", item_id: item.item_id, quantity: 1 })}
-      >
-        <span>1</span>
-        <span aria-hidden="true">🗑</span>
-      </button>
+      {!demoMode ? (
+        <button
+          type="button"
+          className="storage-inventory-item__discard"
+          disabled={!hasAny}
+          aria-label={`Throw away 1 ${item.name}`}
+          title={`Throw away 1 ${item.name}`}
+          onClick={() => send({ type: "discard_inventory", item_id: item.item_id, quantity: 1 })}
+        >
+          <span>1</span>
+          <span aria-hidden="true">🗑</span>
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1839,12 +1894,14 @@ function SelectionPanel({
   selection,
   nowMs,
   send,
+  demoMode,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
   selection: Selection;
   nowMs: number;
   send: SendCommand;
+  demoMode: boolean;
 }) {
   const plot = selectedPlot(view, selection);
   const machine = selectedMachine(view, selection);
@@ -1855,30 +1912,38 @@ function SelectionPanel({
     <section className="panel-section">
       <h2>Selection</h2>
       {isSilo ? (
-        <StorageUpgradeStatus
-          catalog={catalog}
-          view={view}
-          storageKind="silo"
-          label="Silo"
-          used={view.silo_used}
-          capacity={view.silo_capacity}
-          tier={view.silo_upgrade_tier}
-          unit="crops"
-          send={send}
-        />
+        demoMode ? (
+          <StorageStatus label="Silo" used={view.silo_used} capacity={view.silo_capacity} unit="crops" />
+        ) : (
+          <StorageUpgradeStatus
+            catalog={catalog}
+            view={view}
+            storageKind="silo"
+            label="Silo"
+            used={view.silo_used}
+            capacity={view.silo_capacity}
+            tier={view.silo_upgrade_tier}
+            unit="crops"
+            send={send}
+          />
+        )
       ) : null}
       {isBarn ? (
-        <StorageUpgradeStatus
-          catalog={catalog}
-          view={view}
-          storageKind="barn"
-          label="Barn"
-          used={view.barn_used}
-          capacity={view.barn_capacity}
-          tier={view.barn_upgrade_tier}
-          unit="goods"
-          send={send}
-        />
+        demoMode ? (
+          <StorageStatus label="Barn" used={view.barn_used} capacity={view.barn_capacity} unit="goods" />
+        ) : (
+          <StorageUpgradeStatus
+            catalog={catalog}
+            view={view}
+            storageKind="barn"
+            label="Barn"
+            used={view.barn_used}
+            capacity={view.barn_capacity}
+            tier={view.barn_upgrade_tier}
+            unit="goods"
+            send={send}
+          />
+        )
       ) : null}
       {plot ? <PlotActions catalog={catalog} view={view} plot={plot} nowMs={nowMs} send={send} /> : null}
       {machine ? (
@@ -1887,11 +1952,33 @@ function SelectionPanel({
       {shelter ? (
         <ShelterActions catalog={catalog} shelter={shelter} nowMs={nowMs} send={send} />
       ) : null}
-      {selection?.type === "delivery_board" ? <p>Use delivery orders below.</p> : null}
+      {!demoMode && selection?.type === "delivery_board" ? <p>Use delivery orders below.</p> : null}
       {!plot && !machine && !shelter && !isSilo && !isBarn && selection?.type !== "delivery_board" ? (
-        <p>Select a field, machine, shelter, storage, or order board.</p>
+        <p>
+          {demoMode
+            ? "Select a field, bakery, or storage."
+            : "Select a field, machine, shelter, storage, or order board."}
+        </p>
       ) : null}
     </section>
+  );
+}
+
+function StorageStatus({
+  label,
+  used,
+  capacity,
+  unit,
+}: {
+  label: string;
+  used: number;
+  capacity: number;
+  unit: string;
+}) {
+  return (
+    <div className="action-stack">
+      <p>{label} storage - {used}/{capacity} {unit}</p>
+    </div>
   );
 }
 
@@ -2202,6 +2289,7 @@ function BuildTray({
   view,
   selectedKind,
   buildPlacement,
+  demoMode,
   onInspectKind,
   onSelectKind,
 }: {
@@ -2209,14 +2297,17 @@ function BuildTray({
   view: FarmView;
   selectedKind: BuildableKind | null;
   buildPlacement: BuildPlacementState;
+  demoMode: boolean;
   onInspectKind: (kind: BuildableKind) => void;
   onSelectKind: (kind: BuildableKind, canPlace: boolean) => void;
 }) {
   const built = useMemo(() => builtStructureKinds(view), [view]);
-  const cardStates = buildKinds.map((kind) =>
+  const visibleBuildKinds = demoMode ? buildKinds.filter(isDemoBuildKind) : buildKinds;
+  const cardStates = visibleBuildKinds.map((kind) =>
     buildStructureCardState(catalog, view, kind, built, selectedKind, buildPlacement),
   );
-  const detail = cardStates.find((state) => state.kind === (selectedKind ?? buildKinds[0])) ?? cardStates[0];
+  const detail =
+    cardStates.find((state) => state.kind === (selectedKind ?? visibleBuildKinds[0])) ?? cardStates[0];
 
   return (
     <section className="build-dock" aria-label="Structure build menu">
@@ -2245,6 +2336,10 @@ function BuildTray({
       </nav>
     </section>
   );
+}
+
+function isDemoBuildKind(kind: BuildableKind): boolean {
+  return kind === "field_plot" || kind === "bakery";
 }
 
 type StructureBuildCardState = StructureBuildCardMeta & {

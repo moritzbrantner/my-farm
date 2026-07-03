@@ -1,6 +1,8 @@
 # My Farm
 
-My Farm is a standalone local farming sim prototype. A Rust server owns the farm state, persists it to SQLite, and exposes a small JSON API consumed by a browser client rendered with React Three Fiber.
+My Farm is a standalone local farming sim prototype. In local development, a Rust server owns the farm state, persists it to SQLite, and exposes a small JSON API consumed by a browser client rendered with React Three Fiber.
+
+GitHub Pages serves a browser-only demo that runs an early production slice through Rust WebAssembly. The demo is static, saves progress in browser localStorage, and intentionally does not include every local-server feature.
 
 ## Run
 
@@ -14,6 +16,16 @@ Open `http://127.0.0.1:5176` on this machine, or `http://castle:5176` from anoth
 
 The server listens on `http://0.0.0.0:8081` by default so it is reachable over the local network at `http://castle:8081`. Set `MY_FARM_HOST=127.0.0.1` to restrict it to this machine. It stores `my-farm.sqlite` in the project directory unless `MY_FARM_DATABASE_URL` is set.
 
+## GitHub Pages Demo
+
+Build the static Pages demo locally:
+
+```sh
+bun run build:pages
+```
+
+The Pages demo uses `VITE_MY_FARM_RUNTIME=wasm_demo`, compiles `crates/my_farm_wasm` with `wasm-pack`, and bundles the generated WASM through Vite. It supports fields, Wheat, Corn, the Bakery, Bread, storage display, reset, and browser-local saves.
+
 ## Commands
 
 ```sh
@@ -21,11 +33,14 @@ cargo test --workspace
 cargo run -p contract_codegen
 cargo run -p contract_codegen -- --check
 bun run build:web
+bun run build:pages
+bun run test:e2e:pages-demo
 ```
 
 ## Design Constraints
 
 - Local server authoritative.
+- GitHub Pages demo is browser-local and intentionally feature-limited.
 - Single local farm.
 - No real-money purchases.
 - No premium currency.

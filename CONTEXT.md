@@ -5,8 +5,12 @@ My Farm is a local farming sim prototype about building an early production chai
 ## Language
 
 **Farm**:
-The single local playable world owned by the local server.
+The single playable world owned by the active runtime.
 _Avoid_: Account, realm, world
+
+**Demo Farm**:
+A browser-local sample Farm used to show an early production slice without requiring the full local Farm setup.
+_Avoid_: Mock farm, fake farm
 
 **Field Plot**:
 A tile that can hold one planted crop job.
@@ -61,7 +65,7 @@ Non-crop storage.
 _Avoid_: Warehouse
 
 **Command**:
-A player intent submitted to the server and applied deterministically.
+A player intent submitted to the active runtime and applied deterministically.
 _Avoid_: Action, mutation
 
 **Sweep Harvest**:
