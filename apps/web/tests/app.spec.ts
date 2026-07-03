@@ -154,6 +154,10 @@ test("sends commands and reset over the gameplay websocket without REST gameplay
   await page.getByRole("button", { name: "New Farm" }).click();
 
   await expect(page.getByText("Farm reset")).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Step 1 of 5")).toBeVisible();
+  await expect(dialog.getByText("Welcome to your fresh Farm")).toBeVisible();
   await expect(resourceAmount(inventoryPanel, "Wheat", "6")).toBeVisible();
   const websocketMessages = await page.evaluate(
     () => (window as unknown as { __gameplayWebSocketMessages: unknown[] }).__gameplayWebSocketMessages,
@@ -414,6 +418,39 @@ test("new farm opens the guided tutorial modal sequence", async ({ page }) => {
 
   await dialog.getByRole("button", { name: "Got it" }).click();
   await expect(dialog).toHaveCount(0);
+});
+
+test("in-game reset opens the guided tutorial on the first card", async ({ page }) => {
+  await mockFarmApi(page);
+  await openFarm(page);
+
+  await page.getByRole("button", { name: "Reset" }).click();
+
+  await expect(page.getByText("Farm reset")).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Step 1 of 5")).toBeVisible();
+  await expect(dialog.getByText("Welcome to your fresh Farm")).toBeVisible();
+});
+
+test("reset clears transient gameplay UI before showing the guided tutorial", async ({ page }) => {
+  await mockFarmApi(page, buildableFarmView());
+  await openFarm(page);
+
+  const tray = await openBuildMenu(page);
+  await tray.getByRole("button", { name: /Field Plot/ }).click();
+  await expect(page.getByText("Place Field Plot")).toBeVisible();
+
+  await page.getByRole("button", { name: "Open Farmers Market" }).click();
+  await expect(page.getByRole("region", { name: "Farmers Market" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Reset" }).click({ force: true });
+
+  const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByRole("region", { name: "Farmers Market" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Structures" })).toBeHidden();
+  await expect(page.getByText("Place Field Plot")).toHaveCount(0);
 });
 
 test("barn and silo are preplaced storage structures", async ({ page }) => {

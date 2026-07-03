@@ -40,6 +40,10 @@ test("pages demo persists a bakery production save in localStorage", async ({ pa
   await page.getByRole("button", { name: "Menu" }).click();
   await page.getByRole("button", { name: "New Farm" }).click();
   await expect(page.getByText("Demo farm reset")).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Step 1 of 5")).toBeVisible();
+  await expect(dialog.getByText("Welcome to your fresh Farm")).toBeVisible();
   await expect(page.evaluate((key) => window.localStorage.getItem(key), demoSaveKey)).resolves.toContain(
     '"version":0',
   );
