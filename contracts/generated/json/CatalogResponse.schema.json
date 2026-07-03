@@ -309,10 +309,10 @@
       "required": [
         "id",
         "inputs",
-        "machine_kind",
         "name",
         "outputs",
         "reference_seconds",
+        "target",
         "unlock_level",
         "xp"
       ],
@@ -325,9 +325,6 @@
           "items": {
             "$ref": "#/definitions/ItemStack"
           }
-        },
-        "machine_kind": {
-          "$ref": "#/definitions/MachineKind"
         },
         "name": {
           "type": "string"
@@ -343,6 +340,9 @@
           "format": "uint32",
           "minimum": 0.0
         },
+        "target": {
+          "$ref": "#/definitions/RecipeTarget"
+        },
         "unlock_level": {
           "type": "integer",
           "format": "uint32",
@@ -354,6 +354,42 @@
           "minimum": 0.0
         }
       }
+    },
+    "RecipeTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "oven"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "machine_kind",
+            "type"
+          ],
+          "properties": {
+            "machine_kind": {
+              "$ref": "#/definitions/MachineKind"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "machine"
+              ]
+            }
+          }
+        }
+      ]
     },
     "ShelterDef": {
       "type": "object",

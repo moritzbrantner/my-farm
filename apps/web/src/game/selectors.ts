@@ -340,7 +340,10 @@ export function availableRecipes(
 ): RecipeDef[] {
   return (
     catalog?.recipes.filter(
-      (recipe) => recipe.machine_kind === machine.kind && recipe.unlock_level <= level,
+      (recipe) =>
+        recipe.target.type === "machine" &&
+        recipe.target.machine_kind === machine.kind &&
+        recipe.unlock_level <= level,
     ) ?? []
   );
 }

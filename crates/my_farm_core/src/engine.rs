@@ -1,10 +1,10 @@
 use crate::{
     AnimalShelterState, AnimalState, CatalogDocument, DeliveryOrder, FarmState,
     FarmhouseUpgradeKind, FieldPlot, ItemKind, ItemStack, MachineJob, MachineKind, MachineState,
-    ReservedWorkTarget, ResidentTask, ResidentTaskKind, ResidentTaskStep, ResidentTaskStepWork,
-    ShelterKind, StorageKind, StructureKind, Tile, add_inventory, add_shelter_animals,
-    barn_storage_used, crop_storage_used, gain_xp, next_id, remove_inventory, scaled_duration_ms,
-    update_level,
+    RecipeTarget, ReservedWorkTarget, ResidentTask, ResidentTaskKind, ResidentTaskStep,
+    ResidentTaskStepWork, ShelterKind, StorageKind, StructureKind, Tile, add_inventory,
+    add_shelter_animals, barn_storage_used, crop_storage_used, gain_xp, next_id, remove_inventory,
+    scaled_duration_ms, update_level,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -68,9 +68,13 @@ pub enum FarmCommand {
         machine_id: String,
         recipe_id: String,
     },
+    QueueOvenRecipe {
+        recipe_id: String,
+    },
     CollectMachineJob {
         machine_id: String,
     },
+    CollectOvenJob,
     FeedAnimal {
         shelter_id: String,
         animal_slot: String,
@@ -291,9 +295,13 @@ pub fn apply_command(
             machine_id,
             recipe_id,
         } => queue_recipe(farm, catalog, now_ms, &machine_id, &recipe_id),
+        FarmCommand::QueueOvenRecipe { recipe_id } => {
+            queue_oven_recipe(farm, catalog, now_ms, &recipe_id)
+        }
         FarmCommand::CollectMachineJob { machine_id } => {
             collect_machine_job(farm, catalog, now_ms, &machine_id)
         }
+        FarmCommand::CollectOvenJob => collect_oven_job(farm, catalog, now_ms),
         FarmCommand::FeedAnimal {
             shelter_id,
             animal_slot,
@@ -735,6 +743,25 @@ fn complete_resident_task_step(
                 recipe_id: recipe.id.clone(),
             }]
         }
+        ResidentTaskStepWork::CollectOvenJob { job_id, recipe_id } => {
+            let ReservedWorkTarget::Oven = step.reserved_work_target else {
+                return Vec::new();
+            };
+            let Some(job_index) = farm.oven.queue.iter().position(|job| job.id == job_id) else {
+                return Vec::new();
+            };
+            farm.oven.queue.remove(job_index);
+            let Some(recipe) = catalog.recipe(&recipe_id) else {
+                return Vec::new();
+            };
+            for output in &recipe.outputs {
+                add_inventory(farm, &output.item_id, output.quantity);
+            }
+            gain_xp(farm, catalog, recipe.xp);
+            vec![FarmEvent::MachineJobCollected {
+                recipe_id: recipe.id.clone(),
+            }]
+        }
         ResidentTaskStepWork::FeedAnimal => {
             let ReservedWorkTarget::Animal {
                 shelter_id,
@@ -825,6 +852,14 @@ fn machine_is_reserved(farm: &FarmState, machine_id: &str) -> bool {
         })
 }
 
+fn oven_is_reserved(farm: &FarmState) -> bool {
+    farm.resident_task_queues
+        .values()
+        .flat_map(|queue| queue.iter())
+        .flat_map(|task| task.steps.iter())
+        .any(|step| matches!(&step.reserved_work_target, ReservedWorkTarget::Oven))
+}
+
 fn animal_slot_is_reserved(farm: &FarmState, shelter_id: &str, animal_slot: &str) -> bool {
     farm.resident_task_queues
         .values()
@@ -891,6 +926,21 @@ fn reserved_storage(farm: &FarmState, catalog: &CatalogDocument) -> (u32, u32) {
                 }
             }
             ResidentTaskStepWork::CollectMachineJob { recipe_id, .. } => {
+                let Some(recipe) = catalog.recipe(recipe_id) else {
+                    continue;
+                };
+                for output in &recipe.outputs {
+                    if catalog
+                        .item_kind(&output.item_id)
+                        .is_some_and(|kind| *kind == ItemKind::Crop)
+                    {
+                        reserved_crop += output.quantity;
+                    } else {
+                        reserved_barn += output.quantity;
+                    }
+                }
+            }
+            ResidentTaskStepWork::CollectOvenJob { recipe_id, .. } => {
                 let Some(recipe) = catalog.recipe(recipe_id) else {
                     continue;
                 };
@@ -1164,10 +1214,13 @@ fn queue_recipe(
         .iter()
         .position(|machine| machine.id == machine_id)
         .ok_or_else(|| CommandError::new("machine not found"))?;
-    if farm.machines[machine_index].kind != recipe.machine_kind {
+    let RecipeTarget::Machine { machine_kind } = &recipe.target else {
+        return Err(CommandError::new("recipe does not belong to this machine"));
+    };
+    if &farm.machines[machine_index].kind != machine_kind {
         return Err(CommandError::new("recipe does not belong to this machine"));
     }
-    let machine_def = catalog.machine(&recipe.machine_kind).unwrap();
+    let machine_def = catalog.machine(machine_kind).unwrap();
     if farm.machines[machine_index].queue.len() >= machine_def.queue_limit {
         return Err(CommandError::new("machine queue is full"));
     }
@@ -1186,6 +1239,52 @@ fn queue_recipe(
             + scaled_duration_ms(recipe.reference_seconds, catalog.balance.time_scale),
     };
     farm.machines[machine_index].queue.push(job);
+    Ok(vec![FarmEvent::RecipeQueued {
+        recipe_id: recipe_id.to_owned(),
+    }])
+}
+
+fn queue_oven_recipe(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    now_ms: i64,
+    recipe_id: &str,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    let recipe = catalog
+        .recipe(recipe_id)
+        .ok_or_else(|| CommandError::new("unknown recipe"))?;
+    require_level(farm, recipe.unlock_level)?;
+    if !matches!(recipe.target, RecipeTarget::Oven) {
+        return Err(CommandError::new("recipe does not belong to the oven"));
+    }
+    if !farm
+        .owned_farmhouse_upgrades
+        .contains(&FarmhouseUpgradeKind::Oven)
+    {
+        return Err(CommandError::new("oven is not owned"));
+    }
+    let oven_def = catalog
+        .farmhouse_upgrade(FarmhouseUpgradeKind::Oven)
+        .ok_or_else(|| CommandError::new("unknown farmhouse upgrade"))?;
+    if farm.oven.queue.len() >= oven_def.queue_limit {
+        return Err(CommandError::new("oven queue is full"));
+    }
+    remove_inventory(farm, &recipe.inputs)?;
+    let start_at = farm
+        .oven
+        .queue
+        .last()
+        .map(|job| job.ready_at_ms)
+        .unwrap_or(now_ms)
+        .max(now_ms);
+    let job = MachineJob {
+        id: next_id(farm, "job"),
+        recipe_id: recipe_id.to_owned(),
+        started_at_ms: start_at,
+        ready_at_ms: start_at
+            + scaled_duration_ms(recipe.reference_seconds, catalog.balance.time_scale),
+    };
+    farm.oven.queue.push(job);
     Ok(vec![FarmEvent::RecipeQueued {
         recipe_id: recipe_id.to_owned(),
     }])
@@ -1226,6 +1325,42 @@ fn collect_machine_job(
                 machine_id: machine_id.to_owned(),
             },
             work: ResidentTaskStepWork::CollectMachineJob {
+                job_id: job.id,
+                recipe_id: recipe.id.clone(),
+            },
+        }],
+    )?;
+    Ok(Vec::new())
+}
+
+fn collect_oven_job(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    now_ms: i64,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    let job = farm
+        .oven
+        .queue
+        .first()
+        .cloned()
+        .ok_or_else(|| CommandError::new("oven queue is empty"))?;
+    if job.ready_at_ms > now_ms {
+        return Err(CommandError::new("oven job is not ready"));
+    }
+    if oven_is_reserved(farm) {
+        return Err(CommandError::new("oven is reserved"));
+    }
+    let recipe = catalog.recipe(&job.recipe_id).unwrap();
+    if !has_storage_room_after_reservations(farm, catalog, &recipe.outputs) {
+        return Err(CommandError::new("storage is full"));
+    }
+    enqueue_resident_work(
+        farm,
+        now_ms,
+        ResidentTaskKind::ProductionWork,
+        vec![ResidentTaskStep {
+            reserved_work_target: ReservedWorkTarget::Oven,
+            work: ResidentTaskStepWork::CollectOvenJob {
                 job_id: job.id,
                 recipe_id: recipe.id.clone(),
             },

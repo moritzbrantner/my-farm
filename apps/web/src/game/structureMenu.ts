@@ -1,5 +1,5 @@
 import { itemName, recipeName, secondsRemaining, structureLabel } from "./selectors";
-import { reservedAnimalReason, reservedFieldReason, reservedMachineReason } from "./residentTasks";
+import { reservedAnimalReason, reservedFieldReason, reservedMachineReason, reservedOvenReason } from "./residentTasks";
 import type {
   AnimalShelterState,
   CatalogDocument,
@@ -39,9 +39,11 @@ export function buildStructureMenuModel(
   nowMs: number,
 ): StructureMenuModel | null {
   if (target.type === "farmhouse") {
+    const ovenOwned = view.owned_farmhouse_upgrades.includes("oven");
     return {
       title: "Farmhouse",
-      items: [farmhouseOvenItem(catalog, view)],
+      subtitle: ovenOwned ? ovenSubtitle(catalog, view) : undefined,
+      items: ovenOwned ? ovenMenuItems(catalog, view, nowMs) : [farmhouseOvenItem(catalog, view)],
     };
   }
   if (target.type === "silo") {
@@ -260,7 +262,9 @@ function buildMachineMenu(
     items.push({ id: "queue-empty", label: "Queue empty", disabled: true });
   }
 
-  for (const recipe of catalog.recipes.filter((entry) => entry.machine_kind === machine.kind)) {
+  for (const recipe of catalog.recipes.filter(
+    (entry) => entry.target.type === "machine" && entry.target.machine_kind === machine.kind,
+  )) {
     const queueFull = queueLimit > 0 && machine.queue.length >= queueLimit;
     const missing = missingItems(catalog, view, recipe.inputs);
     const locked = recipe.unlock_level > view.level;
@@ -297,6 +301,61 @@ function buildMachineMenu(
       },
     ],
   };
+}
+
+function ovenSubtitle(catalog: CatalogDocument, view: FarmView) {
+  const queueLimit = catalog.farmhouse_upgrades.find((upgrade) => upgrade.kind === "oven")?.queue_limit ?? 0;
+  return `Oven queue ${view.oven.queue.length}/${queueLimit}`;
+}
+
+function ovenMenuItems(catalog: CatalogDocument, view: FarmView, nowMs: number): StructureMenuItem[] {
+  const queueLimit = catalog.farmhouse_upgrades.find((upgrade) => upgrade.kind === "oven")?.queue_limit ?? 0;
+  const items: StructureMenuItem[] = [];
+  const first = view.oven.queue[0];
+  const reservedReason = reservedOvenReason(view);
+
+  if (first) {
+    const recipe = catalog.recipes.find((entry) => entry.id === first.recipe_id);
+    const remaining = secondsRemaining(first.ready_at_ms, nowMs);
+    const outputs = recipe?.outputs ?? [];
+    const storageFull = remaining === 0 && !hasStorageRoom(catalog, view, outputs);
+    const reason = reservedReason ?? (remaining > 0 ? `${remaining}s` : storageFull ? "Storage full" : undefined);
+    items.push({
+      id: `collect-oven-${first.id}`,
+      label: `Collect ${recipeName(catalog, first.recipe_id)}`,
+      icon: outputs[0] ? itemIcon(catalog, outputs[0].item_id) : undefined,
+      disabled: Boolean(reason),
+      reason,
+      command: reason ? undefined : { type: "collect_oven_job" },
+    });
+  } else {
+    items.push({ id: "oven-queue-empty", label: "Oven queue empty", disabled: true });
+  }
+
+  for (const recipe of catalog.recipes.filter((entry) => entry.target.type === "oven")) {
+    const queueFull = queueLimit > 0 && view.oven.queue.length >= queueLimit;
+    const missing = missingItems(catalog, view, recipe.inputs);
+    const locked = recipe.unlock_level > view.level;
+    const reason = locked
+      ? `Unlocks at level ${recipe.unlock_level}`
+      : reservedReason
+        ? reservedReason
+        : queueFull
+        ? "Queue full"
+        : missing.length > 0
+          ? `Need ${missing.join(", ")}`
+          : undefined;
+    items.push({
+      id: `make-oven-${recipe.id}`,
+      label: recipe.name,
+      icon: recipe.outputs[0] ? itemIcon(catalog, recipe.outputs[0].item_id) : undefined,
+      disabled: Boolean(reason),
+      reason,
+      command: reason ? undefined : { type: "queue_oven_recipe", recipe_id: recipe.id },
+    });
+  }
+
+  return items;
 }
 
 function buildShelterMenu(

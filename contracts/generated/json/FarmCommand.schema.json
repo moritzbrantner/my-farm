@@ -222,6 +222,24 @@
     {
       "type": "object",
       "required": [
+        "recipe_id",
+        "type"
+      ],
+      "properties": {
+        "recipe_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "queue_oven_recipe"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "machine_id",
         "type"
       ],
@@ -233,6 +251,20 @@
           "type": "string",
           "enum": [
             "collect_machine_job"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "collect_oven_job"
           ]
         }
       }

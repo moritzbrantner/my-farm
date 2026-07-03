@@ -50,6 +50,13 @@ pub enum MachineKind {
     FeedMill,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RecipeTarget {
+    Oven,
+    Machine { machine_kind: MachineKind },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum ShelterKind {
@@ -88,7 +95,7 @@ pub enum FarmhouseUpgradeKind {
 pub struct RecipeDef {
     pub id: String,
     pub name: String,
-    pub machine_kind: MachineKind,
+    pub target: RecipeTarget,
     pub inputs: Vec<ItemStack>,
     pub outputs: Vec<ItemStack>,
     pub reference_seconds: u32,
@@ -207,7 +214,7 @@ impl CatalogDocument {
                 recipe(
                     "bread",
                     "Bread",
-                    MachineKind::Bakery,
+                    RecipeTarget::Oven,
                     vec![ItemStack::new("wheat", 3)],
                     vec![ItemStack::new("bread", 1)],
                     300,
@@ -217,7 +224,7 @@ impl CatalogDocument {
                 recipe(
                     "corn_bread",
                     "Corn Bread",
-                    MachineKind::Bakery,
+                    RecipeTarget::Oven,
                     vec![ItemStack::new("corn", 2), ItemStack::new("egg", 1)],
                     vec![ItemStack::new("corn_bread", 1)],
                     1800,
@@ -227,7 +234,7 @@ impl CatalogDocument {
                 recipe(
                     "potato_bread",
                     "Potato Bread",
-                    MachineKind::Bakery,
+                    RecipeTarget::Oven,
                     vec![ItemStack::new("wheat", 2), ItemStack::new("potato", 2)],
                     vec![ItemStack::new("potato_bread", 1)],
                     2100,
@@ -237,7 +244,7 @@ impl CatalogDocument {
                 recipe(
                     "carrot_cake",
                     "Carrot Cake",
-                    MachineKind::Bakery,
+                    RecipeTarget::Oven,
                     vec![
                         ItemStack::new("wheat", 2),
                         ItemStack::new("carrot", 2),
@@ -251,7 +258,7 @@ impl CatalogDocument {
                 recipe(
                     "tomato_tart",
                     "Tomato Tart",
-                    MachineKind::Bakery,
+                    RecipeTarget::Oven,
                     vec![
                         ItemStack::new("wheat", 2),
                         ItemStack::new("tomato", 2),
@@ -265,7 +272,9 @@ impl CatalogDocument {
                 recipe(
                     "chicken_feed",
                     "Chicken Feed",
-                    MachineKind::FeedMill,
+                    RecipeTarget::Machine {
+                        machine_kind: MachineKind::FeedMill,
+                    },
                     vec![ItemStack::new("wheat", 2), ItemStack::new("corn", 1)],
                     vec![ItemStack::new("chicken_feed", 3)],
                     300,
@@ -275,7 +284,9 @@ impl CatalogDocument {
                 recipe(
                     "cow_feed",
                     "Cow Feed",
-                    MachineKind::FeedMill,
+                    RecipeTarget::Machine {
+                        machine_kind: MachineKind::FeedMill,
+                    },
                     vec![ItemStack::new("soybean", 2), ItemStack::new("corn", 1)],
                     vec![ItemStack::new("cow_feed", 3)],
                     600,
@@ -453,7 +464,7 @@ fn crop(
 fn recipe(
     id: &str,
     name: &str,
-    machine_kind: MachineKind,
+    target: RecipeTarget,
     inputs: Vec<ItemStack>,
     outputs: Vec<ItemStack>,
     reference_seconds: u32,
@@ -463,7 +474,7 @@ fn recipe(
     RecipeDef {
         id: id.to_owned(),
         name: name.to_owned(),
-        machine_kind,
+        target,
         inputs,
         outputs,
         reference_seconds,
