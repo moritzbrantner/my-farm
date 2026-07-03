@@ -144,7 +144,7 @@ pub fn demo_catalog() -> CatalogDocument {
     catalog.shelters.clear();
     catalog.market_items.clear();
     catalog.storage_upgrades.clear();
-    catalog.level_xp = vec![0, 0, 4];
+    catalog.level_xp = vec![0, 0, 4, 4, 4, 4];
     catalog
 }
 
@@ -160,7 +160,10 @@ fn unsupported_demo_command<'a>(_farm: &FarmState, command: &'a FarmCommand) -> 
         | FarmCommand::BuyFieldPlot { .. }
         | FarmCommand::SelectResident { .. }
         | FarmCommand::RenameResident { .. }
-        | FarmCommand::CollectMachineJob { .. } => None,
+        | FarmCommand::CollectMachineJob { .. }
+        | FarmCommand::PlaceDecoration { .. }
+        | FarmCommand::MoveDecoration { .. }
+        | FarmCommand::RemoveDecoration { .. } => None,
         FarmCommand::BuyStructure { .. } => Some("feature is not available in the demo"),
         FarmCommand::MoveStructure { target, .. } => match target {
             StructureTarget::Silo | StructureTarget::Barn => None,

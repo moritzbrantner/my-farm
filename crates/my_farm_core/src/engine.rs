@@ -1,10 +1,10 @@
 use crate::{
-    AnimalShelterState, AnimalState, CatalogDocument, DeliveryOrder, FarmState,
-    FarmhouseUpgradeKind, FieldPlot, ItemKind, ItemStack, MachineJob, MachineKind, MachineState,
-    RecipeTarget, ReservedWorkTarget, ResidentTask, ResidentTaskKind, ResidentTaskStep,
-    ResidentTaskStepWork, ShelterKind, StorageKind, StructureKind, Tile, add_inventory,
-    add_shelter_animals, barn_storage_used, crop_storage_used, gain_xp, next_id, remove_inventory,
-    scaled_duration_ms, update_level,
+    AnimalShelterState, AnimalState, CatalogDocument, DecorationDef, DecorationPlacement,
+    DeliveryOrder, FarmState, FarmhouseUpgradeKind, FieldPlot, ItemKind, ItemStack, MachineJob,
+    MachineKind, MachineState, RecipeTarget, ReservedWorkTarget, ResidentTask, ResidentTaskKind,
+    ResidentTaskStep, ResidentTaskStepWork, Room, RoomTile, ShelterKind, StorageKind,
+    StructureKind, Tile, add_inventory, add_shelter_animals, barn_storage_used, crop_storage_used,
+    gain_xp, next_id, remove_inventory, scaled_duration_ms, update_level,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,7 @@ const FARM_HOUSE_FOOTPRINT: StructureFootprint = StructureFootprint {
 const CROP_STARTER_STOCK: u32 = 2;
 const FIELD_PLOT_COST: u32 = 12;
 const RESIDENT_TASK_STEP_MS: i64 = 2_000;
+const DECORATION_EDITING_UNLOCK_LEVEL: u32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StructureFootprint {
@@ -108,6 +109,20 @@ pub enum FarmCommand {
         item_id: String,
         quantity: u32,
     },
+    PlaceDecoration {
+        room_id: String,
+        decoration_id: String,
+        tile: RoomTile,
+    },
+    MoveDecoration {
+        room_id: String,
+        placement_id: String,
+        tile: RoomTile,
+    },
+    RemoveDecoration {
+        room_id: String,
+        placement_id: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq, Default)]
@@ -194,6 +209,21 @@ pub enum FarmEvent {
         item_id: String,
         quantity: u32,
         coins_gained: u32,
+    },
+    DecorationPlaced {
+        room_id: String,
+        placement_id: String,
+        decoration_id: String,
+        tile: RoomTile,
+    },
+    DecorationMoved {
+        room_id: String,
+        placement_id: String,
+        tile: RoomTile,
+    },
+    DecorationRemoved {
+        room_id: String,
+        placement_id: String,
     },
     LevelChanged {
         level: u32,
@@ -330,6 +360,20 @@ pub fn apply_command(
         FarmCommand::SellMarketItem { item_id, quantity } => {
             sell_market_item(farm, catalog, &item_id, quantity)
         }
+        FarmCommand::PlaceDecoration {
+            room_id,
+            decoration_id,
+            tile,
+        } => place_decoration(farm, catalog, &room_id, &decoration_id, tile),
+        FarmCommand::MoveDecoration {
+            room_id,
+            placement_id,
+            tile,
+        } => move_decoration(farm, catalog, &room_id, &placement_id, tile),
+        FarmCommand::RemoveDecoration {
+            room_id,
+            placement_id,
+        } => remove_decoration(farm, &room_id, &placement_id),
     };
 
     match result {
@@ -1594,6 +1638,171 @@ fn sell_market_item(
         quantity,
         coins_gained,
     }])
+}
+
+fn place_decoration(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    room_id: &str,
+    decoration_id: &str,
+    tile: RoomTile,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    require_level(farm, DECORATION_EDITING_UNLOCK_LEVEL)?;
+    let decoration = catalog
+        .decoration(decoration_id)
+        .ok_or_else(|| CommandError::new("unknown decoration"))?;
+    let room_index = find_room_index(farm, room_id)?;
+    ensure_decoration_tile_available(
+        &farm.house_interior.rooms[room_index],
+        catalog,
+        decoration,
+        &tile,
+        None,
+    )?;
+
+    let placement_id = next_decoration_placement_id(farm);
+    farm.house_interior.rooms[room_index]
+        .decoration_placements
+        .push(DecorationPlacement {
+            id: placement_id.clone(),
+            decoration_id: decoration_id.to_owned(),
+            tile: tile.clone(),
+        });
+
+    Ok(vec![FarmEvent::DecorationPlaced {
+        room_id: room_id.to_owned(),
+        placement_id,
+        decoration_id: decoration_id.to_owned(),
+        tile,
+    }])
+}
+
+fn move_decoration(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    room_id: &str,
+    placement_id: &str,
+    tile: RoomTile,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    require_level(farm, DECORATION_EDITING_UNLOCK_LEVEL)?;
+    let room_index = find_room_index(farm, room_id)?;
+    let placement_index =
+        find_decoration_placement_index(&farm.house_interior.rooms[room_index], placement_id)?;
+    let decoration_id = farm.house_interior.rooms[room_index].decoration_placements
+        [placement_index]
+        .decoration_id
+        .clone();
+    let decoration = catalog
+        .decoration(&decoration_id)
+        .ok_or_else(|| CommandError::new("unknown decoration"))?;
+    ensure_decoration_tile_available(
+        &farm.house_interior.rooms[room_index],
+        catalog,
+        decoration,
+        &tile,
+        Some(placement_id),
+    )?;
+
+    farm.house_interior.rooms[room_index].decoration_placements[placement_index].tile =
+        tile.clone();
+
+    Ok(vec![FarmEvent::DecorationMoved {
+        room_id: room_id.to_owned(),
+        placement_id: placement_id.to_owned(),
+        tile,
+    }])
+}
+
+fn remove_decoration(
+    farm: &mut FarmState,
+    room_id: &str,
+    placement_id: &str,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    require_level(farm, DECORATION_EDITING_UNLOCK_LEVEL)?;
+    let room_index = find_room_index(farm, room_id)?;
+    let placement_index =
+        find_decoration_placement_index(&farm.house_interior.rooms[room_index], placement_id)?;
+    farm.house_interior.rooms[room_index]
+        .decoration_placements
+        .remove(placement_index);
+
+    Ok(vec![FarmEvent::DecorationRemoved {
+        room_id: room_id.to_owned(),
+        placement_id: placement_id.to_owned(),
+    }])
+}
+
+fn find_room_index(farm: &FarmState, room_id: &str) -> Result<usize, CommandError> {
+    farm.house_interior
+        .rooms
+        .iter()
+        .position(|room| room.id == room_id)
+        .ok_or_else(|| CommandError::new("room not found"))
+}
+
+fn find_decoration_placement_index(room: &Room, placement_id: &str) -> Result<usize, CommandError> {
+    room.decoration_placements
+        .iter()
+        .position(|placement| placement.id == placement_id)
+        .ok_or_else(|| CommandError::new("decoration placement not found"))
+}
+
+fn ensure_decoration_tile_available(
+    room: &Room,
+    catalog: &CatalogDocument,
+    decoration: &DecorationDef,
+    tile: &RoomTile,
+    ignored_placement_id: Option<&str>,
+) -> Result<(), CommandError> {
+    let Some(right) = tile.x.checked_add(decoration.footprint.width) else {
+        return Err(CommandError::new("decoration placement is out of bounds"));
+    };
+    let Some(bottom) = tile.y.checked_add(decoration.footprint.height) else {
+        return Err(CommandError::new("decoration placement is out of bounds"));
+    };
+    if right > room.width || bottom > room.height {
+        return Err(CommandError::new("decoration placement is out of bounds"));
+    }
+
+    for placement in &room.decoration_placements {
+        if ignored_placement_id.is_some_and(|ignored| ignored == placement.id) {
+            continue;
+        }
+        let other = catalog
+            .decoration(&placement.decoration_id)
+            .ok_or_else(|| CommandError::new("unknown decoration"))?;
+        if decoration_footprints_overlap(tile, decoration, &placement.tile, other) {
+            return Err(CommandError::new("decoration placement overlaps"));
+        }
+    }
+
+    Ok(())
+}
+
+fn decoration_footprints_overlap(
+    tile: &RoomTile,
+    decoration: &DecorationDef,
+    other_tile: &RoomTile,
+    other_decoration: &DecorationDef,
+) -> bool {
+    let right = tile.x + decoration.footprint.width;
+    let bottom = tile.y + decoration.footprint.height;
+    let other_right = other_tile.x + other_decoration.footprint.width;
+    let other_bottom = other_tile.y + other_decoration.footprint.height;
+
+    tile.x < other_right && right > other_tile.x && tile.y < other_bottom && bottom > other_tile.y
+}
+
+fn next_decoration_placement_id(farm: &mut FarmState) -> String {
+    let mut placement_id = next_id(farm, "decoration");
+    while farm.house_interior.rooms.iter().any(|room| {
+        room.decoration_placements
+            .iter()
+            .any(|placement| placement.id == placement_id)
+    }) {
+        placement_id = next_id(farm, "decoration");
+    }
+    placement_id
 }
 
 pub fn ensure_delivery_orders(farm: &mut FarmState, catalog: &CatalogDocument) {

@@ -1,6 +1,6 @@
 use my_farm_core::{
     AnimalState, CatalogDocument, FarmCommand, FarmEvent, FarmState, FarmhouseUpgradeKind,
-    ItemStack, MachineKind, RecipeTarget, Room, ShelterKind, StorageKind, StructureKind,
+    ItemStack, MachineKind, RecipeTarget, Room, RoomTile, ShelterKind, StorageKind, StructureKind,
     StructureTarget, SweepHarvestMode, Tile, add_inventory, apply_command, apply_elapsed,
     farm_view, inventory_quantity, new_farm, scaled_duration_ms, update_level,
 };
@@ -137,6 +137,242 @@ fn old_saves_without_house_interior_load_default_house_interior() {
     let restored: FarmState = serde_json::from_value(json).unwrap();
 
     assert_eq!(restored.house_interior, farm.house_interior);
+}
+
+#[test]
+fn decoration_commands_require_level_five_and_edit_saved_placements_without_resident_tasks() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let locked = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlaceDecoration {
+            room_id: "living_room".to_owned(),
+            decoration_id: "chair".to_owned(),
+            tile: RoomTile::new(0, 0),
+        },
+        0,
+    );
+
+    assert!(!locked.accepted);
+    assert_eq!(locked.error.unwrap().message, "requires level 5");
+
+    farm.level = 5;
+    let placed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlaceDecoration {
+            room_id: "living_room".to_owned(),
+            decoration_id: "chair".to_owned(),
+            tile: RoomTile::new(0, 0),
+        },
+        0,
+    );
+
+    assert!(placed.accepted, "{placed:?}");
+    let placement_id = match &placed.events[0] {
+        FarmEvent::DecorationPlaced { placement_id, .. } => placement_id.clone(),
+        event => panic!("unexpected event: {event:?}"),
+    };
+    assert_eq!(farm.house_interior.rooms[0].decoration_placements.len(), 4);
+    assert!(
+        farm.resident_task_queues
+            .values()
+            .all(|queue| queue.is_empty())
+    );
+
+    let moved = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveDecoration {
+            room_id: "living_room".to_owned(),
+            placement_id: placement_id.clone(),
+            tile: RoomTile::new(0, 1),
+        },
+        0,
+    );
+
+    assert_eq!(
+        moved.events,
+        vec![FarmEvent::DecorationMoved {
+            room_id: "living_room".to_owned(),
+            placement_id: placement_id.clone(),
+            tile: RoomTile::new(0, 1),
+        }]
+    );
+    assert!(
+        farm.resident_task_queues
+            .values()
+            .all(|queue| queue.is_empty())
+    );
+
+    let removed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::RemoveDecoration {
+            room_id: "living_room".to_owned(),
+            placement_id: placement_id.clone(),
+        },
+        0,
+    );
+
+    assert_eq!(
+        removed.events,
+        vec![FarmEvent::DecorationRemoved {
+            room_id: "living_room".to_owned(),
+            placement_id,
+        }]
+    );
+    assert_eq!(farm.house_interior.rooms[0].decoration_placements.len(), 3);
+    assert!(catalog.decoration("chair").is_some());
+}
+
+#[test]
+fn decoration_placement_rejects_unknown_ids_bounds_and_same_room_overlaps() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.level = 5;
+
+    let unknown_room = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlaceDecoration {
+            room_id: "attic".to_owned(),
+            decoration_id: "chair".to_owned(),
+            tile: RoomTile::new(0, 0),
+        },
+        0,
+    );
+    assert_eq!(unknown_room.error.unwrap().message, "room not found");
+
+    let unknown_decoration = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlaceDecoration {
+            room_id: "living_room".to_owned(),
+            decoration_id: "unknown".to_owned(),
+            tile: RoomTile::new(0, 0),
+        },
+        0,
+    );
+    assert_eq!(
+        unknown_decoration.error.unwrap().message,
+        "unknown decoration"
+    );
+
+    let out_of_bounds = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlaceDecoration {
+            room_id: "living_room".to_owned(),
+            decoration_id: "rug".to_owned(),
+            tile: RoomTile::new(6, 5),
+        },
+        0,
+    );
+    assert_eq!(
+        out_of_bounds.error.unwrap().message,
+        "decoration placement is out of bounds"
+    );
+
+    let overlapping = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlaceDecoration {
+            room_id: "living_room".to_owned(),
+            decoration_id: "chair".to_owned(),
+            tile: RoomTile::new(1, 1),
+        },
+        0,
+    );
+    assert_eq!(
+        overlapping.error.unwrap().message,
+        "decoration placement overlaps"
+    );
+
+    let placed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlaceDecoration {
+            room_id: "living_room".to_owned(),
+            decoration_id: "chair".to_owned(),
+            tile: RoomTile::new(0, 0),
+        },
+        0,
+    );
+    let FarmEvent::DecorationPlaced { placement_id, .. } = &placed.events[0] else {
+        panic!("unexpected event: {:?}", placed.events);
+    };
+
+    let move_out_of_bounds = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveDecoration {
+            room_id: "living_room".to_owned(),
+            placement_id: placement_id.clone(),
+            tile: RoomTile::new(8, 0),
+        },
+        0,
+    );
+    assert_eq!(
+        move_out_of_bounds.error.unwrap().message,
+        "decoration placement is out of bounds"
+    );
+
+    let move_overlapping = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveDecoration {
+            room_id: "living_room".to_owned(),
+            placement_id: placement_id.clone(),
+            tile: RoomTile::new(2, 1),
+        },
+        0,
+    );
+    assert_eq!(
+        move_overlapping.error.unwrap().message,
+        "decoration placement overlaps"
+    );
+}
+
+#[test]
+fn players_can_place_unlimited_copies_of_starter_decorations_when_tiles_are_available() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.level = 5;
+
+    let first = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlaceDecoration {
+            room_id: "bedroom".to_owned(),
+            decoration_id: "lamp".to_owned(),
+            tile: RoomTile::new(0, 0),
+        },
+        0,
+    );
+    let second = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlaceDecoration {
+            room_id: "bedroom".to_owned(),
+            decoration_id: "lamp".to_owned(),
+            tile: RoomTile::new(0, 1),
+        },
+        0,
+    );
+
+    assert!(first.accepted, "{first:?}");
+    assert!(second.accepted, "{second:?}");
+    assert_eq!(
+        farm.house_interior.rooms[2]
+            .decoration_placements
+            .iter()
+            .filter(|placement| placement.decoration_id == "lamp")
+            .count(),
+        3
+    );
 }
 
 #[test]
