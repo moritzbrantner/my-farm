@@ -12,6 +12,10 @@ _Avoid_: Account, realm, world
 A browser-local sample Farm used to show an early production slice without requiring the full local Farm setup.
 _Avoid_: Mock farm, fake farm
 
+**Guided Tutorial**:
+A five-card modal onboarding sequence that opens inside play after starting a New Farm and introduces the fresh Farm, Field Plots and planting, crop timers and harvesting, Silo storage, and coins, experience, and Build progression.
+_Avoid_: Tutorial panel, help menu, onboarding page
+
 **Field Plot**:
 A tile that can hold one planted crop job.
 _Avoid_: Farmland, crop tile
