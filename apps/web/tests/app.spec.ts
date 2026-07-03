@@ -1180,6 +1180,19 @@ test("build tray shows disabled structure details without opening a context menu
   await expect(page.getByTestId("build-detail-strip")).toContainText("Unlocks at level 3");
 });
 
+test("build tray shows Tool Shed outside demo mode with its requirements", async ({ page }) => {
+  await mockFarmApi(page, { ...farmView, level: 2, coins: 120 });
+  await openFarm(page);
+
+  const tray = await openBuildMenu(page);
+  await tray.getByRole("button", { name: /Tool Shed/ }).click();
+
+  await expect(page.getByTestId("structure-context-menu")).toBeHidden();
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Tool Shed");
+  await expect(page.getByTestId("build-detail-strip")).toContainText("45 coins");
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Unlocks at level 3");
+});
+
 test("placing an available structure sends buy_structure with the chosen tile", async ({ page }) => {
   const commands: CommandRequest[] = [];
   await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
@@ -1199,6 +1212,33 @@ test("placing an available structure sends buy_structure with the chosen tile", 
     structure_kind: "feed_mill",
   });
   expect(command.command).toHaveProperty("tile");
+});
+
+test("placing Tool Shed uses a 1x1 footprint and the structure guardrails", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop canvas hit geometry is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  const tray = await openBuildMenu(page);
+  await tray.getByRole("button", { name: /Tool Shed/ }).click();
+  await expect(page.getByText("Place Tool Shed")).toBeVisible();
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Choose a tile");
+
+  await page.getByLabel("Field Plot plot-1").click({ force: true });
+  await expect(page.getByText("Tile is occupied")).toBeVisible();
+  expect(commands).toHaveLength(0);
+
+  const command = await clickGroundTileUntilCommand(page, commands, { x: 9, y: 7 });
+  expect(command.command).toMatchObject({
+    type: "buy_structure",
+    structure_kind: "tool_shed",
+    tile: { x: 9, y: 7 },
+  });
 });
 
 test("placing a field plot sends buy_field_plot with the chosen tile", async ({ page }) => {
@@ -2471,6 +2511,46 @@ test("moves a structure by choosing move and clicking a destination tile", async
     target: { type: "machine", id: "machine-1" },
   });
   expect(command.command).toHaveProperty("tile");
+});
+
+test("renders, selects, and moves a built Tool Shed without upgrade actions", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  const viewWithToolShed: FarmView = {
+    ...farmView,
+    tool_shed: { id: "tool-shed-1", tile: { x: 12, y: 12 } },
+  };
+  await mockFarmApi(page, viewWithToolShed, catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  const toolShed = page.getByLabel("Tool Shed structure");
+  await expect(toolShed).toBeVisible();
+  await toolShed.click();
+  await expect(page.getByRole("heading", { name: "Selection" })).toBeVisible();
+  await expect(page.getByText("Tool Shed")).toBeVisible();
+
+  await toolShed.click({ button: "right" });
+  const menu = page.getByTestId("structure-context-menu");
+  await expect(menu).toContainText("Tool Shed");
+  await expect(menu.getByRole("menuitem", { name: "Move" })).toBeEnabled();
+  await expect(menu.getByRole("menuitem", { name: /Upgrade/ })).toHaveCount(0);
+
+  await menu.getByRole("menuitem", { name: "Move" }).click();
+  await expect(page.getByText("Moving Tool Shed")).toBeVisible();
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await expect(page.getByText("Tile is occupied")).toBeVisible();
+  expect(commands).toHaveLength(0);
+
+  const command = await clickGroundTileUntilCommand(page, commands, { x: 13, y: 12 });
+  expect(command.command).toEqual({
+    type: "move_structure",
+    target: { type: "tool_shed", id: "tool-shed-1" },
+    tile: { x: 13, y: 12 },
+  });
 });
 
 test("farmhouse does not expose move and blocks moved structures", async ({ page }, testInfo) => {

@@ -74,6 +74,7 @@ const buildKinds: BuildableKind[] = [
   "chicken_coop",
   "delivery_board",
   "cow_pasture",
+  "tool_shed",
 ];
 
 type CommandResult = { accepted: boolean; error: string | null };
@@ -128,6 +129,11 @@ const structureBuildCardMetas: Record<BuildableKind, StructureBuildCardMeta> = {
     kind: "cow_pasture",
     role: "Houses cows that produce milk.",
     accentClass: "cow-pasture",
+  },
+  tool_shed: {
+    kind: "tool_shed",
+    role: "Stores tools for resident work.",
+    accentClass: "tool-shed",
   },
 };
 
@@ -2352,6 +2358,7 @@ function SelectionPanel({
   const isFarmhouse = selection?.type === "farmhouse";
   const isSilo = selection?.type === "silo";
   const isBarn = selection?.type === "barn";
+  const isToolShed = selection?.type === "tool_shed";
   return (
     <section className="panel-section">
       <h2>Selection</h2>
@@ -2398,7 +2405,15 @@ function SelectionPanel({
         <ShelterActions catalog={catalog} view={view} shelter={shelter} nowMs={nowMs} send={send} />
       ) : null}
       {!demoMode && selection?.type === "delivery_board" ? <p>Use delivery orders below.</p> : null}
-      {!plot && !machine && !shelter && !isFarmhouse && !isSilo && !isBarn && selection?.type !== "delivery_board" ? (
+      {isToolShed ? <p>Tool Shed</p> : null}
+      {!plot &&
+      !machine &&
+      !shelter &&
+      !isFarmhouse &&
+      !isSilo &&
+      !isBarn &&
+      !isToolShed &&
+      selection?.type !== "delivery_board" ? (
         <p>
           {demoMode
             ? "Select a field, Farmhouse, or storage."
@@ -3008,6 +3023,9 @@ function unlockLevelForBuildKind(catalog: CatalogDocument, kind: BuildableKind):
   if (kind === "delivery_board") {
     return 4;
   }
+  if (kind === "tool_shed") {
+    return 3;
+  }
   const shelterKind = kind === "chicken_coop" ? "chicken_coop" : "cow_pasture";
   return catalog.shelters.find((shelter) => shelter.kind === shelterKind)?.unlock_level ?? 1;
 }
@@ -3021,6 +3039,9 @@ function buildCostForBuildKind(catalog: CatalogDocument, kind: BuildableKind): n
   }
   if (kind === "delivery_board") {
     return 20;
+  }
+  if (kind === "tool_shed") {
+    return 45;
   }
   const shelterKind = kind === "chicken_coop" ? "chicken_coop" : "cow_pasture";
   return catalog.shelters.find((shelter) => shelter.kind === shelterKind)?.build_cost ?? 0;

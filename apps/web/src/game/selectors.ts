@@ -17,6 +17,7 @@ export type Selection =
   | { type: "machine"; id: string }
   | { type: "shelter"; id: string }
   | { type: "delivery_board" }
+  | { type: "tool_shed"; id: string }
   | null;
 
 export type StructureSelection =
@@ -25,7 +26,8 @@ export type StructureSelection =
   | { type: "barn" }
   | { type: "machine"; id: string }
   | { type: "shelter"; id: string }
-  | { type: "delivery_board" };
+  | { type: "delivery_board" }
+  | { type: "tool_shed"; id: string };
 
 export type StructureContextMenuState = {
   target: StructureSelection;
@@ -88,6 +90,8 @@ export function structureLabel(kind: StructureKind): string {
       return "Cow Pasture";
     case "delivery_board":
       return "Delivery Board";
+    case "tool_shed":
+      return "Tool Shed";
   }
 }
 
@@ -105,6 +109,8 @@ export function structureTile(kind: StructureKind): Tile {
       return { x: 11, y: 8 };
     case "delivery_board":
       return { x: 2, y: 7 };
+    case "tool_shed":
+      return { x: 12, y: 12 };
   }
 }
 
@@ -119,6 +125,7 @@ export function structureFootprint(kind: StructureKind): StructureFootprint {
       return { width: 3, height: 3 };
     case "feed_mill":
     case "delivery_board":
+    case "tool_shed":
       return { width: 1, height: 1 };
   }
 }
@@ -141,6 +148,9 @@ export function selectedStructureLabel(view: FarmView, selection: StructureSelec
     const shelter = view.shelters.find((entry) => entry.id === selection.id);
     return shelter ? structureLabel(shelter.kind) : "Structure";
   }
+  if (selection.type === "tool_shed") {
+    return view.tool_shed?.id === selection.id ? "Tool Shed" : "Structure";
+  }
   return "Delivery Board";
 }
 
@@ -159,6 +169,9 @@ export function selectedStructureKind(view: FarmView, selection: StructureSelect
   }
   if (selection.type === "shelter") {
     return view.shelters.find((entry) => entry.id === selection.id)?.kind ?? null;
+  }
+  if (selection.type === "tool_shed") {
+    return view.tool_shed?.id === selection.id ? "tool_shed" : null;
   }
   return view.delivery_board_built ? "delivery_board" : null;
 }
@@ -186,6 +199,9 @@ export function selectedStructureTile(view: FarmView, selection: StructureSelect
   }
   if (selection.type === "shelter") {
     return view.shelters.find((entry) => entry.id === selection.id)?.tile ?? null;
+  }
+  if (selection.type === "tool_shed") {
+    return view.tool_shed?.id === selection.id ? view.tool_shed.tile : null;
   }
   return view.delivery_board_built ? view.delivery_board_tile : null;
 }
@@ -252,6 +268,13 @@ export function isTileOccupiedForPlacement(
   ) {
     return true;
   }
+  if (
+    view.tool_shed &&
+    !isSameStructure(moving, { type: "tool_shed", id: view.tool_shed.id }) &&
+    footprintContains(view.tool_shed.tile, structureFootprint("tool_shed"), tile)
+  ) {
+    return true;
+  }
   return (
     view.delivery_board_built &&
     !isSameStructure(moving, { type: "delivery_board" }) &&
@@ -304,6 +327,13 @@ function isTileAvailableForFootprint(
   ) {
     return false;
   }
+  if (
+    view.tool_shed &&
+    !isSameStructure(moving, { type: "tool_shed", id: view.tool_shed.id }) &&
+    footprintsOverlap(tile, footprint, view.tool_shed.tile, structureFootprint("tool_shed"))
+  ) {
+    return false;
+  }
   return !(
     view.delivery_board_built &&
     !isSameStructure(moving, { type: "delivery_board" }) &&
@@ -323,6 +353,9 @@ export function builtStructureKinds(view: FarmView): Set<StructureKind> {
   }
   if (view.delivery_board_built) {
     built.add("delivery_board");
+  }
+  if (view.tool_shed) {
+    built.add("tool_shed");
   }
   return built;
 }
@@ -395,6 +428,8 @@ function isSameStructure(left: StructureSelection | null, right: StructureSelect
       return true;
     case "delivery_board":
       return true;
+    case "tool_shed":
+      return right.type === "tool_shed" && left.id === right.id;
     case "machine":
       return right.type === "machine" && left.id === right.id;
     case "shelter":

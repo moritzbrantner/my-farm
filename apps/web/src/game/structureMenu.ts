@@ -74,6 +74,14 @@ export function buildStructureMenuModel(
     const shelter = view.shelters.find((entry) => entry.id === target.id);
     return shelter ? buildShelterMenu(catalog, view, shelter, nowMs) : null;
   }
+  if (target.type === "tool_shed") {
+    return view.tool_shed?.id === target.id
+      ? {
+          title: "Tool Shed",
+          items: [{ id: "move-structure", label: "Move", action: "move_structure" }],
+        }
+      : null;
+  }
   return view.delivery_board_built
     ? {
         title: "Delivery Board",
@@ -162,6 +170,9 @@ export function isStructureTargetPresent(view: FarmView, target: StructureSelect
   }
   if (target.type === "shelter") {
     return view.shelters.some((shelter) => shelter.id === target.id);
+  }
+  if (target.type === "tool_shed") {
+    return view.tool_shed?.id === target.id;
   }
   return view.delivery_board_built;
 }

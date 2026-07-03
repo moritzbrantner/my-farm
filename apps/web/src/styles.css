@@ -1570,6 +1570,10 @@ h2 {
   border-left: 8px solid #b98762;
 }
 
+.build-detail-strip--tool-shed {
+  border-left: 8px solid #6f8f88;
+}
+
 .build-detail-strip__copy {
   display: grid;
   gap: 2px;
@@ -1661,6 +1665,10 @@ h2 {
 
 .structure-build-card--cow-pasture .structure-build-card__art {
   background: #c89672;
+}
+
+.structure-build-card--tool-shed .structure-build-card__art {
+  background: #9db8b1;
 }
 
 .structure-build-card__body {

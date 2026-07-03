@@ -266,6 +266,26 @@ export function FarmScene({
             }}
           />
         ) : null}
+        {view.tool_shed ? (
+          <StructureSprite
+            target={{ type: "tool_shed", id: view.tool_shed.id }}
+            label="Tools"
+            hitLabel="Tool Shed"
+            tile={view.tool_shed.tile}
+            color="#6f8f88"
+            footprint={structureFootprint("tool_shed")}
+            selected={selection?.type === "tool_shed" && selection.id === view.tool_shed.id}
+            buildPlacement={buildPlacement}
+            movingStructure={movingStructure}
+            onHoverTile={setHoverTile}
+            onOpenStructureMenu={onOpenStructureMenu}
+            onPlaceNewStructure={onPlaceNewStructure}
+            onPlaceStructure={onPlaceStructure}
+            onSelect={() => {
+              onSelect({ type: "tool_shed", id: view.tool_shed.id });
+            }}
+          />
+        ) : null}
         <FarmResidents view={view} nowMs={nowMs} />
         {movingStructure && hoverTile ? (
           <PlacementPreview
@@ -1651,6 +1671,8 @@ function assetKindForTarget(target: StructureSelection, label: string): Exclude<
       return "barn";
     case "delivery_board":
       return "delivery_board";
+    case "tool_shed":
+      return "tool_shed";
     case "machine":
       return "feed_mill";
     case "shelter":
@@ -1671,6 +1693,8 @@ function isSameStructure(left: StructureSelection | null, right: StructureSelect
       return true;
     case "delivery_board":
       return true;
+    case "tool_shed":
+      return right.type === "tool_shed" && left.id === right.id;
     case "machine":
       return right.type === "machine" && left.id === right.id;
     case "shelter":
