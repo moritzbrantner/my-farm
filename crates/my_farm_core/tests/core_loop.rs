@@ -1267,7 +1267,99 @@ fn machine_recipes_consume_inputs_and_produce_outputs() {
         scaled_duration_ms(300, catalog.balance.time_scale),
     );
     assert!(collected.accepted);
+    assert_eq!(inventory_quantity(&farm, "bread"), 0);
+
+    apply_elapsed(
+        &mut farm,
+        &catalog,
+        scaled_duration_ms(300, catalog.balance.time_scale) + 2_000,
+    );
     assert_eq!(inventory_quantity(&farm, "bread"), 1);
+}
+
+#[test]
+fn machine_collection_is_queued_and_reserves_job_and_barn_capacity() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    farm.level = 3;
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::Bakery,
+            tile: Tile::new(4, 1),
+        },
+        0,
+    );
+    assert!(built.accepted);
+    let bakery_id = farm.machines[0].id.clone();
+
+    let queued = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueRecipe {
+            machine_id: bakery_id.clone(),
+            recipe_id: "bread".to_owned(),
+        },
+        0,
+    );
+    assert!(queued.accepted);
+    let ready_at = scaled_duration_ms(300, catalog.balance.time_scale);
+
+    let collected = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::CollectMachineJob {
+            machine_id: bakery_id.clone(),
+        },
+        ready_at,
+    );
+    assert!(collected.accepted);
+    assert!(collected.events.is_empty());
+    assert_eq!(farm.machines[0].queue.len(), 1);
+    assert_eq!(inventory_quantity(&farm, "bread"), 0);
+    assert_eq!(farm.xp, 14);
+
+    let duplicate_collect = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::CollectMachineJob {
+            machine_id: bakery_id,
+        },
+        ready_at,
+    );
+    assert!(!duplicate_collect.accepted);
+    assert_eq!(
+        duplicate_collect.error.unwrap().message,
+        "machine is reserved"
+    );
+
+    farm.barn_capacity = 1;
+    let bought_feed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyMarketItem {
+            item_id: "chicken_feed".to_owned(),
+            quantity: 1,
+        },
+        ready_at,
+    );
+    assert!(!bought_feed.accepted);
+    assert_eq!(bought_feed.error.unwrap().message, "storage is full");
+
+    apply_elapsed(&mut farm, &catalog, ready_at + 1_999);
+    assert_eq!(farm.machines[0].queue.len(), 1);
+    assert_eq!(inventory_quantity(&farm, "bread"), 0);
+
+    let events = apply_elapsed(&mut farm, &catalog, ready_at + 2_000);
+    assert_eq!(farm.machines[0].queue.len(), 0);
+    assert_eq!(inventory_quantity(&farm, "bread"), 1);
+    assert_eq!(farm.xp, 18);
+    assert!(events.contains(&FarmEvent::MachineJobCollected {
+        recipe_id: "bread".to_owned(),
+    }));
 }
 
 #[test]
@@ -1306,11 +1398,35 @@ fn animals_convert_feed_into_products() {
         0,
     );
     assert!(fed.accepted);
+    assert!(fed.events.is_empty());
+    assert_eq!(inventory_quantity(&farm, "chicken_feed"), 0);
+    assert!(matches!(
+        farm.shelters[0].animals[0].state,
+        AnimalState::Idle
+    ));
+
+    let duplicate_feed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::FeedAnimal {
+            shelter_id: shelter.id.clone(),
+            animal_slot: animal_id.clone(),
+        },
+        0,
+    );
+    assert!(!duplicate_feed.accepted);
+    assert_eq!(duplicate_feed.error.unwrap().message, "animal is reserved");
+
+    apply_elapsed(&mut farm, &catalog, 1_999);
+    assert!(matches!(
+        farm.shelters[0].animals[0].state,
+        AnimalState::Idle
+    ));
 
     apply_elapsed(
         &mut farm,
         &catalog,
-        scaled_duration_ms(1200, catalog.balance.time_scale),
+        2_000 + scaled_duration_ms(1200, catalog.balance.time_scale),
     );
     assert!(matches!(
         farm.shelters[0].animals[0].state,
@@ -1324,10 +1440,97 @@ fn animals_convert_feed_into_products() {
             shelter_id: shelter.id,
             animal_slot: animal_id,
         },
-        scaled_duration_ms(1200, catalog.balance.time_scale),
+        2_000 + scaled_duration_ms(1200, catalog.balance.time_scale),
     );
     assert!(collected.accepted);
+    assert!(collected.events.is_empty());
+    assert_eq!(inventory_quantity(&farm, "egg"), 0);
+
+    apply_elapsed(
+        &mut farm,
+        &catalog,
+        2_000 + scaled_duration_ms(1200, catalog.balance.time_scale) + 1_999,
+    );
+    assert_eq!(inventory_quantity(&farm, "egg"), 0);
+
+    let events = apply_elapsed(
+        &mut farm,
+        &catalog,
+        2_000 + scaled_duration_ms(1200, catalog.balance.time_scale) + 2_000,
+    );
     assert_eq!(inventory_quantity(&farm, "egg"), 1);
+    assert!(events.contains(&FarmEvent::AnimalProductCollected {
+        item_id: "egg".to_owned(),
+    }));
+    assert!(matches!(
+        farm.shelters[0].animals[0].state,
+        AnimalState::Idle
+    ));
+}
+
+#[test]
+fn animal_product_collection_reserves_slot_and_barn_capacity() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    farm.level = 3;
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ChickenCoop,
+            tile: Tile::new(6, 1),
+        },
+        0,
+    );
+    assert!(built.accepted);
+    let shelter_id = farm.shelters[0].id.clone();
+    let animal_id = farm.shelters[0].animals[0].id.clone();
+    farm.shelters[0].animals[0].state = AnimalState::Ready;
+    farm.barn_capacity = 1;
+
+    let collected = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::CollectAnimalProduct {
+            shelter_id: shelter_id.clone(),
+            animal_slot: animal_id.clone(),
+        },
+        0,
+    );
+    assert!(collected.accepted);
+    assert!(matches!(
+        farm.shelters[0].animals[0].state,
+        AnimalState::Ready
+    ));
+
+    let duplicate_collect = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::CollectAnimalProduct {
+            shelter_id,
+            animal_slot: animal_id,
+        },
+        0,
+    );
+    assert!(!duplicate_collect.accepted);
+    assert_eq!(
+        duplicate_collect.error.unwrap().message,
+        "animal is reserved"
+    );
+
+    let bought_feed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyMarketItem {
+            item_id: "chicken_feed".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!bought_feed.accepted);
+    assert_eq!(bought_feed.error.unwrap().message, "storage is full");
 }
 
 #[test]

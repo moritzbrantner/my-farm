@@ -18,7 +18,7 @@ const FARM_HOUSE_FOOTPRINT: StructureFootprint = StructureFootprint {
 };
 const CROP_STARTER_STOCK: u32 = 2;
 const FIELD_PLOT_COST: u32 = 12;
-const RESIDENT_FIELD_TASK_STEP_MS: i64 = 2_000;
+const RESIDENT_TASK_STEP_MS: i64 = 2_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StructureFootprint {
@@ -219,15 +219,8 @@ pub fn apply_elapsed(
     }
     let previous_level = farm.level;
     let mut events = Vec::new();
-    for shelter in &mut farm.shelters {
-        for animal in &mut shelter.animals {
-            if matches!(animal.state, AnimalState::Producing { ready_at_ms, .. } if ready_at_ms <= now_ms)
-            {
-                animal.state = AnimalState::Ready;
-            }
-        }
-    }
     events.extend(complete_resident_tasks(farm, catalog, now_ms));
+    advance_animal_production(farm, now_ms);
     update_level(farm, catalog);
     grant_unclaimed_crop_starter_stock(farm, catalog);
     ensure_delivery_orders(farm, catalog);
@@ -236,6 +229,17 @@ pub fn apply_elapsed(
     }
     farm.last_update_ms = now_ms;
     events
+}
+
+fn advance_animal_production(farm: &mut FarmState, now_ms: i64) {
+    for shelter in &mut farm.shelters {
+        for animal in &mut shelter.animals {
+            if matches!(animal.state, AnimalState::Producing { ready_at_ms, .. } if ready_at_ms <= now_ms)
+            {
+                animal.state = AnimalState::Ready;
+            }
+        }
+    }
 }
 
 pub fn apply_command(
@@ -287,7 +291,7 @@ pub fn apply_command(
         FarmCommand::CollectAnimalProduct {
             shelter_id,
             animal_slot,
-        } => collect_animal_product(farm, catalog, &shelter_id, &animal_slot),
+        } => collect_animal_product(farm, catalog, now_ms, &shelter_id, &animal_slot),
         FarmCommand::FulfillDeliveryOrder { order_id } => {
             fulfill_delivery_order(farm, catalog, &order_id)
         }
@@ -356,9 +360,10 @@ fn plant_crop(
     }
     require_level(farm, crop.unlock_level)?;
     remove_inventory(farm, &[ItemStack::new(crop_id, 1)])?;
-    enqueue_field_work(
+    enqueue_resident_work(
         farm,
         now_ms,
+        ResidentTaskKind::FieldWork,
         vec![ResidentTaskStep {
             reserved_work_target: ReservedWorkTarget::FieldPlot {
                 plot_id: plot_id.to_owned(),
@@ -417,7 +422,7 @@ fn sweep_plant(
     }
 
     remove_inventory(farm, &[ItemStack::new(crop_id, steps.len() as u32)])?;
-    enqueue_field_work(farm, now_ms, steps)?;
+    enqueue_resident_work(farm, now_ms, ResidentTaskKind::FieldWork, steps)?;
     Ok(Vec::new())
 }
 
@@ -449,9 +454,10 @@ fn harvest_crop(
     if !has_storage_room_after_reservations(farm, catalog, &outputs) {
         return Err(CommandError::new("storage is full"));
     }
-    enqueue_field_work(
+    enqueue_resident_work(
         farm,
         now_ms,
+        ResidentTaskKind::FieldWork,
         vec![ResidentTaskStep {
             reserved_work_target: ReservedWorkTarget::FieldPlot {
                 plot_id: plot_id.to_owned(),
@@ -539,7 +545,7 @@ fn sweep_harvest(
         }));
     }
 
-    enqueue_field_work(farm, now_ms, steps)?;
+    enqueue_resident_work(farm, now_ms, ResidentTaskKind::FieldWork, steps)?;
     Ok(Vec::new())
 }
 
@@ -560,9 +566,10 @@ fn dedupe_plot_ids(plot_ids: &[String]) -> Vec<&str> {
     ordered
 }
 
-fn enqueue_field_work(
+fn enqueue_resident_work(
     farm: &mut FarmState,
     now_ms: i64,
+    kind: ResidentTaskKind,
     steps: Vec<ResidentTaskStep>,
 ) -> Result<(), CommandError> {
     find_resident_index(farm, &farm.selected_resident_id)?;
@@ -576,10 +583,10 @@ fn enqueue_field_work(
         .max(now_ms);
     let task = ResidentTask {
         id: next_id(farm, "task"),
-        kind: ResidentTaskKind::FieldWork,
+        kind,
         steps,
         started_at_ms,
-        ready_at_ms: started_at_ms + RESIDENT_FIELD_TASK_STEP_MS,
+        ready_at_ms: started_at_ms + RESIDENT_TASK_STEP_MS,
     };
     farm.resident_task_queues
         .entry(selected_resident_id)
@@ -589,7 +596,7 @@ fn enqueue_field_work(
 }
 
 fn resident_task_tail_ready_at(task: &ResidentTask) -> i64 {
-    task.ready_at_ms + (task.steps.len().saturating_sub(1) as i64 * RESIDENT_FIELD_TASK_STEP_MS)
+    task.ready_at_ms + (task.steps.len().saturating_sub(1) as i64 * RESIDENT_TASK_STEP_MS)
 }
 
 fn complete_resident_tasks(
@@ -641,7 +648,7 @@ fn pop_ready_resident_task_step(
         queue.remove(0);
     } else {
         task.started_at_ms = completed_at;
-        task.ready_at_ms = completed_at + RESIDENT_FIELD_TASK_STEP_MS;
+        task.ready_at_ms = completed_at + RESIDENT_TASK_STEP_MS;
     }
     Some((step, completed_at))
 }
@@ -688,6 +695,95 @@ fn complete_resident_task_step(
             }
             vec![FarmEvent::CropHarvested { crop_id, quantity }]
         }
+        ResidentTaskStepWork::CollectMachineJob { job_id, recipe_id } => {
+            let ReservedWorkTarget::Machine { machine_id } = step.reserved_work_target else {
+                return Vec::new();
+            };
+            let Some(machine_index) = farm
+                .machines
+                .iter()
+                .position(|machine| machine.id == machine_id)
+            else {
+                return Vec::new();
+            };
+            let Some(job_index) = farm.machines[machine_index]
+                .queue
+                .iter()
+                .position(|job| job.id == job_id)
+            else {
+                return Vec::new();
+            };
+            farm.machines[machine_index].queue.remove(job_index);
+            let Some(recipe) = catalog.recipe(&recipe_id) else {
+                return Vec::new();
+            };
+            for output in &recipe.outputs {
+                add_inventory(farm, &output.item_id, output.quantity);
+            }
+            gain_xp(farm, catalog, recipe.xp);
+            vec![FarmEvent::MachineJobCollected {
+                recipe_id: recipe.id.clone(),
+            }]
+        }
+        ResidentTaskStepWork::FeedAnimal => {
+            let ReservedWorkTarget::Animal {
+                shelter_id,
+                animal_slot,
+            } = step.reserved_work_target
+            else {
+                return Vec::new();
+            };
+            let Ok(shelter_index) = find_shelter_index(farm, &shelter_id) else {
+                return Vec::new();
+            };
+            let Some(def) = catalog.shelter(&farm.shelters[shelter_index].kind) else {
+                return Vec::new();
+            };
+            let Some(animal) = farm.shelters[shelter_index]
+                .animals
+                .iter_mut()
+                .find(|animal| animal.id == animal_slot)
+            else {
+                return Vec::new();
+            };
+            if !matches!(animal.state, AnimalState::Idle) {
+                return Vec::new();
+            }
+            animal.state = AnimalState::Producing {
+                fed_at_ms: completed_at_ms,
+                ready_at_ms: completed_at_ms
+                    + scaled_duration_ms(def.reference_seconds, catalog.balance.time_scale),
+            };
+            vec![FarmEvent::AnimalFed { shelter_id }]
+        }
+        ResidentTaskStepWork::CollectAnimalProduct { item_id, quantity } => {
+            let ReservedWorkTarget::Animal {
+                shelter_id,
+                animal_slot,
+            } = step.reserved_work_target
+            else {
+                return Vec::new();
+            };
+            let Ok(shelter_index) = find_shelter_index(farm, &shelter_id) else {
+                return Vec::new();
+            };
+            let Some(animal) = farm.shelters[shelter_index]
+                .animals
+                .iter_mut()
+                .find(|animal| animal.id == animal_slot)
+            else {
+                return Vec::new();
+            };
+            if !matches!(animal.state, AnimalState::Ready) {
+                return Vec::new();
+            }
+            animal.state = AnimalState::Idle;
+            add_inventory(farm, &item_id, quantity);
+            if let Some(def) = catalog.shelter(&farm.shelters[shelter_index].kind) {
+                gain_xp(farm, catalog, def.xp);
+            }
+            vec![FarmEvent::AnimalProductCollected { item_id }]
+        }
     }
 }
 
@@ -701,6 +797,36 @@ fn field_plot_is_reserved(farm: &FarmState, plot_id: &str) -> bool {
                 &step.reserved_work_target,
                 ReservedWorkTarget::FieldPlot { plot_id: reserved_plot_id }
                     if reserved_plot_id == plot_id
+            )
+        })
+}
+
+fn machine_is_reserved(farm: &FarmState, machine_id: &str) -> bool {
+    farm.resident_task_queues
+        .values()
+        .flat_map(|queue| queue.iter())
+        .flat_map(|task| task.steps.iter())
+        .any(|step| {
+            matches!(
+                &step.reserved_work_target,
+                ReservedWorkTarget::Machine { machine_id: reserved_machine_id }
+                    if reserved_machine_id == machine_id
+            )
+        })
+}
+
+fn animal_slot_is_reserved(farm: &FarmState, shelter_id: &str, animal_slot: &str) -> bool {
+    farm.resident_task_queues
+        .values()
+        .flat_map(|queue| queue.iter())
+        .flat_map(|task| task.steps.iter())
+        .any(|step| {
+            matches!(
+                &step.reserved_work_target,
+                ReservedWorkTarget::Animal {
+                    shelter_id: reserved_shelter_id,
+                    animal_slot: reserved_animal_slot
+                } if reserved_shelter_id == shelter_id && reserved_animal_slot == animal_slot
             )
         })
 }
@@ -743,16 +869,43 @@ fn reserved_storage(farm: &FarmState, catalog: &CatalogDocument) -> (u32, u32) {
         .flat_map(|queue| queue.iter())
         .flat_map(|task| task.steps.iter())
     {
-        let ResidentTaskStepWork::HarvestCrop { crop_id, quantity } = &step.work else {
-            continue;
-        };
-        if catalog
-            .item_kind(crop_id)
-            .is_some_and(|kind| *kind == ItemKind::Crop)
-        {
-            reserved_crop += quantity;
-        } else {
-            reserved_barn += quantity;
+        match &step.work {
+            ResidentTaskStepWork::HarvestCrop { crop_id, quantity } => {
+                if catalog
+                    .item_kind(crop_id)
+                    .is_some_and(|kind| *kind == ItemKind::Crop)
+                {
+                    reserved_crop += quantity;
+                } else {
+                    reserved_barn += quantity;
+                }
+            }
+            ResidentTaskStepWork::CollectMachineJob { recipe_id, .. } => {
+                let Some(recipe) = catalog.recipe(recipe_id) else {
+                    continue;
+                };
+                for output in &recipe.outputs {
+                    if catalog
+                        .item_kind(&output.item_id)
+                        .is_some_and(|kind| *kind == ItemKind::Crop)
+                    {
+                        reserved_crop += output.quantity;
+                    } else {
+                        reserved_barn += output.quantity;
+                    }
+                }
+            }
+            ResidentTaskStepWork::CollectAnimalProduct { item_id, quantity } => {
+                if catalog
+                    .item_kind(item_id)
+                    .is_some_and(|kind| *kind == ItemKind::Crop)
+                {
+                    reserved_crop += quantity;
+                } else {
+                    reserved_barn += quantity;
+                }
+            }
+            ResidentTaskStepWork::PlantCrop { .. } | ResidentTaskStepWork::FeedAnimal => {}
         }
     }
     (reserved_crop, reserved_barn)
@@ -1030,18 +1183,28 @@ fn collect_machine_job(
     if job.ready_at_ms > now_ms {
         return Err(CommandError::new("machine job is not ready"));
     }
+    if machine_is_reserved(farm, machine_id) {
+        return Err(CommandError::new("machine is reserved"));
+    }
     let recipe = catalog.recipe(&job.recipe_id).unwrap();
     if !has_storage_room_after_reservations(farm, catalog, &recipe.outputs) {
         return Err(CommandError::new("storage is full"));
     }
-    farm.machines[machine_index].queue.remove(0);
-    for output in &recipe.outputs {
-        add_inventory(farm, &output.item_id, output.quantity);
-    }
-    gain_xp(farm, catalog, recipe.xp);
-    Ok(vec![FarmEvent::MachineJobCollected {
-        recipe_id: recipe.id.clone(),
-    }])
+    enqueue_resident_work(
+        farm,
+        now_ms,
+        ResidentTaskKind::ProductionWork,
+        vec![ResidentTaskStep {
+            reserved_work_target: ReservedWorkTarget::Machine {
+                machine_id: machine_id.to_owned(),
+            },
+            work: ResidentTaskStepWork::CollectMachineJob {
+                job_id: job.id,
+                recipe_id: recipe.id.clone(),
+            },
+        }],
+    )?;
+    Ok(Vec::new())
 }
 
 fn feed_animal(
@@ -1061,47 +1224,65 @@ fn feed_animal(
     if !matches!(animal.state, AnimalState::Idle) {
         return Err(CommandError::new("animal is not hungry"));
     }
+    if animal_slot_is_reserved(farm, shelter_id, animal_slot) {
+        return Err(CommandError::new("animal is reserved"));
+    }
     remove_inventory(farm, &[ItemStack::new(&def.feed_item_id, 1)])?;
-    let animal = farm.shelters[shelter_index]
-        .animals
-        .iter_mut()
-        .find(|animal| animal.id == animal_slot)
-        .ok_or_else(|| CommandError::new("animal not found"))?;
-    animal.state = AnimalState::Producing {
-        fed_at_ms: now_ms,
-        ready_at_ms: now_ms + scaled_duration_ms(def.reference_seconds, catalog.balance.time_scale),
-    };
-    Ok(vec![FarmEvent::AnimalFed {
-        shelter_id: shelter_id.to_owned(),
-    }])
+    enqueue_resident_work(
+        farm,
+        now_ms,
+        ResidentTaskKind::ProductionWork,
+        vec![ResidentTaskStep {
+            reserved_work_target: ReservedWorkTarget::Animal {
+                shelter_id: shelter_id.to_owned(),
+                animal_slot: animal_slot.to_owned(),
+            },
+            work: ResidentTaskStepWork::FeedAnimal,
+        }],
+    )?;
+    Ok(Vec::new())
 }
 
 fn collect_animal_product(
     farm: &mut FarmState,
     catalog: &CatalogDocument,
+    now_ms: i64,
     shelter_id: &str,
     animal_slot: &str,
 ) -> Result<Vec<FarmEvent>, CommandError> {
     let shelter_index = find_shelter_index(farm, shelter_id)?;
     let def = catalog.shelter(&farm.shelters[shelter_index].kind).unwrap();
     let output = ItemStack::new(&def.product_item_id, 1);
-    if !has_storage_room_after_reservations(farm, catalog, std::slice::from_ref(&output)) {
-        return Err(CommandError::new("storage is full"));
-    }
     let animal = farm.shelters[shelter_index]
         .animals
-        .iter_mut()
+        .iter()
         .find(|animal| animal.id == animal_slot)
         .ok_or_else(|| CommandError::new("animal not found"))?;
     if !matches!(animal.state, AnimalState::Ready) {
         return Err(CommandError::new("animal product is not ready"));
     }
-    animal.state = AnimalState::Idle;
-    add_inventory(farm, &output.item_id, output.quantity);
-    gain_xp(farm, catalog, def.xp);
-    Ok(vec![FarmEvent::AnimalProductCollected {
-        item_id: output.item_id,
-    }])
+    if animal_slot_is_reserved(farm, shelter_id, animal_slot) {
+        return Err(CommandError::new("animal is reserved"));
+    }
+    if !has_storage_room_after_reservations(farm, catalog, std::slice::from_ref(&output)) {
+        return Err(CommandError::new("storage is full"));
+    }
+    enqueue_resident_work(
+        farm,
+        now_ms,
+        ResidentTaskKind::ProductionWork,
+        vec![ResidentTaskStep {
+            reserved_work_target: ReservedWorkTarget::Animal {
+                shelter_id: shelter_id.to_owned(),
+                animal_slot: animal_slot.to_owned(),
+            },
+            work: ResidentTaskStepWork::CollectAnimalProduct {
+                item_id: output.item_id,
+                quantity: output.quantity,
+            },
+        }],
+    )?;
+    Ok(Vec::new())
 }
 
 fn fulfill_delivery_order(

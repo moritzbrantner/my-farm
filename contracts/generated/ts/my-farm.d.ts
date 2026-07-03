@@ -53,9 +53,9 @@ export type FarmResident = { id: string, display_name: string, };
 
 export type ReservedWorkTarget = { "type": "field_plot", plot_id: string, } | { "type": "machine", machine_id: string, } | { "type": "animal", shelter_id: string, animal_slot: string, };
 
-export type ResidentTaskKind = { "type": "field_work" };
+export type ResidentTaskKind = { "type": "field_work" } | { "type": "production_work" };
 
-export type ResidentTaskStepWork = { "type": "plant_crop", crop_id: string, } | { "type": "harvest_crop", crop_id: string, quantity: number, };
+export type ResidentTaskStepWork = { "type": "plant_crop", crop_id: string, } | { "type": "harvest_crop", crop_id: string, quantity: number, } | { "type": "collect_machine_job", job_id: string, recipe_id: string, } | { "type": "feed_animal" } | { "type": "collect_animal_product", item_id: string, quantity: number, };
 
 export type ResidentTaskStep = { reserved_work_target: ReservedWorkTarget, work: ResidentTaskStepWork, };
 
