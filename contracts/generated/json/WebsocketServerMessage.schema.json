@@ -1074,6 +1074,17 @@
           "format": "uint32",
           "minimum": 0.0
         },
+        "tool_shed": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ToolShedState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "unlocks": {
           "type": "array",
           "items": {
@@ -1947,7 +1958,8 @@
         "feed_mill",
         "chicken_coop",
         "cow_pasture",
-        "delivery_board"
+        "delivery_board",
+        "tool_shed"
       ]
     },
     "StructureTarget": {
@@ -2029,6 +2041,24 @@
               ]
             }
           }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "tool_shed"
+              ]
+            }
+          }
         }
       ]
     },
@@ -2046,6 +2076,21 @@
         "y": {
           "type": "integer",
           "format": "int32"
+        }
+      }
+    },
+    "ToolShedState": {
+      "type": "object",
+      "required": [
+        "id",
+        "tile"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "tile": {
+          "$ref": "#/definitions/Tile"
         }
       }
     },

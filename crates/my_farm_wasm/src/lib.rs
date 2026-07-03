@@ -168,9 +168,9 @@ fn unsupported_demo_command<'a>(_farm: &FarmState, command: &'a FarmCommand) -> 
         FarmCommand::MoveStructure { target, .. } => match target {
             StructureTarget::Silo | StructureTarget::Barn => None,
             StructureTarget::Machine { .. } => Some("feature is not available in the demo"),
-            StructureTarget::Shelter { .. } | StructureTarget::DeliveryBoard => {
-                Some("feature is not available in the demo")
-            }
+            StructureTarget::Shelter { .. }
+            | StructureTarget::DeliveryBoard
+            | StructureTarget::ToolShed { .. } => Some("feature is not available in the demo"),
         },
         FarmCommand::QueueRecipe { recipe_id, .. } => {
             let _ = recipe_id;
@@ -195,6 +195,7 @@ fn demo_save_is_compatible(save: &DemoSave, catalog: &CatalogDocument) -> bool {
         && save.farm.machines.is_empty()
         && save.farm.shelters.is_empty()
         && !save.farm.delivery_board_built
+        && save.farm.tool_shed.is_none()
 }
 
 fn now_ms_to_i64(now_ms: f64) -> i64 {

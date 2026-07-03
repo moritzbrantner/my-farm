@@ -627,7 +627,8 @@
         "feed_mill",
         "chicken_coop",
         "cow_pasture",
-        "delivery_board"
+        "delivery_board",
+        "tool_shed"
       ]
     },
     "StructureTarget": {
@@ -706,6 +707,24 @@
               "type": "string",
               "enum": [
                 "delivery_board"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "tool_shed"
               ]
             }
           }

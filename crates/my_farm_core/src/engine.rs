@@ -3,8 +3,8 @@ use crate::{
     DeliveryOrder, FarmState, FarmhouseUpgradeKind, FieldPlot, ItemKind, ItemStack, MachineJob,
     MachineKind, MachineState, RecipeTarget, ReservedWorkTarget, ResidentTask, ResidentTaskKind,
     ResidentTaskStep, ResidentTaskStepWork, Room, RoomTile, ShelterKind, StorageKind,
-    StructureKind, Tile, add_inventory, add_shelter_animals, barn_storage_used, crop_storage_used,
-    gain_xp, next_id, remove_inventory, scaled_duration_ms, update_level,
+    StructureKind, Tile, ToolShedState, add_inventory, add_shelter_animals, barn_storage_used,
+    crop_storage_used, gain_xp, next_id, remove_inventory, scaled_duration_ms, update_level,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -19,6 +19,8 @@ const FARM_HOUSE_FOOTPRINT: StructureFootprint = StructureFootprint {
 };
 const CROP_STARTER_STOCK: u32 = 2;
 const FIELD_PLOT_COST: u32 = 12;
+const TOOL_SHED_COST: u32 = 45;
+const TOOL_SHED_UNLOCK_LEVEL: u32 = 3;
 const RESIDENT_TASK_STEP_MS: i64 = 2_000;
 const DECORATION_EDITING_UNLOCK_LEVEL: u32 = 5;
 
@@ -141,6 +143,7 @@ pub enum StructureTarget {
     Machine { id: String },
     Shelter { id: String },
     DeliveryBoard,
+    ToolShed { id: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -1104,6 +1107,21 @@ fn buy_structure(
             farm.delivery_board_tile = tile;
             ensure_delivery_orders(farm, catalog);
         }
+        StructureKind::ToolShed => {
+            require_level(farm, TOOL_SHED_UNLOCK_LEVEL)?;
+            if farm.tool_shed.is_some() {
+                return Err(CommandError::new("structure already built"));
+            }
+            ensure_tile_can_hold_structure(
+                farm,
+                &tile,
+                structure_footprint(&StructureKind::ToolShed),
+                None,
+            )?;
+            spend_coins(farm, TOOL_SHED_COST)?;
+            let id = next_id(farm, "tool-shed");
+            farm.tool_shed = Some(ToolShedState { id, tile });
+        }
     }
     Ok(vec![FarmEvent::StructureBuilt { structure_kind }])
 }
@@ -1192,6 +1210,13 @@ fn move_structure(
             }
             StructureKind::DeliveryBoard
         }
+        StructureTarget::ToolShed { id } => {
+            farm.tool_shed
+                .as_ref()
+                .filter(|tool_shed| tool_shed.id == *id)
+                .ok_or_else(|| CommandError::new("tool shed not found"))?;
+            StructureKind::ToolShed
+        }
     };
 
     ensure_tile_can_hold_structure(
@@ -1226,6 +1251,14 @@ fn move_structure(
         }
         StructureTarget::DeliveryBoard => {
             farm.delivery_board_tile = tile.clone();
+        }
+        StructureTarget::ToolShed { id } => {
+            let tool_shed = farm
+                .tool_shed
+                .as_mut()
+                .filter(|tool_shed| tool_shed.id == *id)
+                .unwrap();
+            tool_shed.tile = tile.clone();
         }
     }
 
@@ -1986,6 +2019,18 @@ fn ensure_tile_can_hold_structure(
     {
         return Err(CommandError::new("tile is occupied"));
     }
+    if let Some(tool_shed) = &farm.tool_shed {
+        if !ignores_tool_shed(ignore_target, &tool_shed.id)
+            && footprints_overlap(
+                tile,
+                footprint,
+                &tool_shed.tile,
+                structure_footprint(&StructureKind::ToolShed),
+            )
+        {
+            return Err(CommandError::new("tile is occupied"));
+        }
+    }
     Ok(())
 }
 
@@ -2003,10 +2048,12 @@ fn structure_footprint(kind: &StructureKind) -> StructureFootprint {
             width: 3,
             height: 3,
         },
-        StructureKind::FeedMill | StructureKind::DeliveryBoard => StructureFootprint {
-            width: 1,
-            height: 1,
-        },
+        StructureKind::FeedMill | StructureKind::DeliveryBoard | StructureKind::ToolShed => {
+            StructureFootprint {
+                width: 1,
+                height: 1,
+            }
+        }
     }
 }
 
@@ -2048,4 +2095,8 @@ fn ignores_machine(ignore_target: Option<&StructureTarget>, machine_id: &str) ->
 
 fn ignores_shelter(ignore_target: Option<&StructureTarget>, shelter_id: &str) -> bool {
     matches!(ignore_target, Some(StructureTarget::Shelter { id }) if id == shelter_id)
+}
+
+fn ignores_tool_shed(ignore_target: Option<&StructureTarget>, tool_shed_id: &str) -> bool {
+    matches!(ignore_target, Some(StructureTarget::ToolShed { id }) if id == tool_shed_id)
 }

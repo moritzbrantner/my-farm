@@ -49,6 +49,9 @@ pub struct FarmState {
     pub delivery_board_built: bool,
     #[serde(default = "default_delivery_board_tile")]
     pub delivery_board_tile: Tile,
+    #[serde(default)]
+    #[ts(optional)]
+    pub tool_shed: Option<ToolShedState>,
     pub delivery_orders: Vec<DeliveryOrder>,
     #[serde(default = "default_residents")]
     pub residents: Vec<FarmResident>,
@@ -102,6 +105,8 @@ struct FarmStateSerde {
     delivery_board_built: bool,
     #[serde(default = "default_delivery_board_tile")]
     delivery_board_tile: Tile,
+    #[serde(default)]
+    tool_shed: Option<ToolShedState>,
     delivery_orders: Vec<DeliveryOrder>,
     #[serde(default = "default_residents")]
     residents: Vec<FarmResident>,
@@ -146,6 +151,7 @@ impl FarmStateSerde {
             shelters: self.shelters,
             delivery_board_built: self.delivery_board_built,
             delivery_board_tile: self.delivery_board_tile,
+            tool_shed: self.tool_shed,
             delivery_orders: self.delivery_orders,
             residents: self.residents,
             selected_resident_id: self.selected_resident_id,
@@ -213,6 +219,12 @@ pub struct MachineState {
     pub kind: MachineKind,
     pub tile: Tile,
     pub queue: Vec<MachineJob>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct ToolShedState {
+    pub id: String,
+    pub tile: Tile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -381,6 +393,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         shelters: Vec::new(),
         delivery_board_built: false,
         delivery_board_tile: default_delivery_board_tile(),
+        tool_shed: None,
         delivery_orders: Vec::new(),
         residents: default_residents(),
         selected_resident_id: default_selected_resident_id(),
