@@ -256,6 +256,30 @@ button[aria-disabled="true"] {
   color: #536a5e;
 }
 
+.connection-status {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid rgba(32, 49, 43, 0.22);
+  border-radius: 999px;
+  background: #edf6df;
+  color: #2f5a3d;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.connection-status--disconnected {
+  background: #f9dfd6;
+  color: #8d3f2e;
+}
+
+.connection-status--reconnecting {
+  background: #fff0c7;
+  color: #7a5420;
+}
+
 .top-bar__menu-button {
   flex: 0 0 auto;
   min-height: 30px;

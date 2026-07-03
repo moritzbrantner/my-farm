@@ -28,6 +28,42 @@ test("renders the playable farm shell", async ({ page }) => {
   expect(box?.height).toBeGreaterThan(250);
 });
 
+test("bootstraps from the gameplay websocket without polling farm snapshots", async ({ page }) => {
+  await installMockGameplayWebSocket(page, [{ version: 1, view: farmView, catalog }]);
+  let farmPolls = 0;
+  await page.route("**/api/farm", async (route) => {
+    farmPolls += 1;
+    await route.fulfill({ json: { version: 1, view: farmView } });
+  });
+
+  await openFarm(page);
+
+  await expect(page.getByLabel("Connection Synced")).toBeVisible();
+  await expect(page.getByText("Local farm synced")).toBeVisible();
+  await expect(page.getByLabel("Bakery structure")).toBeVisible();
+  await page.waitForTimeout(2800);
+  expect(farmPolls).toBe(0);
+
+  const urls = await page.evaluate(() => (window as unknown as { __gameplayWebSocketUrls: string[] }).__gameplayWebSocketUrls);
+  expect(urls.at(-1)).toBe("ws://127.0.0.1:8091/api/gameplay");
+});
+
+test("reconnect reloads catalog and farm snapshot from the gameplay websocket", async ({ page }) => {
+  await installMockGameplayWebSocket(page, [
+    { version: 1, view: farmView, catalog },
+    { version: 2, view: { ...farmView, level: 2 }, catalog, delayMs: 300 },
+  ]);
+
+  await openFarm(page);
+
+  await expect(page.getByLabel("Connection Synced")).toBeVisible();
+  await page.evaluate(() => (window as unknown as { __closeLatestGameplayWebSocket: () => void }).__closeLatestGameplayWebSocket());
+  await expect(page.getByLabel("Connection Disconnected")).toBeVisible();
+  await expect(page.getByLabel("Connection Reconnecting")).toBeVisible({ timeout: 2_000 });
+  await expect(page.getByLabel("Connection Synced")).toBeVisible();
+  await expect(page.locator(".top-bar").getByText("Level 2")).toBeVisible();
+});
+
 test("frames the 3d farm scene inside the viewport", async ({ page }) => {
   await mockFarmApi(page);
   await openFarm(page);
@@ -893,6 +929,7 @@ test("dragging across ready matching crops sends one sweep harvest command", asy
   const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
 
   currentView = twoReadyWheatFieldView();
+  await installMockGameplayWebSocket(page, [{ version: 1, view: currentView, catalog }]);
   await page.reload();
   await startFarm(page);
   await expect(page.getByText("Local farm synced")).toBeVisible();
@@ -1093,32 +1130,26 @@ test("right click cancels a pending seed sweep", async ({ page }, testInfo) => {
   expect(commands.find((request) => request.command.type === "sweep_plant")).toBeUndefined();
 });
 
-test("accepted seed sweep is not overwritten by an older farm poll", async ({
+test("accepted seed sweep does not trigger periodic farm polling", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
   const emptyView = sixEmptyFieldView();
   const plantedView = plantedFieldView(emptyView, ["plot-4", "plot-5", "plot-6"]);
-  let commandSeen = false;
-  let staleFarmReturned = false;
+  let farmRequests = 0;
 
+  await installMockGameplayWebSocket(page, [{ version: 0, view: emptyView, catalog }]);
   await page.route("**/api/catalog", async (route) => {
     await route.fulfill({ json: { catalog } });
   });
   await page.route("**/api/farm", async (route) => {
-    if (commandSeen && !staleFarmReturned) {
-      staleFarmReturned = true;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      await route.fulfill({ json: { version: 0, view: emptyView } });
-      return;
-    }
-    await route.fulfill({ json: { version: commandSeen ? 1 : 0, view: commandSeen ? plantedView : emptyView } });
+    farmRequests += 1;
+    await route.fulfill({ json: { version: 0, view: emptyView } });
   });
   await page.route("**/api/farm/reset", async (route) => {
     await route.fulfill({ json: { version: 0, view: emptyView } });
   });
   await page.route("**/api/commands", async (route) => {
-    commandSeen = true;
     await route.fulfill({
       json: { accepted: true, version: 1, events: [], view: plantedView, error: null },
     });
@@ -1140,7 +1171,7 @@ test("accepted seed sweep is not overwritten by an older farm poll", async ({
   await page.mouse.up();
 
   await expect(page.getByText(/Wheat - \d+s/)).toBeVisible();
-  await expect.poll(() => staleFarmReturned, { timeout: 6000 }).toBe(true);
+  expect(farmRequests).toBe(0);
   await expect(page.getByText(/Wheat - \d+s/)).toBeVisible();
 });
 
@@ -1150,6 +1181,7 @@ test("seed sweep retries once after a version mismatch", async ({ page }, testIn
   const plantedView = plantedFieldView(emptyView, ["plot-4", "plot-5", "plot-6"]);
   let commandAttempts = 0;
 
+  await installMockGameplayWebSocket(page, [{ version: 0, view: emptyView, catalog }]);
   await page.route("**/api/catalog", async (route) => {
     await route.fulfill({ json: { catalog } });
   });
@@ -1774,6 +1806,7 @@ async function mockMutableFarmApi(
   customCatalog: CatalogDocument = catalog,
   onCommand?: (request: CommandRequest) => void,
 ) {
+  await installMockGameplayWebSocket(page, [{ version: 1, view: getView(), catalog: customCatalog }]);
   await page.route("**/api/catalog", async (route) => {
     await route.fulfill({ json: { catalog: customCatalog } });
   });
@@ -1787,6 +1820,116 @@ async function mockMutableFarmApi(
     onCommand?.(route.request().postDataJSON() as CommandRequest);
     await route.fulfill({ json: { accepted: true, version: 2, events: [], view: getView(), error: null } });
   });
+}
+
+async function installMockGameplayWebSocket(
+  page: Page,
+  bootstraps: Array<{ version: number; view: FarmView; catalog: CatalogDocument; delayMs?: number }>,
+) {
+  await page.addInitScript(({ bootstraps }) => {
+    type Listener = (event: { data?: string }) => void;
+    type Bootstrap = {
+      version: number;
+      view: FarmView;
+      catalog: CatalogDocument;
+      delayMs?: number;
+    };
+
+    const NativeWebSocket = window.WebSocket;
+
+    class MockGameplayWebSocket {
+      static CONNECTING = 0;
+      static OPEN = 1;
+      static CLOSING = 2;
+      static CLOSED = 3;
+
+      readonly url!: string;
+      readyState = MockGameplayWebSocket.CONNECTING;
+      private listeners = new Map<string, Listener[]>();
+
+      constructor(url: string) {
+        if (!url.includes("/api/gameplay")) {
+          return new NativeWebSocket(url) as unknown as MockGameplayWebSocket;
+        }
+        this.url = url;
+        const mockWindow = window as unknown as {
+          __gameplayWebSocketUrls: string[];
+          __gameplayWebSocketInstances: MockGameplayWebSocket[];
+        };
+        const bootstrapIndex = Math.max(0, mockWindow.__gameplayWebSocketUrls.length - 1);
+        mockWindow.__gameplayWebSocketUrls.push(url);
+        const socketIndex = mockWindow.__gameplayWebSocketInstances.push(this) - 1;
+        const bootstrap = bootstraps[Math.min(bootstrapIndex, bootstraps.length - 1)] as Bootstrap;
+
+        window.setTimeout(() => {
+          if (this.readyState !== MockGameplayWebSocket.CONNECTING) {
+            return;
+          }
+          this.readyState = MockGameplayWebSocket.OPEN;
+          this.emit("open", {});
+          window.setTimeout(() => {
+            if (this.readyState !== MockGameplayWebSocket.OPEN) {
+              return;
+            }
+            this.emit("message", { data: JSON.stringify({ type: "catalog", catalog: bootstrap.catalog }) });
+            this.emit("message", {
+              data: JSON.stringify({
+                type: "farm_snapshot",
+                version: bootstrap.version,
+                view: bootstrap.view,
+              }),
+            });
+          }, bootstrap.delayMs ?? 0);
+        }, 0);
+      }
+
+      addEventListener(type: string, listener: Listener) {
+        this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+      }
+
+      removeEventListener(type: string, listener: Listener) {
+        this.listeners.set(
+          type,
+          (this.listeners.get(type) ?? []).filter((entry) => entry !== listener),
+        );
+      }
+
+      close() {
+        this.closeFromServer();
+      }
+
+      closeFromServer() {
+        if (this.readyState === MockGameplayWebSocket.CLOSED) {
+          return;
+        }
+        this.readyState = MockGameplayWebSocket.CLOSED;
+        this.emit("close", {});
+      }
+
+      private emit(type: string, event: { data?: string }) {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener(event);
+        }
+      }
+    }
+
+    const mockWindow = window as unknown as {
+      WebSocket: typeof MockGameplayWebSocket;
+      __gameplayWebSocketUrls: string[];
+      __gameplayWebSocketInstances: MockGameplayWebSocket[];
+      __closeGameplayWebSocket: (index: number) => void;
+      __closeLatestGameplayWebSocket: () => void;
+    };
+    mockWindow.__gameplayWebSocketUrls = [];
+    mockWindow.__gameplayWebSocketInstances = [];
+    mockWindow.__closeGameplayWebSocket = (index: number) => {
+      mockWindow.__gameplayWebSocketInstances[index]?.closeFromServer();
+    };
+    mockWindow.__closeLatestGameplayWebSocket = () => {
+      mockWindow.__gameplayWebSocketInstances.at(-1)?.closeFromServer();
+    };
+    mockWindow.WebSocket = MockGameplayWebSocket;
+  }, { bootstraps });
 }
 
 async function openFarm(page: Page) {

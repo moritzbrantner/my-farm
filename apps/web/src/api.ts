@@ -1,10 +1,19 @@
-import type { CatalogDocument, CommandRequest, CommandResponse, FarmResponse, FarmView, Tile } from "./types";
+import type {
+  CatalogDocument,
+  CommandRequest,
+  CommandResponse,
+  FarmResponse,
+  FarmView,
+  Tile,
+} from "./types";
+import type { WebsocketServerMessage } from "../../../contracts/generated/ts/my-farm";
 
 const defaultApiPort = "8081";
 const defaultSiloTile: Tile = { x: 14, y: 2 };
 const defaultBarnTile: Tile = { x: 16, y: 2 };
 const defaultDeliveryBoardTile: Tile = { x: 2, y: 7 };
 const demoSaveKey = "my-farm.demo.save.v1";
+const reconnectDelayMs = 1_000;
 
 type LegacyFarmView = Omit<FarmView, "silo_tile" | "barn_tile" | "delivery_board_tile"> & {
   silo_tile?: Tile | null;
@@ -26,16 +35,26 @@ export type FarmClient = {
   farm(): Promise<FarmResponse>;
   reset(): Promise<FarmResponse>;
   command(command: CommandRequest): Promise<CommandResponse>;
+  connect?(handlers: FarmConnectionHandlers): () => void;
+};
+
+export type FarmConnectionStatus = "disconnected" | "reconnecting" | "synced";
+
+export type FarmConnectionHandlers = {
+  status(status: FarmConnectionStatus): void;
+  catalog(catalog: CatalogDocument): void;
+  farm(farm: FarmResponse): void;
+  error(message: string): void;
 };
 
 export function createFarmClient(baseUrl = import.meta.env.VITE_API_BASE_URL ?? defaultBaseUrl()): FarmClient {
   if (import.meta.env.VITE_MY_FARM_RUNTIME === "wasm_demo") {
     return createWasmDemoClient();
   }
-  return createHttpFarmClient(baseUrl);
+  return createHttpFarmClient(baseUrl, websocketUrl(baseUrl));
 }
 
-function createHttpFarmClient(baseUrl: string): FarmClient {
+function createHttpFarmClient(baseUrl: string, gameplayWebsocketUrl: string): FarmClient {
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(`${baseUrl}${path}`, {
       headers: {
@@ -74,6 +93,89 @@ function createHttpFarmClient(baseUrl: string): FarmClient {
         }),
       );
     },
+    connect(handlers: FarmConnectionHandlers): () => void {
+      return connectGameplayWebsocket(gameplayWebsocketUrl, handlers);
+    },
+  };
+}
+
+function connectGameplayWebsocket(url: string, handlers: FarmConnectionHandlers): () => void {
+  let socket: WebSocket | null = null;
+  let reconnectTimer: number | null = null;
+  let stopped = false;
+
+  const clearReconnectTimer = () => {
+    if (reconnectTimer === null) {
+      return;
+    }
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  };
+
+  const scheduleReconnect = () => {
+    if (stopped || reconnectTimer !== null) {
+      return;
+    }
+    handlers.status("disconnected");
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = null;
+      openSocket();
+    }, reconnectDelayMs);
+  };
+
+  const openSocket = () => {
+    if (stopped) {
+      return;
+    }
+    handlers.status("reconnecting");
+    const nextSocket = new WebSocket(url);
+    socket = nextSocket;
+
+    nextSocket.addEventListener("message", (event) => {
+      const message = parseWebsocketMessage(event.data);
+      if (!message) {
+        handlers.error("Invalid websocket message");
+        return;
+      }
+      if (message.type === "catalog") {
+        handlers.catalog(message.catalog);
+        return;
+      }
+      if (message.type === "farm_snapshot") {
+        handlers.farm(normalizeFarmResponse(message));
+        handlers.status("synced");
+        return;
+      }
+      if (message.type === "command_response") {
+        handlers.farm(normalizeCommandResponse(message));
+        handlers.status("synced");
+        if (!message.accepted && message.error) {
+          handlers.error(message.error);
+        }
+        return;
+      }
+      handlers.error(message.error.message);
+    });
+
+    nextSocket.addEventListener("close", () => {
+      if (socket === nextSocket) {
+        socket = null;
+      }
+      scheduleReconnect();
+    });
+
+    nextSocket.addEventListener("error", () => {
+      handlers.error("Gameplay websocket disconnected");
+    });
+  };
+
+  openSocket();
+
+  return () => {
+    stopped = true;
+    clearReconnectTimer();
+    socket?.close();
+    socket = null;
   };
 }
 
@@ -144,9 +246,32 @@ function parseResponsePayload(payloadText: string): { error?: string } {
   }
 }
 
+function parseWebsocketMessage(data: unknown): WebsocketServerMessage | null {
+  if (typeof data !== "string") {
+    return null;
+  }
+
+  try {
+    return JSON.parse(data) as WebsocketServerMessage;
+  } catch {
+    return null;
+  }
+}
+
 function defaultBaseUrl(): string {
   const hostname = window.location.hostname || "127.0.0.1";
   return `${window.location.protocol}//${hostname}:${defaultApiPort}`;
+}
+
+function websocketUrl(baseUrl: string): string {
+  const override = import.meta.env.VITE_GAMEPLAY_WS_URL;
+  if (override) {
+    return override;
+  }
+  const sourceUrl = import.meta.env.VITE_API_BASE_URL ? baseUrl : window.location.origin;
+  const url = new URL("/api/gameplay", sourceUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
 }
 
 function normalizeFarmResponse(response: LegacyFarmResponse): FarmResponse {

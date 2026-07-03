@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { createFarmClient } from "./api";
+import { createFarmClient, type FarmConnectionStatus } from "./api";
 import { FarmScene } from "./components/FarmScene";
 import { ResourceIcon } from "./components/ResourceIcon";
 import {
@@ -144,6 +144,9 @@ export function App() {
   const [message, setMessage] = useState(
     demoMode ? "Loading browser demo..." : "Connecting to local server...",
   );
+  const [connectionStatus, setConnectionStatus] = useState<FarmConnectionStatus>(
+    demoMode ? "synced" : "disconnected",
+  );
   const [nowMs, setNowMs] = useState(Date.now());
   const ordersRef = useRef<HTMLElement | null>(null);
   const versionRef = useRef(0);
@@ -183,12 +186,18 @@ export function App() {
   }, [applyFarmSnapshot]);
 
   useEffect(() => {
+    if (!demoMode) {
+      return;
+    }
     load().catch((error) => setMessage(error.message));
   }, [load]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       setNowMs(Date.now());
+      if (!demoMode) {
+        return;
+      }
       client
         .farm()
         .then((farm) => {
@@ -197,6 +206,33 @@ export function App() {
         .catch((error) => setMessage(error.message));
     }, 2500);
     return () => window.clearInterval(timer);
+  }, [applyFarmSnapshot]);
+
+  useEffect(() => {
+    if (demoMode || !client.connect) {
+      return;
+    }
+    return client.connect({
+      status(status) {
+        setConnectionStatus(status);
+        if (status === "disconnected") {
+          setMessage("Local server disconnected");
+        } else if (status === "reconnecting") {
+          setMessage("Reconnecting to local server...");
+        } else {
+          setMessage("Local farm synced");
+        }
+      },
+      catalog(nextCatalog) {
+        setCatalog(nextCatalog);
+      },
+      farm(farm) {
+        applyFarmSnapshot(farm.version, farm.view, { force: true });
+      },
+      error(errorMessage) {
+        setMessage(errorMessage);
+      },
+    });
   }, [applyFarmSnapshot]);
 
   useEffect(() => {
@@ -856,7 +892,12 @@ export function App() {
       />
       {screen === "playing" ? (
         <>
-          <TopBar view={view} message={message} onOpenMenu={openMainMenu} />
+          <TopBar
+            view={view}
+            message={message}
+            connectionStatus={connectionStatus}
+            onOpenMenu={openMainMenu}
+          />
           <aside className="side-panel">
             <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
             <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
@@ -1164,10 +1205,12 @@ function MainMenuSubpanel({
 function TopBar({
   view,
   message,
+  connectionStatus,
   onOpenMenu,
 }: {
   view: FarmView;
   message: string;
+  connectionStatus: FarmConnectionStatus;
   onOpenMenu: () => void;
 }) {
   return (
@@ -1178,11 +1221,27 @@ function TopBar({
       <Metric type="coins" label={`${view.coins} coins`} />
       <Metric type="silo" label={`Silo ${view.silo_used}/${view.silo_capacity}`} />
       <Metric type="barn" label={`Barn ${view.barn_used}/${view.barn_capacity}`} />
+      <ConnectionStatus status={connectionStatus} />
       <small>{message}</small>
       <button className="top-bar__menu-button" type="button" onClick={onOpenMenu}>
         Menu
       </button>
     </header>
+  );
+}
+
+function ConnectionStatus({ status }: { status: FarmConnectionStatus }) {
+  const label =
+    status === "synced"
+      ? "Synced"
+      : status === "reconnecting"
+        ? "Reconnecting"
+        : "Disconnected";
+
+  return (
+    <span className={`connection-status connection-status--${status}`} aria-label={`Connection ${label}`}>
+      {label}
+    </span>
   );
 }
 
