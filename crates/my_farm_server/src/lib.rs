@@ -347,6 +347,10 @@ fn has_elapsed_visible_ready_transition(
         plot.crop
             .as_ref()
             .is_some_and(|crop| elapsed_crossed_ready_at(crop.ready_at_ms, last_update_ms, now_ms))
+    }) || farm.resident_task_queues.values().any(|queue| {
+        queue
+            .first()
+            .is_some_and(|task| elapsed_crossed_ready_at(task.ready_at_ms, last_update_ms, now_ms))
     }) || farm.machines.iter().any(|machine| {
         machine
             .queue
