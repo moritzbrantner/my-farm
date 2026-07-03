@@ -268,6 +268,362 @@ fn harvest_tasks_use_distance_timing_before_and_after_tool_shed_placement() {
 }
 
 #[test]
+fn machine_collection_tasks_snapshot_tool_source_timing_when_queued() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    farm.level = 3;
+    farm.coins = 90;
+
+    let built_machine = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::FeedMill,
+            tile: Tile::new(4, 1),
+        },
+        0,
+    );
+    assert!(built_machine.accepted);
+    let feed_mill_id = farm.machines[0].id.clone();
+
+    let queued_first = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueRecipe {
+            machine_id: feed_mill_id.clone(),
+            recipe_id: "chicken_feed".to_owned(),
+        },
+        0,
+    );
+    assert!(queued_first.accepted);
+    let first_ready_at = scaled_duration_ms(300, catalog.balance.time_scale);
+
+    let collected_before_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::CollectMachineJob {
+            machine_id: feed_mill_id.clone(),
+        },
+        first_ready_at,
+    );
+    assert!(collected_before_shed.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        4_000
+    );
+
+    let built_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ToolShed,
+            tile: Tile::new(3, 1),
+        },
+        first_ready_at,
+    );
+    assert!(built_shed.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        4_000
+    );
+
+    apply_elapsed(&mut farm, &catalog, first_ready_at + 4_000);
+    assert_eq!(inventory_quantity(&farm, "chicken_feed"), 3);
+
+    let second_queued_at = first_ready_at + 4_000;
+    let queued_second = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueRecipe {
+            machine_id: feed_mill_id.clone(),
+            recipe_id: "chicken_feed".to_owned(),
+        },
+        second_queued_at,
+    );
+    assert!(queued_second.accepted);
+    let second_ready_at = second_queued_at + scaled_duration_ms(300, catalog.balance.time_scale);
+    let collected_after_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::CollectMachineJob {
+            machine_id: feed_mill_id.clone(),
+        },
+        second_ready_at,
+    );
+    assert!(collected_after_shed.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        1_250
+    );
+
+    let tool_shed_id = farm.tool_shed.as_ref().unwrap().id.clone();
+    let moved_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::ToolShed { id: tool_shed_id },
+            tile: Tile::new(17, 17),
+        },
+        second_ready_at,
+    );
+    assert!(moved_shed.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        1_250
+    );
+
+    apply_elapsed(&mut farm, &catalog, second_ready_at + 1_249);
+    assert_eq!(farm.machines[0].queue.len(), 1);
+    apply_elapsed(&mut farm, &catalog, second_ready_at + 1_250);
+    assert_eq!(farm.machines[0].queue.len(), 0);
+
+    let third_queued_at = second_ready_at + 1_250;
+    let queued_third = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueRecipe {
+            machine_id: feed_mill_id.clone(),
+            recipe_id: "chicken_feed".to_owned(),
+        },
+        third_queued_at,
+    );
+    assert!(queued_third.accepted);
+    let third_ready_at = third_queued_at + scaled_duration_ms(300, catalog.balance.time_scale);
+    let collected_after_move = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::CollectMachineJob {
+            machine_id: feed_mill_id,
+        },
+        third_ready_at,
+    );
+    assert!(collected_after_move.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        4_000
+    );
+}
+
+#[test]
+fn feed_animal_tasks_snapshot_tool_source_timing_when_queued() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    farm.level = 3;
+    farm.coins = 75;
+    add_inventory(&mut farm, "chicken_feed", 3);
+
+    let built_coop = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ChickenCoop,
+            tile: Tile::new(6, 1),
+        },
+        0,
+    );
+    assert!(built_coop.accepted);
+    let shelter_id = farm.shelters[0].id.clone();
+    let animal_ids = farm.shelters[0]
+        .animals
+        .iter()
+        .map(|animal| animal.id.clone())
+        .collect::<Vec<_>>();
+
+    let fed_before_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::FeedAnimal {
+            shelter_id: shelter_id.clone(),
+            animal_slot: animal_ids[0].clone(),
+        },
+        0,
+    );
+    assert!(fed_before_shed.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        3_000
+    );
+
+    let built_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ToolShed,
+            tile: Tile::new(6, 4),
+        },
+        0,
+    );
+    assert!(built_shed.accepted);
+
+    let fed_after_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::FeedAnimal {
+            shelter_id: shelter_id.clone(),
+            animal_slot: animal_ids[1].clone(),
+        },
+        0,
+    );
+    assert!(fed_after_shed.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][1].steps[0].duration_ms,
+        1_500
+    );
+
+    let tool_shed_id = farm.tool_shed.as_ref().unwrap().id.clone();
+    let moved_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::ToolShed { id: tool_shed_id },
+            tile: Tile::new(17, 17),
+        },
+        0,
+    );
+    assert!(moved_shed.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][1].steps[0].duration_ms,
+        1_500
+    );
+
+    let fed_after_move = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::FeedAnimal {
+            shelter_id: shelter_id.clone(),
+            animal_slot: animal_ids[2].clone(),
+        },
+        0,
+    );
+    assert!(fed_after_move.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][2].steps[0].duration_ms,
+        3_000
+    );
+
+    let second_ready_at = resident_task_ready_at(&farm, "woman", 1);
+    apply_elapsed(&mut farm, &catalog, second_ready_at - 1);
+    assert!(matches!(
+        farm.shelters[0].animals[1].state,
+        AnimalState::Idle
+    ));
+    apply_elapsed(&mut farm, &catalog, second_ready_at);
+    assert!(matches!(
+        farm.shelters[0].animals[1].state,
+        AnimalState::Producing { .. }
+    ));
+}
+
+#[test]
+fn animal_product_collection_tasks_snapshot_tool_source_timing_when_queued() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    farm.level = 3;
+    farm.coins = 75;
+
+    let built_coop = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ChickenCoop,
+            tile: Tile::new(6, 1),
+        },
+        0,
+    );
+    assert!(built_coop.accepted);
+    for animal in &mut farm.shelters[0].animals {
+        animal.state = AnimalState::Ready;
+    }
+    let shelter_id = farm.shelters[0].id.clone();
+    let animal_ids = farm.shelters[0]
+        .animals
+        .iter()
+        .map(|animal| animal.id.clone())
+        .collect::<Vec<_>>();
+
+    let collected_before_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::CollectAnimalProduct {
+            shelter_id: shelter_id.clone(),
+            animal_slot: animal_ids[0].clone(),
+        },
+        0,
+    );
+    assert!(collected_before_shed.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        3_000
+    );
+
+    let built_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ToolShed,
+            tile: Tile::new(6, 4),
+        },
+        0,
+    );
+    assert!(built_shed.accepted);
+
+    let collected_after_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::CollectAnimalProduct {
+            shelter_id: shelter_id.clone(),
+            animal_slot: animal_ids[1].clone(),
+        },
+        0,
+    );
+    assert!(collected_after_shed.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][1].steps[0].duration_ms,
+        1_500
+    );
+
+    let tool_shed_id = farm.tool_shed.as_ref().unwrap().id.clone();
+    let moved_shed = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::ToolShed { id: tool_shed_id },
+            tile: Tile::new(17, 17),
+        },
+        0,
+    );
+    assert!(moved_shed.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][1].steps[0].duration_ms,
+        1_500
+    );
+
+    let collected_after_move = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::CollectAnimalProduct {
+            shelter_id,
+            animal_slot: animal_ids[2].clone(),
+        },
+        0,
+    );
+    assert!(collected_after_move.accepted);
+    assert_eq!(
+        farm.resident_task_queues["woman"][2].steps[0].duration_ms,
+        3_000
+    );
+
+    let second_ready_at = resident_task_ready_at(&farm, "woman", 1);
+    apply_elapsed(&mut farm, &catalog, second_ready_at - 1);
+    assert_eq!(inventory_quantity(&farm, "egg"), 1);
+    apply_elapsed(&mut farm, &catalog, second_ready_at);
+    assert_eq!(inventory_quantity(&farm, "egg"), 2);
+}
+
+#[test]
 fn catalog_and_new_farm_expose_unowned_farmhouse_oven_upgrade() {
     let catalog = CatalogDocument::default_catalog();
     let farm = new_farm(0, &catalog);
@@ -1919,7 +2275,7 @@ fn machine_recipes_consume_inputs_and_produce_outputs() {
     apply_elapsed(
         &mut farm,
         &catalog,
-        scaled_duration_ms(300, catalog.balance.time_scale) + 2_000,
+        scaled_duration_ms(300, catalog.balance.time_scale) + 4_000,
     );
     assert_eq!(inventory_quantity(&farm, "chicken_feed"), 3);
 }
@@ -2174,7 +2530,7 @@ fn machine_collection_is_queued_and_reserves_job_and_barn_capacity() {
     assert!(farm.tool_shed.is_none());
     assert_eq!(
         farm.resident_task_queues["woman"][0].steps[0].duration_ms,
-        DEFAULT_RESIDENT_TASK_STEP_DURATION_MS
+        4_000
     );
 
     let duplicate_collect = apply_command(
@@ -2204,11 +2560,11 @@ fn machine_collection_is_queued_and_reserves_job_and_barn_capacity() {
     assert!(!bought_feed.accepted);
     assert_eq!(bought_feed.error.unwrap().message, "storage is full");
 
-    apply_elapsed(&mut farm, &catalog, ready_at + 1_999);
+    apply_elapsed(&mut farm, &catalog, ready_at + 3_999);
     assert_eq!(farm.machines[0].queue.len(), 1);
     assert_eq!(inventory_quantity(&farm, "chicken_feed"), 0);
 
-    let events = apply_elapsed(&mut farm, &catalog, ready_at + 2_000);
+    let events = apply_elapsed(&mut farm, &catalog, ready_at + 4_000);
     assert_eq!(farm.machines[0].queue.len(), 0);
     assert_eq!(inventory_quantity(&farm, "chicken_feed"), 3);
     assert_eq!(farm.xp, 16);
@@ -2262,7 +2618,7 @@ fn animals_convert_feed_into_products() {
     assert!(farm.tool_shed.is_none());
     assert_eq!(
         farm.resident_task_queues["woman"][0].steps[0].duration_ms,
-        DEFAULT_RESIDENT_TASK_STEP_DURATION_MS
+        3_000
     );
 
     let duplicate_feed = apply_command(
@@ -2277,7 +2633,7 @@ fn animals_convert_feed_into_products() {
     assert!(!duplicate_feed.accepted);
     assert_eq!(duplicate_feed.error.unwrap().message, "animal is reserved");
 
-    apply_elapsed(&mut farm, &catalog, 1_999);
+    apply_elapsed(&mut farm, &catalog, 2_999);
     assert!(matches!(
         farm.shelters[0].animals[0].state,
         AnimalState::Idle
@@ -2286,7 +2642,7 @@ fn animals_convert_feed_into_products() {
     apply_elapsed(
         &mut farm,
         &catalog,
-        2_000 + scaled_duration_ms(1200, catalog.balance.time_scale),
+        3_000 + scaled_duration_ms(1200, catalog.balance.time_scale),
     );
     assert!(matches!(
         farm.shelters[0].animals[0].state,
@@ -2300,7 +2656,7 @@ fn animals_convert_feed_into_products() {
             shelter_id: shelter.id,
             animal_slot: animal_id,
         },
-        2_000 + scaled_duration_ms(1200, catalog.balance.time_scale),
+        3_000 + scaled_duration_ms(1200, catalog.balance.time_scale),
     );
     assert!(collected.accepted);
     assert!(collected.events.is_empty());
@@ -2308,20 +2664,20 @@ fn animals_convert_feed_into_products() {
     assert!(farm.tool_shed.is_none());
     assert_eq!(
         farm.resident_task_queues["woman"][0].steps[0].duration_ms,
-        DEFAULT_RESIDENT_TASK_STEP_DURATION_MS
+        3_000
     );
 
     apply_elapsed(
         &mut farm,
         &catalog,
-        2_000 + scaled_duration_ms(1200, catalog.balance.time_scale) + 1_999,
+        3_000 + scaled_duration_ms(1200, catalog.balance.time_scale) + 2_999,
     );
     assert_eq!(inventory_quantity(&farm, "egg"), 0);
 
     let events = apply_elapsed(
         &mut farm,
         &catalog,
-        2_000 + scaled_duration_ms(1200, catalog.balance.time_scale) + 2_000,
+        3_000 + scaled_duration_ms(1200, catalog.balance.time_scale) + 3_000,
     );
     assert_eq!(inventory_quantity(&farm, "egg"), 1);
     assert!(events.contains(&FarmEvent::AnimalProductCollected {

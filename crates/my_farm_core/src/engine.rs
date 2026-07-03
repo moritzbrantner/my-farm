@@ -694,32 +694,32 @@ fn snapshot_resident_task_step_durations(
     kind: &ResidentTaskKind,
     steps: Vec<ResidentTaskStep>,
 ) -> Vec<ResidentTaskStep> {
-    if *kind == ResidentTaskKind::FieldWork {
-        return snapshot_field_work_step_durations(farm, steps);
+    match kind {
+        ResidentTaskKind::FieldWork | ResidentTaskKind::ProductionWork => {
+            snapshot_tool_source_step_durations(farm, steps)
+        }
     }
-
-    steps
-        .into_iter()
-        .map(|mut step| {
-            step.duration_ms = duration_from_farmhouse_tool_source(farm, &step);
-            step
-        })
-        .collect()
 }
 
 fn duration_from_farmhouse_tool_source(_farm: &FarmState, _step: &ResidentTaskStep) -> i64 {
     default_resident_task_step_duration_ms()
 }
 
-fn snapshot_field_work_step_durations(
+fn snapshot_tool_source_step_durations(
     farm: &FarmState,
     steps: Vec<ResidentTaskStep>,
 ) -> Vec<ResidentTaskStep> {
     let Some(first_target_center) = steps
         .first()
-        .and_then(|step| field_work_target_center(farm, step))
+        .and_then(|step| resident_task_target_center(farm, step))
     else {
-        return steps;
+        return steps
+            .into_iter()
+            .map(|mut step| {
+                step.duration_ms = duration_from_farmhouse_tool_source(farm, &step);
+                step
+            })
+            .collect();
     };
 
     let farmhouse_source_center = footprint_center(
@@ -745,29 +745,56 @@ fn snapshot_field_work_step_durations(
     steps
         .into_iter()
         .map(|mut step| {
-            if let Some(target_center) = field_work_target_center(farm, &step) {
+            if let Some(target_center) = resident_task_target_center(farm, &step) {
                 let walked_tiles =
                     manhattan_distance_between_centers(previous_center, target_center);
                 step.duration_ms = duration_from_walked_tiles(walked_tiles);
                 previous_center = target_center;
+            } else {
+                step.duration_ms = duration_from_farmhouse_tool_source(farm, &step);
             }
             step
         })
         .collect()
 }
 
-fn field_work_target_center(farm: &FarmState, step: &ResidentTaskStep) -> Option<FootprintCenter> {
-    let ReservedWorkTarget::FieldPlot { plot_id } = &step.reserved_work_target else {
-        return None;
-    };
-    let plot = farm.field_plots.iter().find(|plot| plot.id == *plot_id)?;
-    Some(footprint_center(
-        &plot.tile,
-        StructureFootprint {
-            width: 1,
-            height: 1,
-        },
-    ))
+fn resident_task_target_center(
+    farm: &FarmState,
+    step: &ResidentTaskStep,
+) -> Option<FootprintCenter> {
+    match &step.reserved_work_target {
+        ReservedWorkTarget::FieldPlot { plot_id } => {
+            let plot = farm.field_plots.iter().find(|plot| plot.id == *plot_id)?;
+            Some(footprint_center(
+                &plot.tile,
+                StructureFootprint {
+                    width: 1,
+                    height: 1,
+                },
+            ))
+        }
+        ReservedWorkTarget::Machine { machine_id } => {
+            let machine = farm
+                .machines
+                .iter()
+                .find(|machine| machine.id == *machine_id)?;
+            Some(footprint_center(
+                &machine.tile,
+                structure_footprint(&machine_structure_kind(&machine.kind)),
+            ))
+        }
+        ReservedWorkTarget::Animal { shelter_id, .. } => {
+            let shelter = farm
+                .shelters
+                .iter()
+                .find(|shelter| shelter.id == *shelter_id)?;
+            Some(footprint_center(
+                &shelter.tile,
+                structure_footprint(&shelter_structure_kind(&shelter.kind)),
+            ))
+        }
+        ReservedWorkTarget::Oven => None,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
