@@ -1,11 +1,31 @@
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
+use futures_util::StreamExt;
 use my_farm_core::{
     CatalogDocument, CatalogResponse, CommandRequest, CommandResponse, FarmCommand, FarmEvent,
-    FarmResponse, FarmState, StorageKind, update_level,
+    FarmResponse, FarmState, StorageKind, WebsocketServerMessage, update_level,
 };
 use my_farm_server::{AppState, app, connect_database};
 use tower::ServiceExt;
+
+#[tokio::test]
+async fn health_endpoint_remains_available() {
+    let app = test_app().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let health: my_farm_core::HealthResponse = json_body(response).await;
+    assert!(health.ok);
+    assert_eq!(health.service, "my-farm");
+}
 
 #[tokio::test]
 async fn get_farm_creates_single_local_farm() {
@@ -24,6 +44,39 @@ async fn get_farm_creates_single_local_farm() {
     assert_eq!(farm.version, 0);
     assert_eq!(farm.view.level, 1);
     assert_eq!(farm.view.field_plots.len(), 6);
+}
+
+#[tokio::test]
+async fn gameplay_websocket_bootstraps_catalog_and_farm_snapshot() {
+    let app = test_app().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let (mut socket, response) =
+        tokio_tungstenite::connect_async(format!("ws://{addr}/api/gameplay"))
+            .await
+            .unwrap();
+    assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
+
+    let catalog_message: WebsocketServerMessage = websocket_json(&mut socket).await;
+    let snapshot_message: WebsocketServerMessage = websocket_json(&mut socket).await;
+
+    let WebsocketServerMessage::Catalog { catalog } = catalog_message else {
+        panic!("expected catalog bootstrap message");
+    };
+    assert!(catalog.items.iter().any(|item| item.id == "wheat"));
+
+    let WebsocketServerMessage::FarmSnapshot { version, view } = snapshot_message else {
+        panic!("expected farm snapshot bootstrap message");
+    };
+    assert_eq!(version, 0);
+    assert_eq!(view.level, 1);
+    assert_eq!(view.field_plots.len(), 6);
+
+    server.abort();
 }
 
 #[tokio::test]
@@ -313,4 +366,16 @@ async fn save_test_farm(pool: &sqlx::SqlitePool, version: u64, farm: &FarmState)
 async fn json_body<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     serde_json::from_slice(&body).unwrap()
+}
+
+async fn websocket_json<T>(
+    socket: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+) -> T
+where
+    T: serde::de::DeserializeOwned,
+{
+    let message = socket.next().await.unwrap().unwrap();
+    serde_json::from_str(message.to_text().unwrap()).unwrap()
 }

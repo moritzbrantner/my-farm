@@ -5,7 +5,7 @@ use my_farm_core::{
     FarmState, FarmView, FieldPlot, HealthResponse, InventoryItemView, ItemDef, ItemKind,
     ItemStack, MachineDef, MachineJob, MachineKind, MachineState, MarketItemDef, PlantedCrop,
     RecipeDef, ShelterDef, ShelterKind, StorageKind, StorageUpgradeDef, StructureKind,
-    StructureTarget, SweepHarvestMode, Tile, UnlockView,
+    StructureTarget, SweepHarvestMode, Tile, UnlockView, WebsocketError, WebsocketServerMessage,
 };
 use schemars::{JsonSchema, schema_for};
 use std::fs;
@@ -51,6 +51,10 @@ fn outputs() -> anyhow::Result<Vec<Output>> {
         json::<CommandResponse>("contracts/generated/json/CommandResponse.schema.json")?,
         json::<FarmResponse>("contracts/generated/json/FarmResponse.schema.json")?,
         json::<CatalogResponse>("contracts/generated/json/CatalogResponse.schema.json")?,
+        json::<WebsocketError>("contracts/generated/json/WebsocketError.schema.json")?,
+        json::<WebsocketServerMessage>(
+            "contracts/generated/json/WebsocketServerMessage.schema.json",
+        )?,
         json::<HealthResponse>("contracts/generated/json/HealthResponse.schema.json")?,
         ts_file(
             "contracts/generated/ts/my-farm.d.ts",
@@ -92,6 +96,8 @@ fn outputs() -> anyhow::Result<Vec<Output>> {
                 CommandRequest::decl(),
                 CommandResponse::decl(),
                 FarmResponse::decl(),
+                WebsocketError::decl(),
+                WebsocketServerMessage::decl(),
             ],
         ),
     ])
