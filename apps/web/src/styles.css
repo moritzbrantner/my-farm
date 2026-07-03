@@ -70,6 +70,10 @@ button[aria-disabled="true"] {
   height: 100% !important;
 }
 
+.gameplay-surface {
+  display: contents;
+}
+
 .structure-hit-wrapper {
   pointer-events: none !important;
 }
@@ -449,7 +453,7 @@ button[aria-disabled="true"] {
 .guided-tutorial-backdrop {
   position: absolute;
   inset: 0;
-  z-index: 980;
+  z-index: 1100;
   display: grid;
   place-items: center;
   padding: 20px;
