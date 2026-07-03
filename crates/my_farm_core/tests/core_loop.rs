@@ -1287,7 +1287,7 @@ fn crop_unlock_starter_stock_retries_after_silo_space_opens() {
 }
 
 #[test]
-fn catalog_extends_late_crop_and_bakery_progression() {
+fn catalog_extends_late_crop_and_oven_progression() {
     let catalog = CatalogDocument::default_catalog();
 
     assert!(catalog.crop("soybean").is_some());
@@ -2229,27 +2229,27 @@ fn storage_discard_rejects_zero_quantity() {
 fn player_can_move_built_structures_to_open_tiles() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
-    farm.xp = 4;
-    farm.level = 2;
+    farm.xp = 14;
+    farm.level = 3;
 
     let built = apply_command(
         &mut farm,
         &catalog,
         FarmCommand::BuyStructure {
-            structure_kind: StructureKind::Bakery,
+            structure_kind: StructureKind::FeedMill,
             tile: Tile::new(8, 2),
         },
         0,
     );
     assert!(built.accepted);
-    let bakery_id = farm.machines[0].id.clone();
+    let feed_mill_id = farm.machines[0].id.clone();
 
     let moved = apply_command(
         &mut farm,
         &catalog,
         FarmCommand::MoveStructure {
             target: StructureTarget::Machine {
-                id: bakery_id.clone(),
+                id: feed_mill_id.clone(),
             },
             tile: Tile::new(12, 4),
         },
@@ -2258,7 +2258,7 @@ fn player_can_move_built_structures_to_open_tiles() {
     assert!(moved.accepted);
     assert_eq!(farm.machines[0].tile, Tile::new(12, 4));
     assert!(moved.events.contains(&FarmEvent::StructureMoved {
-        target: StructureTarget::Machine { id: bakery_id },
+        target: StructureTarget::Machine { id: feed_mill_id },
         tile: Tile::new(12, 4),
     }));
 }
@@ -2270,16 +2270,16 @@ fn moving_structure_rejects_occupied_tiles() {
     farm.xp = 14;
     farm.level = 3;
 
-    let built_bakery = apply_command(
+    let built_feed_mill = apply_command(
         &mut farm,
         &catalog,
         FarmCommand::BuyStructure {
-            structure_kind: StructureKind::Bakery,
+            structure_kind: StructureKind::FeedMill,
             tile: Tile::new(8, 2),
         },
         0,
     );
-    assert!(built_bakery.accepted);
+    assert!(built_feed_mill.accepted);
     let built_coop = apply_command(
         &mut farm,
         &catalog,
@@ -2290,7 +2290,7 @@ fn moving_structure_rejects_occupied_tiles() {
         0,
     );
     assert!(built_coop.accepted);
-    let bakery_id = farm.machines[0].id.clone();
+    let feed_mill_id = farm.machines[0].id.clone();
     let shelter_tile = farm.shelters[0].tile.clone();
 
     let moved_to_field = apply_command(
@@ -2298,7 +2298,7 @@ fn moving_structure_rejects_occupied_tiles() {
         &catalog,
         FarmCommand::MoveStructure {
             target: StructureTarget::Machine {
-                id: bakery_id.clone(),
+                id: feed_mill_id.clone(),
             },
             tile: Tile::new(0, 0),
         },
@@ -2311,7 +2311,7 @@ fn moving_structure_rejects_occupied_tiles() {
         &mut farm,
         &catalog,
         FarmCommand::MoveStructure {
-            target: StructureTarget::Machine { id: bakery_id },
+            target: StructureTarget::Machine { id: feed_mill_id },
             tile: shelter_tile,
         },
         0,
@@ -2330,17 +2330,17 @@ fn larger_structure_footprints_block_overlap_and_farm_edges() {
     farm.xp = 55;
     farm.level = 5;
 
-    let built_bakery = apply_command(
+    let built_coop = apply_command(
         &mut farm,
         &catalog,
         FarmCommand::BuyStructure {
-            structure_kind: StructureKind::Bakery,
+            structure_kind: StructureKind::ChickenCoop,
             tile: Tile::new(8, 2),
         },
         0,
     );
-    assert!(built_bakery.accepted);
-    let bakery_id = farm.machines[0].id.clone();
+    assert!(built_coop.accepted);
+    let shelter_id = farm.shelters[0].id.clone();
 
     let overlapping_feed_mill = apply_command(
         &mut farm,
@@ -2376,7 +2376,7 @@ fn larger_structure_footprints_block_overlap_and_farm_edges() {
         &mut farm,
         &catalog,
         FarmCommand::MoveStructure {
-            target: StructureTarget::Machine { id: bakery_id },
+            target: StructureTarget::Shelter { id: shelter_id },
             tile: Tile::new(17, 4),
         },
         0,
@@ -2457,15 +2457,15 @@ fn barn_and_silo_are_preplaced_and_movable() {
 fn barn_and_silo_block_structure_placement() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
-    farm.xp = 4;
-    farm.level = 2;
+    farm.xp = 14;
+    farm.level = 3;
     let silo_tile = farm.silo_tile.clone();
 
     let built_on_silo = apply_command(
         &mut farm,
         &catalog,
         FarmCommand::BuyStructure {
-            structure_kind: StructureKind::Bakery,
+            structure_kind: StructureKind::FeedMill,
             tile: silo_tile,
         },
         0,
@@ -2520,6 +2520,125 @@ fn new_and_existing_farms_have_default_residents_and_empty_queues() {
     assert_eq!(restored.residents[1].id, "man");
     assert_eq!(restored.resident_task_queues["woman"].len(), 0);
     assert_eq!(restored.resident_task_queues["man"].len(), 0);
+}
+
+#[test]
+fn legacy_bakery_save_loads_as_owned_oven_with_queue_and_resident_work() {
+    let catalog = CatalogDocument::default_catalog();
+    let farm = new_farm(0, &catalog);
+    let mut save_json = serde_json::to_value(&farm).unwrap();
+    let save = save_json.as_object_mut().unwrap();
+    save.remove("oven");
+    save["machines"] = serde_json::json!([
+        {
+            "id": "machine-bakery",
+            "kind": "bakery",
+            "tile": { "x": 8, "y": 2 },
+            "queue": [
+                {
+                    "id": "job-bread",
+                    "recipe_id": "bread",
+                    "started_at_ms": 1000,
+                    "ready_at_ms": 31000
+                }
+            ]
+        },
+        {
+            "id": "machine-feed",
+            "kind": "feed_mill",
+            "tile": { "x": 10, "y": 3 },
+            "queue": []
+        }
+    ]);
+    save["resident_task_queues"] = serde_json::json!({
+        "woman": [
+            {
+                "id": "task-bakery",
+                "kind": { "type": "production_work" },
+                "steps": [
+                    {
+                        "reserved_work_target": {
+                            "type": "machine",
+                            "machine_id": "machine-bakery"
+                        },
+                        "work": {
+                            "type": "collect_machine_job",
+                            "job_id": "job-bread",
+                            "recipe_id": "bread"
+                        }
+                    }
+                ],
+                "started_at_ms": 31000,
+                "ready_at_ms": 33000
+            }
+        ],
+        "man": []
+    });
+
+    let restored: FarmState = serde_json::from_value(save_json).unwrap();
+
+    assert_eq!(
+        restored.owned_farmhouse_upgrades,
+        vec![FarmhouseUpgradeKind::Oven]
+    );
+    assert_eq!(restored.oven.id, "machine-bakery");
+    assert_eq!(restored.oven.queue.len(), 1);
+    assert_eq!(restored.oven.queue[0].id, "job-bread");
+    assert_eq!(restored.machines.len(), 1);
+    assert_eq!(restored.machines[0].kind, MachineKind::FeedMill);
+    assert_eq!(
+        restored.resident_task_queues["woman"][0].steps[0].reserved_work_target,
+        my_farm_core::ReservedWorkTarget::Oven
+    );
+    assert_eq!(
+        restored.resident_task_queues["woman"][0].steps[0].work,
+        my_farm_core::ResidentTaskStepWork::CollectOvenJob {
+            job_id: "job-bread".to_owned(),
+            recipe_id: "bread".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn forward_oven_state_wins_when_legacy_bakery_is_also_present() {
+    let catalog = CatalogDocument::default_catalog();
+    let farm = new_farm(0, &catalog);
+    let mut save_json = serde_json::to_value(&farm).unwrap();
+    let save = save_json.as_object_mut().unwrap();
+    save["owned_farmhouse_upgrades"] = serde_json::json!(["oven"]);
+    save["oven"] = serde_json::json!({
+        "id": "oven",
+        "queue": [
+            {
+                "id": "job-forward",
+                "recipe_id": "bread",
+                "started_at_ms": 2000,
+                "ready_at_ms": 32000
+            }
+        ]
+    });
+    save["machines"] = serde_json::json!([
+        {
+            "id": "machine-bakery",
+            "kind": "bakery",
+            "tile": { "x": 8, "y": 2 },
+            "queue": [
+                {
+                    "id": "job-legacy",
+                    "recipe_id": "bread",
+                    "started_at_ms": 1000,
+                    "ready_at_ms": 31000
+                }
+            ]
+        }
+    ]);
+
+    let restored: FarmState = serde_json::from_value(save_json).unwrap();
+
+    assert_eq!(restored.oven.id, "oven");
+    assert_eq!(restored.oven.queue.len(), 1);
+    assert_eq!(restored.oven.queue[0].id, "job-forward");
+    assert!(restored.machines.is_empty());
 }
 
 #[test]

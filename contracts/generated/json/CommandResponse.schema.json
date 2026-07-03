@@ -846,7 +846,6 @@
     "MachineKind": {
       "type": "string",
       "enum": [
-        "bakery",
         "feed_mill"
       ]
     },
@@ -1217,7 +1216,6 @@
       "enum": [
         "silo",
         "barn",
-        "bakery",
         "feed_mill",
         "chicken_coop",
         "cow_pasture",

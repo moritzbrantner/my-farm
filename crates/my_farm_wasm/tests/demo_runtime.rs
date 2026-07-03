@@ -186,6 +186,42 @@ fn demo_runtime_loads_old_saves_with_default_residents_and_empty_queues() {
 }
 
 #[test]
+fn demo_runtime_loads_legacy_bakery_save_as_farmhouse_oven() {
+    let runtime = DemoFarmRuntime::new(None, 1_000.0);
+    let mut save: serde_json::Value = serde_json::from_str(&runtime.save_json()).unwrap();
+    let farm_json = save["farm"].as_object_mut().unwrap();
+    farm_json.remove("owned_farmhouse_upgrades");
+    farm_json.remove("oven");
+    farm_json["machines"] = serde_json::json!([
+        {
+            "id": "machine-bakery",
+            "kind": "bakery",
+            "tile": { "x": 8, "y": 2 },
+            "queue": [
+                {
+                    "id": "job-bread",
+                    "recipe_id": "bread",
+                    "started_at_ms": 1000,
+                    "ready_at_ms": 31000
+                }
+            ]
+        }
+    ]);
+
+    let mut restored = DemoFarmRuntime::new(Some(save.to_string()), 2_000.0);
+    let restored_farm = farm(&mut restored, 2_000.0);
+
+    assert_eq!(
+        restored_farm.view.owned_farmhouse_upgrades,
+        vec![FarmhouseUpgradeKind::Oven]
+    );
+    assert_eq!(restored_farm.view.oven.id, "machine-bakery");
+    assert_eq!(restored_farm.view.oven.queue.len(), 1);
+    assert_eq!(restored_farm.view.oven.queue[0].id, "job-bread");
+    assert!(restored_farm.view.machines.is_empty());
+}
+
+#[test]
 fn demo_runtime_supports_crop_and_farmhouse_oven_loop() {
     let mut runtime = DemoFarmRuntime::new(None, 1_000.0);
 

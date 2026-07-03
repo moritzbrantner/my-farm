@@ -306,11 +306,11 @@ async fn websocket_elapsed_time_broadcasts_one_visible_ready_snapshot_to_all_cli
     });
     farm.machines.push(MachineState {
         id: "machine-1".to_owned(),
-        kind: MachineKind::Bakery,
+        kind: MachineKind::FeedMill,
         tile: Tile::new(8, 2),
         queue: vec![MachineJob {
             id: "job-ready".to_owned(),
-            recipe_id: "bread".to_owned(),
+            recipe_id: "chicken_feed".to_owned(),
             started_at_ms: ready_at_ms - 2_000,
             ready_at_ms,
         }],
@@ -758,6 +758,63 @@ async fn post_farmhouse_oven_queue_and_collect_persist_state_and_journal_through
             recipe_id: "bread".to_owned(),
         }
     );
+    restarted_pool.close().await;
+}
+
+#[tokio::test]
+async fn persisted_legacy_bakery_save_loads_as_farmhouse_oven() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let url = format!("sqlite://{}", tempdir.path().join("farm.db").display());
+    let pool = connect_database(&url).await.unwrap();
+    let router = app(AppState::new(pool.clone()));
+    let initial = get_farm(router.clone()).await;
+
+    let mut farm = load_saved_farm(&pool).await;
+    farm.xp = 4;
+    update_level(&mut farm, &CatalogDocument::default_catalog());
+    let mut state_json = serde_json::to_value(&farm).unwrap();
+    let state = state_json.as_object_mut().unwrap();
+    state.remove("owned_farmhouse_upgrades");
+    state.remove("oven");
+    state["machines"] = serde_json::json!([
+        {
+            "id": "machine-bakery",
+            "kind": "bakery",
+            "tile": { "x": 8, "y": 2 },
+            "queue": [
+                {
+                    "id": "job-bread",
+                    "recipe_id": "bread",
+                    "started_at_ms": 1000,
+                    "ready_at_ms": 31000
+                }
+            ]
+        }
+    ]);
+    sqlx::query("UPDATE farm_save SET version = ?, state_json = ? WHERE id = ?")
+        .bind(initial.version as i64)
+        .bind(state_json.to_string())
+        .bind("local-farm")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    drop(router);
+    pool.close().await;
+
+    let restarted_pool = connect_database(&url).await.unwrap();
+    let restarted_app = app(AppState::new(restarted_pool.clone()));
+    let reloaded = get_farm(restarted_app).await;
+
+    assert_eq!(reloaded.version, initial.version);
+    assert_eq!(
+        reloaded.view.owned_farmhouse_upgrades,
+        vec![FarmhouseUpgradeKind::Oven]
+    );
+    assert_eq!(reloaded.view.oven.id, "machine-bakery");
+    assert_eq!(reloaded.view.oven.queue.len(), 1);
+    assert_eq!(reloaded.view.oven.queue[0].id, "job-bread");
+    assert!(reloaded.view.machines.is_empty());
     restarted_pool.close().await;
 }
 

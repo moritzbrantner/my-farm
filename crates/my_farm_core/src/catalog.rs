@@ -46,7 +46,6 @@ pub struct CropDef {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum MachineKind {
-    Bakery,
     FeedMill,
 }
 
@@ -78,7 +77,6 @@ pub enum StorageKind {
 pub enum StructureKind {
     Silo,
     Barn,
-    Bakery,
     FeedMill,
     ChickenCoop,
     CowPasture,
@@ -294,22 +292,13 @@ impl CatalogDocument {
                     5,
                 ),
             ],
-            machines: vec![
-                MachineDef {
-                    kind: MachineKind::Bakery,
-                    name: "Bakery".to_owned(),
-                    build_cost: 40,
-                    unlock_level: 2,
-                    queue_limit: 2,
-                },
-                MachineDef {
-                    kind: MachineKind::FeedMill,
-                    name: "Feed Mill".to_owned(),
-                    build_cost: 35,
-                    unlock_level: 3,
-                    queue_limit: 2,
-                },
-            ],
+            machines: vec![MachineDef {
+                kind: MachineKind::FeedMill,
+                name: "Feed Mill".to_owned(),
+                build_cost: 35,
+                unlock_level: 3,
+                queue_limit: 2,
+            }],
             farmhouse_upgrades: vec![FarmhouseUpgradeDef {
                 kind: FarmhouseUpgradeKind::Oven,
                 name: "Oven".to_owned(),

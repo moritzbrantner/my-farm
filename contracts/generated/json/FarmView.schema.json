@@ -408,7 +408,6 @@
     "MachineKind": {
       "type": "string",
       "enum": [
-        "bakery",
         "feed_mill"
       ]
     },

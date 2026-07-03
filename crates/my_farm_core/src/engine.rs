@@ -1026,16 +1026,6 @@ fn buy_structure(
         StructureKind::Silo | StructureKind::Barn => {
             return Err(CommandError::new("structure already built"));
         }
-        StructureKind::Bakery => {
-            let def = catalog.machine(&MachineKind::Bakery).unwrap();
-            buy_machine(
-                farm,
-                def.build_cost,
-                def.unlock_level,
-                MachineKind::Bakery,
-                tile,
-            )?;
-        }
         StructureKind::FeedMill => {
             let def = catalog.machine(&MachineKind::FeedMill).unwrap();
             buy_machine(
@@ -1796,10 +1786,6 @@ fn structure_footprint(kind: &StructureKind) -> StructureFootprint {
             width: 2,
             height: 2,
         },
-        StructureKind::Bakery => StructureFootprint {
-            width: 2,
-            height: 2,
-        },
         StructureKind::ChickenCoop => StructureFootprint {
             width: 2,
             height: 3,
@@ -1817,7 +1803,6 @@ fn structure_footprint(kind: &StructureKind) -> StructureFootprint {
 
 fn machine_structure_kind(kind: &MachineKind) -> StructureKind {
     match kind {
-        MachineKind::Bakery => StructureKind::Bakery,
         MachineKind::FeedMill => StructureKind::FeedMill,
     }
 }
