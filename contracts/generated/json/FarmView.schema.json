@@ -147,6 +147,17 @@
       "format": "uint32",
       "minimum": 0.0
     },
+    "tool_shed": {
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ToolShedState"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "unlocks": {
       "type": "array",
       "items": {
@@ -877,6 +888,21 @@
         "y": {
           "type": "integer",
           "format": "int32"
+        }
+      }
+    },
+    "ToolShedState": {
+      "type": "object",
+      "required": [
+        "id",
+        "tile"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "tile": {
+          "$ref": "#/definitions/Tile"
         }
       }
     },

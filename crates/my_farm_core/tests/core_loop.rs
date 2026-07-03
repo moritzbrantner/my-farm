@@ -140,6 +140,25 @@ fn old_saves_without_house_interior_load_default_house_interior() {
 }
 
 #[test]
+fn new_and_old_farms_start_without_tool_shed() {
+    let catalog = CatalogDocument::default_catalog();
+    let farm = new_farm(0, &catalog);
+    let view = farm_view(&farm, &catalog);
+
+    assert!(farm.tool_shed.is_none());
+    assert!(view.tool_shed.is_none());
+
+    let mut save_json = serde_json::to_value(&farm).unwrap();
+    save_json.as_object_mut().unwrap().remove("tool_shed");
+
+    let restored: FarmState = serde_json::from_value(save_json).unwrap();
+    let restored_view = farm_view(&restored, &catalog);
+
+    assert!(restored.tool_shed.is_none());
+    assert!(restored_view.tool_shed.is_none());
+}
+
+#[test]
 fn decoration_commands_require_level_five_and_edit_saved_placements_without_resident_tasks() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
@@ -2793,6 +2812,233 @@ fn barn_and_silo_block_structure_placement() {
         bought_silo.error.unwrap().message,
         "structure already built".to_owned()
     );
+}
+
+#[test]
+fn level_three_farm_can_build_one_tool_shed_and_move_it() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    farm.level = 3;
+    farm.coins = 45;
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ToolShed,
+            tile: Tile::new(12, 12),
+        },
+        0,
+    );
+
+    assert!(built.accepted);
+    assert_eq!(farm.coins, 0);
+    assert_eq!(farm.tool_shed.as_ref().unwrap().tile, Tile::new(12, 12));
+    assert!(built.events.contains(&FarmEvent::StructureBuilt {
+        structure_kind: StructureKind::ToolShed,
+    }));
+    let tool_shed_id = farm.tool_shed.as_ref().unwrap().id.clone();
+
+    let second = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ToolShed,
+            tile: Tile::new(13, 12),
+        },
+        0,
+    );
+    assert!(!second.accepted);
+    assert_eq!(second.error.unwrap().message, "structure already built");
+
+    let moved = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::ToolShed {
+                id: tool_shed_id.clone(),
+            },
+            tile: Tile::new(13, 12),
+        },
+        0,
+    );
+
+    assert!(moved.accepted);
+    assert_eq!(farm.tool_shed.as_ref().unwrap().tile, Tile::new(13, 12));
+    assert!(moved.events.contains(&FarmEvent::StructureMoved {
+        target: StructureTarget::ToolShed { id: tool_shed_id },
+        tile: Tile::new(13, 12),
+    }));
+    assert_eq!(farm_view(&farm, &catalog).tool_shed, farm.tool_shed);
+}
+
+#[test]
+fn tool_shed_build_requires_level_three_and_forty_five_coins() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut low_level_farm = new_farm(0, &catalog);
+    low_level_farm.level = 2;
+    low_level_farm.coins = 45;
+
+    let low_level = apply_command(
+        &mut low_level_farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ToolShed,
+            tile: Tile::new(12, 12),
+        },
+        0,
+    );
+    assert!(!low_level.accepted);
+    assert_eq!(low_level.error.unwrap().message, "requires level 3");
+    assert!(low_level_farm.tool_shed.is_none());
+
+    let mut poor_farm = new_farm(0, &catalog);
+    poor_farm.xp = 14;
+    poor_farm.level = 3;
+    poor_farm.coins = 44;
+
+    let poor = apply_command(
+        &mut poor_farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ToolShed,
+            tile: Tile::new(12, 12),
+        },
+        0,
+    );
+    assert!(!poor.accepted);
+    assert_eq!(poor.error.unwrap().message, "not enough coins");
+    assert!(poor_farm.tool_shed.is_none());
+}
+
+#[test]
+fn tool_shed_uses_structure_collision_rules() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 55;
+    farm.level = 5;
+    farm.coins = 1_000;
+
+    assert!(
+        apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::BuyStructure {
+                structure_kind: StructureKind::FeedMill,
+                tile: Tile::new(4, 4),
+            },
+            0,
+        )
+        .accepted
+    );
+    assert!(
+        apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::BuyStructure {
+                structure_kind: StructureKind::ChickenCoop,
+                tile: Tile::new(5, 7),
+            },
+            0,
+        )
+        .accepted
+    );
+    assert!(
+        apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::BuyStructure {
+                structure_kind: StructureKind::DeliveryBoard,
+                tile: Tile::new(3, 8),
+            },
+            0,
+        )
+        .accepted
+    );
+
+    for occupied_tile in [
+        Tile::new(0, 0),
+        farm.silo_tile.clone(),
+        farm.barn_tile.clone(),
+        farm.machines[0].tile.clone(),
+        farm.shelters[0].tile.clone(),
+        farm.delivery_board_tile.clone(),
+        Tile::new(8, 8),
+    ] {
+        let built = apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::BuyStructure {
+                structure_kind: StructureKind::ToolShed,
+                tile: occupied_tile,
+            },
+            0,
+        );
+        assert!(!built.accepted);
+        assert_eq!(built.error.unwrap().message, "tile is occupied");
+        assert!(farm.tool_shed.is_none());
+    }
+
+    let outside = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ToolShed,
+            tile: Tile::new(18, 0),
+        },
+        0,
+    );
+    assert!(!outside.accepted);
+    assert_eq!(outside.error.unwrap().message, "tile is outside the farm");
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ToolShed,
+            tile: Tile::new(12, 12),
+        },
+        0,
+    );
+    assert!(built.accepted);
+    let tool_shed_id = farm.tool_shed.as_ref().unwrap().id.clone();
+
+    let field_plot = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyFieldPlot {
+            tile: Tile::new(12, 12),
+        },
+        0,
+    );
+    assert!(!field_plot.accepted);
+    assert_eq!(field_plot.error.unwrap().message, "tile is occupied");
+
+    let cow_pasture = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::CowPasture,
+            tile: Tile::new(12, 12),
+        },
+        0,
+    );
+    assert!(!cow_pasture.accepted);
+    assert_eq!(cow_pasture.error.unwrap().message, "tile is occupied");
+
+    let moved_to_occupied = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::ToolShed { id: tool_shed_id },
+            tile: Tile::new(4, 4),
+        },
+        0,
+    );
+    assert!(!moved_to_occupied.accepted);
+    assert_eq!(moved_to_occupied.error.unwrap().message, "tile is occupied");
+    assert_eq!(farm.tool_shed.as_ref().unwrap().tile, Tile::new(12, 12));
 }
 
 #[test]

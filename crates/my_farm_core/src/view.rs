@@ -26,6 +26,9 @@ pub struct FarmView {
     pub shelters: Vec<crate::AnimalShelterState>,
     pub delivery_board_built: bool,
     pub delivery_board_tile: crate::Tile,
+    #[serde(default)]
+    #[ts(optional)]
+    pub tool_shed: Option<crate::ToolShedState>,
     pub delivery_orders: Vec<crate::DeliveryOrder>,
     pub residents: Vec<crate::FarmResident>,
     pub selected_resident_id: String,
@@ -85,6 +88,7 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
         shelters: farm.shelters.clone(),
         delivery_board_built: farm.delivery_board_built,
         delivery_board_tile: farm.delivery_board_tile.clone(),
+        tool_shed: farm.tool_shed.clone(),
         delivery_orders: farm.delivery_orders.clone(),
         residents: farm.residents.clone(),
         selected_resident_id: farm.selected_resident_id.clone(),

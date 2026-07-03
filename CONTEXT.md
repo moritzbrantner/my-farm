@@ -85,8 +85,16 @@ A placed structure that holds animals of one type.
 _Avoid_: Pen, habitat, stable
 
 **Structure**:
-A built, tile-placed farm object that is not a Field Plot. Machines, Animal Shelters, and the Delivery Board are Structures.
+A built, tile-placed farm object that is not a Field Plot. Machines, Animal Shelters, the Delivery Board, and support objects such as the Tool Shed are Structures.
 _Avoid_: Building, placed object
+
+**Tool Shed**:
+A small player-built support Structure that stores tools for Farm Resident work. It is not a Machine, Animal Shelter, storage, or Farmhouse Upgrade.
+_Avoid_: Tool machine, storage shed, second Farmhouse
+
+**Tool Source**:
+An available place where Farm Residents can source tools before performing Resident Tasks. The Farmhouse is always a Tool Source, and a built Tool Shed can become another Tool Source for future resident travel timing.
+_Avoid_: Tool inventory, resource source
 
 **Animal Product**:
 A good collected from a fed animal and stored in the barn.
