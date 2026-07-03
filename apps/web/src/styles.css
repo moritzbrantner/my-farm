@@ -102,6 +102,11 @@ button[aria-disabled="true"] {
   pointer-events: none;
 }
 
+.farm-scene-resident-marker {
+  width: 12px;
+  height: 12px;
+}
+
 .structure-status {
   --progress: 0;
   position: relative;
