@@ -69,6 +69,22 @@ test("idle resident renders from authoritative resident location", () => {
   });
 });
 
+test("idle man renders from his authoritative resident location", () => {
+  const view = {
+    ...farmViewWithTask(null),
+    resident_locations: {
+      woman: { x: 8, y: 10 },
+      man: { x: 2, y: 4 },
+    },
+  };
+
+  expect(currentResidentScenePose(view, "man", 1_000)).toEqual({
+    tile: { x: 2, y: 4 },
+    label: "farmhouse",
+    state: "idle",
+  });
+});
+
 test("path interpolation clamps to endpoints", () => {
   const path = [
     { x: 1, y: 0 },

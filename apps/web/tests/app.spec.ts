@@ -462,10 +462,11 @@ test("moves a resident toward the current task target over authoritative task ti
     ...farmView,
     resident_locations: {
       ...farmView.resident_locations,
-      woman: { x: 0, y: 3 },
+      man: { x: 0, y: 3 },
     },
     resident_task_queues: {
-      woman: [
+      woman: [],
+      man: [
         {
           id: "task-1",
           kind: { type: "field_work" },
@@ -488,13 +489,12 @@ test("moves a resident toward the current task target over authoritative task ti
           ],
         },
       ],
-      man: [],
     },
   };
   await mockFarmApi(page, view);
   await openFarm(page);
 
-  const resident = page.getByTestId("farm-scene-resident-woman");
+  const resident = page.getByTestId("farm-scene-resident-man");
   await expect(resident).toHaveAttribute("data-resident-state", "walking");
   await expect(resident).toHaveAttribute("data-resident-target", "field:plot-1");
   await page.waitForTimeout(Math.max(0, startedAt + 500 - Date.now()));

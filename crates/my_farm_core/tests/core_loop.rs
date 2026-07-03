@@ -22,7 +22,7 @@ fn resident_task_tail_ready_at(farm: &FarmState, resident_id: &str, task_index: 
 }
 
 fn expected_path_step_duration(path_len: usize) -> i64 {
-    1_000 + path_len as i64 * 250
+    1_000 + path_len as i64 * 750
 }
 
 #[test]
@@ -472,6 +472,41 @@ fn completed_steps_update_resident_location() {
         farm.resident_locations.get("woman"),
         step.approach_tile.as_ref()
     );
+}
+
+#[test]
+fn completed_steps_update_selected_man_location() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let selected = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SelectResident {
+            resident_id: "man".to_owned(),
+        },
+        0,
+    );
+    assert!(selected.accepted);
+
+    let planted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(planted.accepted);
+    assert!(farm.resident_task_queues["woman"].is_empty());
+    let step = farm.resident_task_queues["man"][0].steps[0].clone();
+
+    apply_elapsed(&mut farm, &catalog, step.duration_ms);
+
+    assert!(farm.resident_task_queues["man"].is_empty());
+    assert_eq!(farm.resident_locations.get("man"), step.approach_tile.as_ref());
+    assert_ne!(farm.resident_locations.get("man"), Some(&Tile::new(9, 10)));
 }
 
 #[test]
