@@ -306,6 +306,13 @@ function isTileAvailableForFootprint(
     return false;
   }
   if (
+    view.reservations.path_tiles.some((reservation) =>
+      footprintContains(tile, footprint, reservation.tile),
+    )
+  ) {
+    return false;
+  }
+  if (
     !isSameStructure(moving, { type: "silo" }) &&
     footprintsOverlap(tile, footprint, view.silo_tile, structureFootprint("silo"))
   ) {

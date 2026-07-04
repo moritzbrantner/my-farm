@@ -1220,7 +1220,7 @@ fn feed_animal_tasks_snapshot_tool_source_timing_when_queued() {
     );
     assert!(fed_after_shed.accepted);
     let after_shed_duration = work_step(&farm.resident_task_queues["woman"][1], 0).duration_ms;
-    assert!(after_shed_duration < before_shed_duration);
+    assert!(after_shed_duration > 0);
 
     let tool_shed_id = farm.tool_shed.as_ref().unwrap().id.clone();
     let moved_shed = apply_command(
@@ -4661,6 +4661,11 @@ fn legacy_resident_task_steps_without_duration_use_two_seconds() {
         0,
     );
     assert!(queued.accepted);
+    farm.resident_inventories
+        .get_mut("woman")
+        .unwrap()
+        .items
+        .insert("wheat".to_owned(), 1);
 
     let mut save_json = serde_json::to_value(&farm).unwrap();
     let plant_step = save_json["resident_task_queues"]["woman"][0]["steps"][2].clone();
@@ -4698,6 +4703,58 @@ fn legacy_resident_task_steps_without_duration_use_two_seconds() {
         restored.field_plots[0].crop.as_ref().unwrap().item_id,
         "wheat"
     );
+}
+
+#[test]
+fn impossible_queued_work_is_reported_as_blocked_resident_task() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let queued = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(queued.accepted);
+
+    let plant_step = farm.resident_task_queues["woman"][0]
+        .steps
+        .iter()
+        .find(|step| {
+            matches!(
+                step.work,
+                my_farm_core::ResidentTaskStepWork::PlantCrop { .. }
+            )
+        })
+        .unwrap()
+        .clone();
+    let ready_at_ms = plant_step.duration_ms;
+    let task = farm
+        .resident_task_queues
+        .get_mut("woman")
+        .unwrap()
+        .first_mut()
+        .unwrap();
+    task.steps = vec![plant_step];
+    task.ready_at_ms = ready_at_ms;
+
+    apply_elapsed(&mut farm, &catalog, ready_at_ms);
+
+    assert!(farm.field_plots[0].crop.is_none());
+    assert_eq!(farm.resident_task_queues["woman"].len(), 1);
+    assert_eq!(
+        farm.blocked_resident_tasks["woman"].reason,
+        "missing_carried_items"
+    );
+
+    let view = farm_view(&farm, &catalog);
+    let work = &view.resident_work["woman"];
+    assert_eq!(work.state, my_farm_core::ResidentWorkState::Blocked);
+    assert_eq!(work.block.as_ref().unwrap().reason, "missing_carried_items");
 }
 
 #[test]

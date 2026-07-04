@@ -24,6 +24,17 @@
         "$ref": "#/definitions/FarmEvent"
       }
     },
+    "notice": {
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/definitions/FarmNotice"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "version": {
       "type": "integer",
       "format": "uint64",
@@ -34,6 +45,21 @@
     }
   },
   "definitions": {
+    "AnimalReservationKey": {
+      "type": "object",
+      "required": [
+        "animal_slot",
+        "shelter_id"
+      ],
+      "properties": {
+        "animal_slot": {
+          "type": "string"
+        },
+        "shelter_id": {
+          "type": "string"
+        }
+      }
+    },
     "AnimalShelterState": {
       "type": "object",
       "required": [
@@ -130,6 +156,29 @@
           }
         }
       ]
+    },
+    "BlockedResidentTaskView": {
+      "type": "object",
+      "required": [
+        "message",
+        "reason",
+        "resident_id",
+        "task_id"
+      ],
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "resident_id": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        }
+      }
     },
     "DecorationPlacement": {
       "type": "object",
@@ -662,6 +711,27 @@
         }
       ]
     },
+    "FarmNotice": {
+      "type": "object",
+      "required": [
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/FarmNoticeKind"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "FarmNoticeKind": {
+      "type": "string",
+      "enum": [
+        "save_reset"
+      ]
+    },
     "FarmResident": {
       "type": "object",
       "required": [
@@ -696,8 +766,9 @@
         "machines",
         "oven",
         "owned_farmhouse_upgrades",
+        "reservations",
         "resident_locations",
-        "resident_task_queues",
+        "resident_work",
         "residents",
         "selected_resident_id",
         "shelters",
@@ -783,6 +854,9 @@
             "$ref": "#/definitions/FarmhouseUpgradeKind"
           }
         },
+        "reservations": {
+          "$ref": "#/definitions/ReservationView"
+        },
         "resident_cleanup_blocks": {
           "default": null,
           "type": [
@@ -793,29 +867,16 @@
             "$ref": "#/definitions/ResidentCleanupBlock"
           }
         },
-        "resident_inventories": {
-          "default": null,
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": {
-            "$ref": "#/definitions/ResidentInventory"
-          }
-        },
         "resident_locations": {
           "type": "object",
           "additionalProperties": {
             "$ref": "#/definitions/Tile"
           }
         },
-        "resident_task_queues": {
+        "resident_work": {
           "type": "object",
           "additionalProperties": {
-            "type": "array",
-            "items": {
-              "$ref": "#/definitions/ResidentTask"
-            }
+            "$ref": "#/definitions/ResidentWorkView"
           }
         },
         "residents": {
@@ -1125,123 +1186,170 @@
         }
       }
     },
-    "ReservedWorkTarget": {
-      "oneOf": [
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "silo"
-              ]
-            }
+    "ReservationReasonView": {
+      "type": "object",
+      "required": [
+        "reason",
+        "resident_id",
+        "resident_name",
+        "task_id"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "resident_id": {
+          "type": "string"
+        },
+        "resident_name": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        }
+      }
+    },
+    "ReservationView": {
+      "type": "object",
+      "required": [
+        "animals",
+        "field_plots",
+        "machines",
+        "path_tiles"
+      ],
+      "properties": {
+        "animals": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "$ref": "#/definitions/AnimalReservationKey"
+              },
+              {
+                "$ref": "#/definitions/ReservationReasonView"
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
           }
         },
-        {
+        "field_plots": {
           "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "barn"
-              ]
-            }
+          "additionalProperties": {
+            "$ref": "#/definitions/ReservationReasonView"
           }
         },
-        {
+        "machines": {
           "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "tool_source"
-              ]
-            }
+          "additionalProperties": {
+            "$ref": "#/definitions/ReservationReasonView"
           }
         },
-        {
-          "type": "object",
-          "required": [
-            "plot_id",
-            "type"
-          ],
-          "properties": {
-            "plot_id": {
-              "type": "string"
+        "oven": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReservationReasonView"
             },
-            "type": {
-              "type": "string",
-              "enum": [
-                "field_plot"
-              ]
+            {
+              "type": "null"
             }
-          }
+          ]
         },
-        {
-          "type": "object",
-          "required": [
-            "machine_id",
-            "type"
-          ],
-          "properties": {
-            "machine_id": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "machine"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "oven"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "animal_slot",
-            "shelter_id",
-            "type"
-          ],
-          "properties": {
-            "animal_slot": {
-              "type": "string"
-            },
-            "shelter_id": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "animal"
-              ]
-            }
+        "path_tiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReservedPathTileView"
           }
         }
-      ]
+      }
+    },
+    "ReservedPathTileView": {
+      "type": "object",
+      "required": [
+        "resident_id",
+        "task_id",
+        "tile"
+      ],
+      "properties": {
+        "resident_id": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "tile": {
+          "$ref": "#/definitions/Tile"
+        }
+      }
+    },
+    "ResidentCarryItemView": {
+      "type": "object",
+      "required": [
+        "item_id",
+        "kind",
+        "name",
+        "quantity"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/ItemKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ResidentCarryToolView": {
+      "type": "object",
+      "required": [
+        "label",
+        "quantity",
+        "tool_kind"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "tool_kind": {
+          "$ref": "#/definitions/ToolKind"
+        }
+      }
+    },
+    "ResidentCarryView": {
+      "type": "object",
+      "required": [
+        "items",
+        "tools"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResidentCarryItemView"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResidentCarryToolView"
+          }
+        }
+      }
     },
     "ResidentCleanupBlock": {
       "type": "object",
@@ -1265,73 +1373,134 @@
         }
       }
     },
-    "ResidentInventory": {
+    "ResidentPathState": {
+      "type": "string",
+      "enum": [
+        "walking",
+        "working"
+      ]
+    },
+    "ResidentScenePoint": {
       "type": "object",
       "required": [
-        "item_capacity",
-        "items",
-        "tools"
+        "x",
+        "y"
       ],
       "properties": {
-        "item_capacity": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0.0
+        "x": {
+          "type": "number",
+          "format": "double"
         },
-        "items": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0.0
-          }
-        },
-        "tool_sources": {
-          "default": {},
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/ToolSourceRef"
-          }
-        },
-        "tools": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0.0
-          }
+        "y": {
+          "type": "number",
+          "format": "double"
         }
       }
     },
-    "ResidentTask": {
+    "ResidentSceneView": {
       "type": "object",
       "required": [
-        "id",
+        "inside_house",
+        "path",
+        "tile"
+      ],
+      "properties": {
+        "inside_house": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResidentScenePoint"
+          }
+        },
+        "path_state": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ResidentPathState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tile": {
+          "$ref": "#/definitions/ResidentScenePoint"
+        }
+      }
+    },
+    "ResidentStepView": {
+      "type": "object",
+      "required": [
+        "activity",
+        "duration_ms",
+        "label",
+        "prop",
+        "walk_duration_ms",
+        "work_duration_ms"
+      ],
+      "properties": {
+        "activity": {
+          "$ref": "#/definitions/ResidentVisualActivity"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "label": {
+          "type": "string"
+        },
+        "prop": {
+          "$ref": "#/definitions/ResidentVisualProp"
+        },
+        "walk_duration_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "work_duration_ms": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "ResidentTargetKind": {
+      "type": "string",
+      "enum": [
+        "farmhouse",
+        "field_plot",
+        "silo",
+        "barn",
+        "tool_source",
+        "machine",
+        "oven",
+        "animal",
+        "work"
+      ]
+    },
+    "ResidentTargetView": {
+      "type": "object",
+      "required": [
         "kind",
-        "ready_at_ms",
-        "started_at_ms",
-        "steps"
+        "label",
+        "tile"
       ],
       "properties": {
         "id": {
-          "type": "string"
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "kind": {
-          "$ref": "#/definitions/ResidentTaskKind"
+          "$ref": "#/definitions/ResidentTargetKind"
         },
-        "ready_at_ms": {
-          "type": "integer",
-          "format": "int64"
+        "label": {
+          "type": "string"
         },
-        "started_at_ms": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "steps": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/ResidentTaskStep"
-          }
+        "tile": {
+          "$ref": "#/definitions/ResidentScenePoint"
         }
       }
     },
@@ -1367,333 +1536,173 @@
         }
       ]
     },
-    "ResidentTaskStep": {
+    "ResidentTaskQueueState": {
+      "type": "string",
+      "enum": [
+        "current",
+        "queued",
+        "blocked"
+      ]
+    },
+    "ResidentTaskSummaryView": {
       "type": "object",
       "required": [
-        "reserved_work_target",
-        "work"
+        "id",
+        "kind",
+        "label",
+        "queue_state",
+        "ready_at_ms",
+        "started_at_ms",
+        "step_count"
       ],
       "properties": {
-        "approach_tile": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/ResidentTaskKind"
+        },
+        "label": {
+          "type": "string"
+        },
+        "queue_state": {
+          "$ref": "#/definitions/ResidentTaskQueueState"
+        },
+        "ready_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "started_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "step_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ResidentVisualActivity": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "walking",
+        "picking_up_items",
+        "picking_up_tools",
+        "planting",
+        "harvesting",
+        "collecting_machine",
+        "starting_oven",
+        "collecting_oven",
+        "feeding_animal",
+        "collecting_animal_product",
+        "depositing_inventory",
+        "returning_tools"
+      ]
+    },
+    "ResidentVisualProp": {
+      "type": "string",
+      "enum": [
+        "none",
+        "seed_pouch",
+        "basket",
+        "bucket",
+        "crate",
+        "oven_tray",
+        "tool_bundle"
+      ]
+    },
+    "ResidentWorkState": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "walking",
+        "working",
+        "blocked"
+      ]
+    },
+    "ResidentWorkView": {
+      "type": "object",
+      "required": [
+        "carry",
+        "display_name",
+        "queue",
+        "resident_id",
+        "scene",
+        "selected",
+        "state"
+      ],
+      "properties": {
+        "block": {
           "default": null,
           "anyOf": [
             {
-              "$ref": "#/definitions/Tile"
+              "$ref": "#/definitions/BlockedResidentTaskView"
             },
             {
               "type": "null"
             }
           ]
         },
-        "duration_ms": {
-          "default": 2000,
-          "type": "integer",
-          "format": "int64"
+        "carry": {
+          "$ref": "#/definitions/ResidentCarryView"
         },
-        "reserved_work_target": {
-          "$ref": "#/definitions/ReservedWorkTarget"
+        "current_step": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ResidentStepView"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
-        "walk_duration_ms": {
-          "default": 0,
-          "type": "integer",
-          "format": "int64"
+        "current_task": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ResidentTaskSummaryView"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
-        "walk_path": {
-          "default": [],
+        "display_name": {
+          "type": "string"
+        },
+        "queue": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/Tile"
+            "$ref": "#/definitions/ResidentTaskSummaryView"
           }
         },
-        "work": {
-          "$ref": "#/definitions/ResidentTaskStepWork"
+        "resident_id": {
+          "type": "string"
         },
-        "work_duration_ms": {
-          "default": 2000,
-          "type": "integer",
-          "format": "int64"
+        "scene": {
+          "$ref": "#/definitions/ResidentSceneView"
+        },
+        "selected": {
+          "type": "boolean"
+        },
+        "state": {
+          "$ref": "#/definitions/ResidentWorkState"
+        },
+        "target": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ResidentTargetView"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
-    },
-    "ResidentTaskStepWork": {
-      "oneOf": [
-        {
-          "type": "object",
-          "required": [
-            "items",
-            "source",
-            "type"
-          ],
-          "properties": {
-            "items": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/ItemStack"
-              }
-            },
-            "source": {
-              "$ref": "#/definitions/StorageSourceRef"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "pickup_items"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "source",
-            "tools",
-            "type"
-          ],
-          "properties": {
-            "source": {
-              "$ref": "#/definitions/ToolSourceRef"
-            },
-            "tools": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/ToolStack"
-              }
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "pickup_tools"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "crop_id",
-            "type"
-          ],
-          "properties": {
-            "crop_id": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "plant_crop"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "crop_id",
-            "quantity",
-            "type"
-          ],
-          "properties": {
-            "crop_id": {
-              "type": "string"
-            },
-            "quantity": {
-              "type": "integer",
-              "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "harvest_crop"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "job_id",
-            "recipe_id",
-            "type"
-          ],
-          "properties": {
-            "job_id": {
-              "type": "string"
-            },
-            "recipe_id": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "collect_machine_job"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "job_id",
-            "recipe_id",
-            "type"
-          ],
-          "properties": {
-            "job_id": {
-              "type": "string"
-            },
-            "recipe_id": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "start_oven_recipe"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "job_id",
-            "recipe_id",
-            "type"
-          ],
-          "properties": {
-            "job_id": {
-              "type": "string"
-            },
-            "recipe_id": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "collect_oven_job"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "feed_animal"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "item_id",
-            "quantity",
-            "type"
-          ],
-          "properties": {
-            "item_id": {
-              "type": "string"
-            },
-            "quantity": {
-              "type": "integer",
-              "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "collect_animal_product"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "item_id",
-            "quantity",
-            "type"
-          ],
-          "properties": {
-            "item_id": {
-              "type": "string"
-            },
-            "quantity": {
-              "type": "integer",
-              "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "deposit_inventory"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "destination",
-            "items",
-            "type"
-          ],
-          "properties": {
-            "destination": {
-              "$ref": "#/definitions/StorageSourceRef"
-            },
-            "items": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/ItemStack"
-              }
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "deposit_items"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "source": {
-              "default": {
-                "type": "farmhouse"
-              },
-              "allOf": [
-                {
-                  "$ref": "#/definitions/ToolSourceRef"
-                }
-              ]
-            },
-            "tools": {
-              "default": [],
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/ToolStack"
-              }
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "return_tools"
-              ]
-            }
-          }
-        }
-      ]
     },
     "Room": {
       "type": "object",
@@ -1971,59 +1980,6 @@
             "format": "uint32",
             "minimum": 0.0
           }
-        }
-      }
-    },
-    "ToolSourceRef": {
-      "oneOf": [
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "farmhouse"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "id",
-            "type"
-          ],
-          "properties": {
-            "id": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "tool_shed"
-              ]
-            }
-          }
-        }
-      ]
-    },
-    "ToolStack": {
-      "type": "object",
-      "required": [
-        "quantity",
-        "tool_kind"
-      ],
-      "properties": {
-        "quantity": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0.0
-        },
-        "tool_kind": {
-          "$ref": "#/definitions/ToolKind"
         }
       }
     },

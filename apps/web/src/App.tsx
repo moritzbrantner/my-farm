@@ -47,6 +47,7 @@ import {
   reservedFieldReason,
   reservedMachineReason,
   reservedOvenReason,
+  residentWork,
   residentTaskStatus,
   residentTaskStepLabel,
   taskLabel,
@@ -231,8 +232,8 @@ export function App() {
     const [catalogResponse, farmResponse] = await Promise.all([client.catalog(), client.farm()]);
     setCatalog(catalogResponse);
     applyFarmSnapshot(farmResponse.version, farmResponse.view);
-    setMessage(demoMode ? "Demo farm loaded" : "Local farm synced");
-  }, [applyFarmSnapshot]);
+    setMessage(farmResponse.notice?.message ?? (demoMode ? "Demo farm loaded" : "Local farm synced"));
+  }, [applyFarmSnapshot, client, demoMode]);
 
   useEffect(() => {
     if (!demoMode) {
@@ -254,11 +255,14 @@ export function App() {
         .farm()
         .then((farm) => {
           applyFarmSnapshot(farm.version, farm.view);
+          if (farm.notice) {
+            setMessage(farm.notice.message);
+          }
         })
         .catch((error) => setMessage(error.message));
     }, 2500);
     return () => window.clearInterval(timer);
-  }, [applyFarmSnapshot, gameplayPaused]);
+  }, [applyFarmSnapshot, client, demoMode, gameplayPaused]);
 
   useEffect(() => {
     if (demoMode || !client.connect) {
@@ -280,12 +284,15 @@ export function App() {
       },
       farm(farm) {
         applyFarmSnapshot(farm.version, farm.view, { force: true });
+        if (farm.notice) {
+          setMessage(farm.notice.message);
+        }
       },
       error(errorMessage) {
         setMessage(errorMessage);
       },
     });
-  }, [applyFarmSnapshot]);
+  }, [applyFarmSnapshot, client, demoMode]);
 
   useEffect(() => {
     if (!view || !structureMenu || isStructureTargetPresent(view, structureMenu.target)) {
@@ -462,7 +469,7 @@ export function App() {
           response = await client.command({ expected_version: response.version, command });
         }
         applyFarmSnapshot(response.version, response.view);
-        setMessage(response.accepted ? "Command accepted" : response.error ?? "Command rejected");
+        setMessage(response.notice?.message ?? (response.accepted ? "Command accepted" : response.error ?? "Command rejected"));
         return { accepted: response.accepted, error: response.error };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Command failed";
@@ -497,8 +504,8 @@ export function App() {
     applyFarmSnapshot(response.version, response.view, { force: true });
     clearTransientGameplayUi();
     setGuidedTutorialStep(0);
-    setMessage(demoMode ? "Demo farm reset" : "Farm reset");
-  }, [applyFarmSnapshot, clearTransientGameplayUi]);
+    setMessage(response.notice?.message ?? (demoMode ? "Demo farm reset" : "Farm reset"));
+  }, [applyFarmSnapshot, clearTransientGameplayUi, client, demoMode]);
 
   const startNewFarm = useCallback(async () => {
     await reset();
@@ -1670,6 +1677,7 @@ function ResidentCard({
   onSelectResident: (residentId: string) => void;
 }) {
   const status = residentTaskStatus(catalog, view, resident.id, nowMs);
+  const work = residentWork(view, resident.id);
 
   const selectResident = async () => {
     await onSelectResident(resident.id);
@@ -1700,7 +1708,7 @@ function ResidentCard({
           <span>{Math.round(status.progress * 100)}%</span>
         </div>
       ) : null}
-      <ResidentCarrySummary catalog={catalog} view={view} residentId={resident.id} compact />
+      <ResidentCarrySummary work={work} compact />
     </article>
   );
 }
@@ -2462,9 +2470,10 @@ function ResidentActions({
   nowMs: number;
 }) {
   const status = residentTaskStatus(catalog, view, resident.id, nowMs);
+  const work = residentWork(view, resident.id);
   const pose = currentResidentScenePose(view, resident.id, nowMs);
-  const currentStep = status.currentTask?.steps[0] ?? null;
-  const queue = view.resident_task_queues[resident.id] ?? [];
+  const currentStep = work?.current_step ?? null;
+  const queue = work?.queue ?? [];
   return (
     <div className="action-stack resident-details">
       <div className="resident-details__header">
@@ -2482,20 +2491,21 @@ function ResidentActions({
         </div>
         <div>
           <dt>Current step</dt>
-          <dd>{currentStep ? residentTaskStepLabel(catalog, currentStep.work) : "None"}</dd>
+          <dd>{currentStep ? residentTaskStepLabel(catalog, currentStep) : "None"}</dd>
         </div>
         <div>
           <dt>Target</dt>
-          <dd>{sceneTargetLabel(pose.label)}</dd>
+          <dd>{pose.label}</dd>
         </div>
       </dl>
+      {work?.block ? <p className="resident-task-blocked">{work.block.message}</p> : null}
       {status.currentTask ? (
         <div className="resident-task-progress">
           <progress value={status.progress} max={1} aria-label={`${resident.display_name} task progress`} />
           <span>{Math.round(status.progress * 100)}%</span>
         </div>
       ) : null}
-      <ResidentCarrySummary catalog={catalog} view={view} residentId={resident.id} />
+      <ResidentCarrySummary work={work} />
       <div className="resident-queue">
         <strong>Task queue</strong>
         {queue.length === 0 ? (
@@ -2506,8 +2516,8 @@ function ResidentActions({
               <li key={task.id}>
                 <span>{taskLabel(catalog, task)}</span>
                 <small>
-                  {index === 0 ? "Current" : "Queued"} - {task.steps.length}{" "}
-                  {task.steps.length === 1 ? "step" : "steps"}
+                  {task.queue_state === "blocked" ? "Blocked" : index === 0 ? "Current" : "Queued"} - {task.step_count}{" "}
+                  {task.step_count === 1 ? "step" : "steps"}
                 </small>
               </li>
             ))}
@@ -2519,23 +2529,14 @@ function ResidentActions({
 }
 
 function ResidentCarrySummary({
-  catalog,
-  view,
-  residentId,
+  work,
   compact = false,
 }: {
-  catalog: CatalogDocument;
-  view: FarmView;
-  residentId: string;
+  work: ReturnType<typeof residentWork>;
   compact?: boolean;
 }) {
-  const inventory = view.resident_inventories?.[residentId];
-  const itemEntries = Object.entries(inventory?.items ?? {})
-    .map(([itemId, quantity]) => [itemId, Number(quantity ?? 0)] as const)
-    .filter(([, quantity]) => quantity > 0);
-  const toolEntries = Object.entries(inventory?.tools ?? {})
-    .map(([toolKind, quantity]) => [toolKind, Number(quantity ?? 0)] as const)
-    .filter(([, quantity]) => quantity > 0);
+  const itemEntries = work?.carry.items ?? [];
+  const toolEntries = work?.carry.tools ?? [];
 
   if (itemEntries.length === 0 && toolEntries.length === 0) {
     return compact ? null : (
@@ -2550,18 +2551,17 @@ function ResidentCarrySummary({
     <div className={compact ? "resident-carry resident-carry--compact" : "resident-carry"}>
       {!compact ? <strong>Carrying</strong> : null}
       <div className="resident-carry__chips">
-        {itemEntries.map(([itemId, quantity]) => {
-          const item = catalog.items.find((entry) => entry.id === itemId);
+        {itemEntries.map((item) => {
           return (
-            <span className="resident-carry-chip" key={`item-${itemId}`}>
-              <ResourceIcon type="item" itemId={itemId} itemKind={item?.kind} />
-              {quantity} {item?.name ?? itemId}
+            <span className="resident-carry-chip" key={`item-${item.item_id}`}>
+              <ResourceIcon type="item" itemId={item.item_id} itemKind={item.kind} />
+              {item.quantity} {item.name}
             </span>
           );
         })}
-        {toolEntries.map(([toolKind, quantity]) => (
-          <span className="resident-carry-chip" key={`tool-${toolKind}`}>
-            {quantity} {toolLabel(toolKind)}
+        {toolEntries.map((tool) => (
+          <span className="resident-carry-chip" key={`tool-${tool.tool_kind}`}>
+            {tool.quantity} {tool.label}
           </span>
         ))}
       </div>
@@ -2569,43 +2569,8 @@ function ResidentCarrySummary({
   );
 }
 
-function toolLabel(toolKind: string) {
-  return toolKind
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 function sceneStateLabel(state: ReturnType<typeof currentResidentScenePose>["state"]) {
-  return state === "idle" ? "Idle" : state === "walking" ? "Walking" : "Working";
-}
-
-function sceneTargetLabel(label: string) {
-  if (label === "farmhouse") {
-    return "Farmhouse";
-  }
-  if (label === "silo") {
-    return "Silo";
-  }
-  if (label === "barn") {
-    return "Barn";
-  }
-  if (label === "tool_shed") {
-    return "Tool Shed";
-  }
-  if (label === "oven") {
-    return "Oven";
-  }
-  if (label.startsWith("field:")) {
-    return `Field Plot ${label.slice("field:".length)}`;
-  }
-  if (label.startsWith("machine:")) {
-    return "Machine";
-  }
-  if (label.startsWith("animal:")) {
-    return "Animal Shelter";
-  }
-  return "Work target";
+  return state === "idle" ? "Idle" : state === "walking" ? "Walking" : state === "blocked" ? "Blocked" : "Working";
 }
 
 function FarmhouseActions({

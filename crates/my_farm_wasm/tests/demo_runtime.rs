@@ -1,6 +1,6 @@
 use my_farm_core::{
-    CommandRequest, CommandResponse, FarmCommand, FarmResponse, FarmhouseUpgradeKind, RoomTile,
-    StructureKind, Tile,
+    CommandRequest, CommandResponse, FARM_STATE_SCHEMA_VERSION, FarmCommand, FarmNoticeKind,
+    FarmResponse, FarmhouseUpgradeKind, RoomTile, StructureKind, Tile,
 };
 use my_farm_wasm::{DemoFarmRuntime, demo_catalog};
 
@@ -61,6 +61,27 @@ fn demo_runtime_persists_a_local_save() {
 
     assert_eq!(farm.version, 1);
     assert_eq!(farm.view.field_plots.len(), 7);
+}
+
+#[test]
+fn demo_runtime_resets_incompatible_local_save_with_notice() {
+    let runtime = DemoFarmRuntime::new(None, 1_000.0);
+    let mut save: serde_json::Value = serde_json::from_str(&runtime.save_json()).unwrap();
+    save["schema_version"] = serde_json::json!(FARM_STATE_SCHEMA_VERSION - 1);
+    save["version"] = serde_json::json!(9);
+
+    let mut restored = DemoFarmRuntime::new(Some(save.to_string()), 2_000.0);
+    let restored_farm = farm(&mut restored, 2_000.0);
+
+    assert_eq!(restored_farm.version, 0);
+    assert_eq!(
+        restored_farm.notice.as_ref().map(|notice| &notice.kind),
+        Some(&FarmNoticeKind::SaveReset)
+    );
+    assert_eq!(restored_farm.view.field_plots.len(), 6);
+
+    let next_farm = farm(&mut restored, 2_000.0);
+    assert!(next_farm.notice.is_none());
 }
 
 #[test]
@@ -252,13 +273,13 @@ fn demo_runtime_ticks_completed_resident_tasks_and_preserves_save_state() {
     let queued = farm(&mut runtime, 2_000.0);
     assert_eq!(queued.version, 3);
     assert_eq!(queued.view.selected_resident_id, "man");
-    assert_eq!(queued.view.resident_task_queues["man"].len(), 1);
-    assert_eq!(queued.view.resident_task_queues["man"][0].steps.len(), 5);
+    assert_eq!(queued.view.resident_work["man"].queue.len(), 1);
+    assert_eq!(queued.view.resident_work["man"].queue[0].step_count, 5);
 
     let ticked = farm(&mut runtime, 30_000.0);
     assert_eq!(ticked.version, 4);
     assert!(ticked.view.field_plots[0].crop.is_some());
-    assert_eq!(ticked.view.resident_task_queues["man"][0].steps.len(), 1);
+    assert_eq!(ticked.view.resident_work["man"].queue[0].step_count, 1);
 
     let save = runtime.save_json();
     let mut restored = DemoFarmRuntime::new(Some(save), 30_000.0);
@@ -269,9 +290,7 @@ fn demo_runtime_ticks_completed_resident_tasks_and_preserves_save_state() {
     assert_eq!(restored_farm.view.residents[0].display_name, "Ada");
     assert!(restored_farm.view.field_plots[0].crop.is_some());
     assert_eq!(
-        restored_farm.view.resident_task_queues["man"][0]
-            .steps
-            .len(),
+        restored_farm.view.resident_work["man"].queue[0].step_count,
         1
     );
 }
@@ -298,8 +317,8 @@ fn demo_runtime_loads_old_saves_with_default_residents_and_empty_queues() {
             .collect::<Vec<_>>(),
         vec!["woman", "man"]
     );
-    assert!(restored_farm.view.resident_task_queues["woman"].is_empty());
-    assert!(restored_farm.view.resident_task_queues["man"].is_empty());
+    assert!(restored_farm.view.resident_work["woman"].queue.is_empty());
+    assert!(restored_farm.view.resident_work["man"].queue.is_empty());
 }
 
 #[test]

@@ -72,6 +72,10 @@ _Avoid_: Active character, current avatar
 A saved unit of Farm work assigned to a Farm Resident and advanced by elapsed Farm time. Resident Tasks are authoritative Farm state, not browser-only animation.
 _Avoid_: Animation job, client task
 
+**Blocked Resident Task**:
+An accepted Resident Task that cannot currently advance because its saved execution plan no longer satisfies required Farm state invariants, such as missing carried inventory, missing Tool Source stock, an unreachable target, or a missing Reserved Work Target.
+_Avoid_: Silent skip, auto repair, queue error
+
 **Start Oven Recipe**:
 A Resident Task step where a Farm Resident stands at the Oven Workstation and turns a pending Oven recipe into an active baking job.
 _Avoid_: Instant oven queueing, make cake

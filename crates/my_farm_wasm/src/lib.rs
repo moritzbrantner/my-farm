@@ -1,6 +1,7 @@
 use my_farm_core::{
-    CatalogDocument, CommandRequest, CommandResponse, FarmCommand, FarmResponse, FarmState,
-    StructureTarget, apply_command, apply_elapsed, farm_view, new_farm,
+    CatalogDocument, CommandRequest, CommandResponse, FARM_STATE_SCHEMA_VERSION, FarmCommand,
+    FarmNotice, FarmNoticeKind, FarmResponse, FarmState, StructureTarget, apply_command,
+    apply_elapsed, farm_view, new_farm,
 };
 use serde::{Deserialize, Serialize};
 #[cfg(target_arch = "wasm32")]
@@ -8,6 +9,7 @@ use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DemoSave {
+    schema_version: u32,
     version: u64,
     farm: FarmState,
 }
@@ -17,6 +19,7 @@ pub struct DemoFarmRuntime {
     catalog: CatalogDocument,
     farm: FarmState,
     version: u64,
+    load_notice: Option<FarmNotice>,
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -24,15 +27,19 @@ impl DemoFarmRuntime {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(constructor))]
     pub fn new(saved_json: Option<String>, now_ms: f64) -> Self {
         let catalog = demo_catalog();
-        let save = saved_json
-            .and_then(|json| serde_json::from_str::<DemoSave>(&json).ok())
-            .filter(|save| demo_save_is_compatible(save, &catalog));
+        let had_saved_json = saved_json.is_some();
+        let save = saved_json.and_then(|json| serde_json::from_str::<DemoSave>(&json).ok());
+        let save = save.filter(|save| {
+            save.schema_version == FARM_STATE_SCHEMA_VERSION
+                && demo_save_is_compatible(save, &catalog)
+        });
 
         if let Some(save) = save {
             return Self {
                 catalog,
                 farm: save.farm,
                 version: save.version,
+                load_notice: None,
             };
         }
 
@@ -40,6 +47,7 @@ impl DemoFarmRuntime {
             farm: new_farm(now_ms_to_i64(now_ms), &catalog),
             catalog,
             version: 0,
+            load_notice: had_saved_json.then(save_reset_notice),
         }
     }
 
@@ -53,6 +61,7 @@ impl DemoFarmRuntime {
         serde_json::to_string(&FarmResponse {
             version: self.version,
             view: farm_view(&self.farm, &self.catalog),
+            notice: self.load_notice.take(),
         })
         .expect("serialize demo farm response")
     }
@@ -63,6 +72,7 @@ impl DemoFarmRuntime {
         serde_json::to_string(&FarmResponse {
             version: self.version,
             view: farm_view(&self.farm, &self.catalog),
+            notice: None,
         })
         .expect("serialize reset farm response")
     }
@@ -98,12 +108,14 @@ impl DemoFarmRuntime {
             events: outcome.events,
             view: farm_view(&self.farm, &self.catalog),
             error: outcome.error.map(|error| error.message),
+            notice: None,
         })
         .expect("serialize command response")
     }
 
     pub fn save_json(&self) -> String {
         serde_json::to_string(&DemoSave {
+            schema_version: FARM_STATE_SCHEMA_VERSION,
             version: self.version,
             farm: self.farm.clone(),
         })
@@ -126,8 +138,16 @@ impl DemoFarmRuntime {
             events: Vec::new(),
             view: farm_view(&self.farm, &self.catalog),
             error: Some(message.to_owned()),
+            notice: None,
         })
         .expect("serialize rejected command response")
+    }
+}
+
+fn save_reset_notice() -> FarmNotice {
+    FarmNotice {
+        kind: FarmNoticeKind::SaveReset,
+        message: "Saved farm data was reset because it used an older prototype format.".to_owned(),
     }
 }
 

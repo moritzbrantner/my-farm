@@ -5,7 +5,8 @@ import type {
   FarmResponse,
   FarmView,
   FarmResident,
-  ResidentTask,
+  ReservationView,
+  ResidentWorkView,
   Tile,
 } from "./types";
 import type {
@@ -36,7 +37,8 @@ type LegacyFarmView = Omit<
   | "residents"
   | "selected_resident_id"
   | "resident_locations"
-  | "resident_task_queues"
+  | "resident_work"
+  | "reservations"
 > & {
   silo_tile?: Tile | null;
   barn_tile?: Tile | null;
@@ -44,7 +46,8 @@ type LegacyFarmView = Omit<
   residents?: FarmResident[] | null;
   selected_resident_id?: string | null;
   resident_locations?: FarmView["resident_locations"] | null;
-  resident_task_queues?: FarmView["resident_task_queues"] | null;
+  resident_work?: FarmView["resident_work"] | null;
+  reservations?: FarmView["reservations"] | null;
 };
 
 type LegacyFarmResponse = Omit<FarmResponse, "view"> & {
@@ -228,7 +231,7 @@ function createGameplayWebsocketClient(url: string) {
         type: "reset_farm",
         request_id: nextRequestId("reset"),
       });
-      return { version: response.version, view: response.view };
+      return { version: response.version, view: response.view, notice: response.notice };
     },
     connect(nextHandlers: FarmConnectionHandlers): () => void {
       handlers = nextHandlers;
@@ -348,12 +351,12 @@ function normalizeFarmView(view: LegacyFarmView): FarmView {
   const selectedResidentId = residents.some((resident) => resident.id === view.selected_resident_id)
     ? view.selected_resident_id
     : residents[0]?.id ?? "woman";
-  const residentTaskQueues = validResidentTaskQueues(view.resident_task_queues)
-    ? normalizeResidentTaskQueues(view.resident_task_queues)
-    : Object.fromEntries(residents.map((resident) => [resident.id, []]));
   const residentLocations = validResidentLocations(view.resident_locations)
     ? { ...defaultResidentLocationsFor(residents), ...view.resident_locations }
     : defaultResidentLocationsFor(residents);
+  const residentWork = validResidentWork(view.resident_work)
+    ? view.resident_work
+    : defaultResidentWorkFor(residents, selectedResidentId ?? "woman", residentLocations);
 
   return {
     ...view,
@@ -365,7 +368,8 @@ function normalizeFarmView(view: LegacyFarmView): FarmView {
     residents,
     selected_resident_id: selectedResidentId ?? "woman",
     resident_locations: residentLocations,
-    resident_task_queues: residentTaskQueues,
+    resident_work: residentWork,
+    reservations: normalizeReservations(view.reservations),
   };
 }
 
@@ -381,16 +385,16 @@ function validResidents(residents: FarmResident[] | null | undefined): residents
   );
 }
 
-function validResidentTaskQueues(
-  queues: FarmView["resident_task_queues"] | null | undefined,
-): queues is FarmView["resident_task_queues"] {
-  return queues !== undefined && queues !== null && typeof queues === "object";
-}
-
 function validResidentLocations(
   locations: FarmView["resident_locations"] | null | undefined,
 ): locations is FarmView["resident_locations"] {
   return locations !== undefined && locations !== null && typeof locations === "object";
+}
+
+function validResidentWork(
+  work: FarmView["resident_work"] | null | undefined,
+): work is FarmView["resident_work"] {
+  return work !== undefined && work !== null && typeof work === "object";
 }
 
 function defaultResidentLocationsFor(residents: FarmResident[]): FarmView["resident_locations"] {
@@ -402,36 +406,57 @@ function defaultResidentLocationsFor(residents: FarmResident[]): FarmView["resid
   );
 }
 
-function normalizeResidentTaskQueues(
-  queues: FarmView["resident_task_queues"],
-): FarmView["resident_task_queues"] {
+function defaultResidentWorkFor(
+  residents: FarmResident[],
+  selectedResidentId: string,
+  residentLocations: FarmView["resident_locations"],
+): FarmView["resident_work"] {
   return Object.fromEntries(
-    Object.entries(queues).map(([residentId, tasks]) => [
-      residentId,
-      (tasks ?? []).map((task) => ({
-        ...task,
-        steps: task.steps.map(normalizeResidentTaskStep),
-      })),
+    residents.map((resident): [string, ResidentWorkView] => [
+      resident.id,
+      {
+        resident_id: resident.id,
+        display_name: resident.display_name,
+        selected: resident.id === selectedResidentId,
+        state: "idle",
+        queue: [],
+        scene: {
+          tile: residentLocations[resident.id] ?? { x: 8, y: 10 },
+          path: [],
+          inside_house: false,
+        },
+        carry: {
+          items: [],
+          tools: [],
+        },
+      },
     ]),
   );
 }
 
-function normalizeResidentTaskStep(
-  step: ResidentTask["steps"][number],
-): ResidentTask["steps"][number] {
-  const walkDurationMs = Number.isFinite(step.walk_duration_ms) ? step.walk_duration_ms : 0;
-  const workDurationMs = Number.isFinite(step.work_duration_ms)
-    ? step.work_duration_ms
-    : Math.max(0, step.duration_ms - walkDurationMs);
-  const durationMs = Number.isFinite(step.duration_ms)
-    ? step.duration_ms
-    : walkDurationMs + workDurationMs;
+function defaultReservations(): ReservationView {
   return {
-    ...step,
-    approach_tile: validTile(step.approach_tile) ? step.approach_tile : undefined,
-    walk_path: Array.isArray(step.walk_path) ? step.walk_path.filter(validTile) : [],
-    walk_duration_ms: walkDurationMs,
-    work_duration_ms: workDurationMs,
-    duration_ms: durationMs,
+    field_plots: {},
+    machines: {},
+    animals: [],
+    path_tiles: [],
   };
+}
+
+function normalizeReservations(reservations: FarmView["reservations"] | null | undefined): ReservationView {
+  if (!isRecord(reservations)) {
+    return defaultReservations();
+  }
+  const partial = reservations as Partial<ReservationView>;
+  return {
+    field_plots: isRecord(partial.field_plots) ? (partial.field_plots as ReservationView["field_plots"]) : {},
+    machines: isRecord(partial.machines) ? (partial.machines as ReservationView["machines"]) : {},
+    oven: partial.oven,
+    animals: Array.isArray(partial.animals) ? partial.animals : [],
+    path_tiles: Array.isArray(partial.path_tiles) ? partial.path_tiles : [],
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

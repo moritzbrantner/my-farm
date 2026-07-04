@@ -6,9 +6,9 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router, response::IntoResponse};
 use my_farm_core::{
-    CatalogDocument, CatalogResponse, CommandRequest, CommandResponse, FarmResponse, FarmState,
-    FarmView, HealthResponse, WebsocketClientMessage, WebsocketError, WebsocketServerMessage,
-    apply_command, apply_elapsed, farm_view, new_farm,
+    CatalogDocument, CatalogResponse, CommandRequest, CommandResponse, FarmNotice, FarmNoticeKind,
+    FarmResponse, FarmState, FarmView, HealthResponse, WebsocketClientMessage, WebsocketError,
+    WebsocketServerMessage, apply_command, apply_elapsed, farm_view, new_farm,
 };
 use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
@@ -93,11 +93,12 @@ async fn get_farm(
     State(state): State<AppState>,
 ) -> Result<Json<FarmResponse>, (StatusCode, Json<ApiError>)> {
     let now_ms = now_ms();
-    let (version, mut farm) = load_or_create_farm(&state, now_ms).await?;
+    let (version, mut farm, notice) = load_or_create_farm(&state, now_ms).await?;
     apply_elapsed(&mut farm, &state.catalog, now_ms);
     Ok(Json(FarmResponse {
         version,
         view: farm_view(&farm, &state.catalog),
+        notice,
     }))
 }
 
@@ -230,6 +231,7 @@ async fn handle_websocket_client_message(
                     events: response.events,
                     view: response.view.clone(),
                     error: response.error,
+                    notice: response.notice.clone(),
                 },
             )
             .await?;
@@ -239,6 +241,7 @@ async fn handle_websocket_client_message(
                     .send(WebsocketServerMessage::FarmSnapshot {
                         version: response.version,
                         view: response.view,
+                        notice: None,
                     });
             }
         }
@@ -253,12 +256,17 @@ async fn handle_websocket_client_message(
                     events: Vec::new(),
                     view: view.clone(),
                     error: None,
+                    notice: None,
                 },
             )
             .await?;
             let _ = state
                 .farm_updates
-                .send(WebsocketServerMessage::FarmSnapshot { version, view });
+                .send(WebsocketServerMessage::FarmSnapshot {
+                    version,
+                    view,
+                    notice: None,
+                });
         }
     }
 
@@ -267,7 +275,7 @@ async fn handle_websocket_client_message(
 
 async fn send_bootstrap(socket: &mut WebSocket, state: &AppState) -> Result<(), ApiError> {
     let now_ms = now_ms();
-    let (version, mut farm) = load_or_create_farm(state, now_ms)
+    let (version, mut farm, notice) = load_or_create_farm(state, now_ms)
         .await
         .map_err(api_error)?;
     apply_elapsed(&mut farm, &state.catalog, now_ms);
@@ -284,6 +292,7 @@ async fn send_bootstrap(socket: &mut WebSocket, state: &AppState) -> Result<(), 
         &WebsocketServerMessage::FarmSnapshot {
             version,
             view: farm_view(&farm, &state.catalog),
+            notice,
         },
     )
     .await?;
@@ -295,7 +304,7 @@ async fn send_current_farm_snapshot(
     state: &AppState,
 ) -> Result<(), ApiError> {
     let now_ms = now_ms();
-    let (version, mut farm) = load_or_create_farm(state, now_ms)
+    let (version, mut farm, notice) = load_or_create_farm(state, now_ms)
         .await
         .map_err(api_error)?;
     apply_elapsed(&mut farm, &state.catalog, now_ms);
@@ -304,6 +313,7 @@ async fn send_current_farm_snapshot(
         &WebsocketServerMessage::FarmSnapshot {
             version,
             view: farm_view(&farm, &state.catalog),
+            notice,
         },
     )
     .await
@@ -312,7 +322,7 @@ async fn send_current_farm_snapshot(
 async fn broadcast_elapsed_snapshot_if_visible(state: &AppState) -> Result<(), ApiError> {
     let _lock = state.mutation_lock.lock().await;
     let now_ms = now_ms();
-    let (version, mut farm) = load_or_create_farm(state, now_ms)
+    let (version, mut farm, _notice) = load_or_create_farm(state, now_ms)
         .await
         .map_err(api_error)?;
     let last_update_ms = farm.last_update_ms;
@@ -330,6 +340,7 @@ async fn broadcast_elapsed_snapshot_if_visible(state: &AppState) -> Result<(), A
         .send(WebsocketServerMessage::FarmSnapshot {
             version: next_version,
             view: farm_view(&farm, &state.catalog),
+            notice: None,
         });
     Ok(())
 }
@@ -390,7 +401,11 @@ async fn reset_farm(
     State(state): State<AppState>,
 ) -> Result<Json<FarmResponse>, (StatusCode, Json<ApiError>)> {
     let (version, view) = reset_farm_state(&state).await?;
-    Ok(Json(FarmResponse { version, view }))
+    Ok(Json(FarmResponse {
+        version,
+        view,
+        notice: None,
+    }))
 }
 
 async fn post_command(
@@ -407,7 +422,7 @@ async fn apply_command_request(
 ) -> Result<CommandResponse, (StatusCode, Json<ApiError>)> {
     let _lock = state.mutation_lock.lock().await;
     let now_ms = now_ms();
-    let (version, mut farm) = load_or_create_farm(&state, now_ms).await?;
+    let (version, mut farm, notice) = load_or_create_farm(&state, now_ms).await?;
 
     if request.expected_version != version {
         apply_elapsed(&mut farm, &state.catalog, now_ms);
@@ -420,6 +435,7 @@ async fn apply_command_request(
                 "version mismatch: expected {}, found {}",
                 request.expected_version, version
             )),
+            notice,
         });
     }
 
@@ -446,6 +462,7 @@ async fn apply_command_request(
         events: outcome.events,
         view: farm_view(&farm, &state.catalog),
         error: outcome.error.map(|error| error.message),
+        notice,
     })
 }
 
@@ -462,30 +479,49 @@ async fn reset_farm_state(
 async fn load_or_create_farm(
     state: &AppState,
     now_ms: i64,
-) -> Result<(u64, FarmState), (StatusCode, Json<ApiError>)> {
-    if let Some((version, farm)) = load_farm(&state.pool).await? {
-        return Ok((version, farm));
+) -> Result<(u64, FarmState, Option<FarmNotice>), (StatusCode, Json<ApiError>)> {
+    match load_farm(&state.pool).await? {
+        FarmLoadResult::Existing(version, farm) => return Ok((version, farm, None)),
+        FarmLoadResult::Missing => {}
+        FarmLoadResult::Incompatible => {
+            let farm = new_farm(now_ms, &state.catalog);
+            save_farm(&state.pool, 0, &farm, now_ms).await?;
+            return Ok((0, farm, Some(save_reset_notice())));
+        }
     }
     let farm = new_farm(now_ms, &state.catalog);
     save_farm(&state.pool, 0, &farm, now_ms).await?;
-    Ok((0, farm))
+    Ok((0, farm, None))
 }
 
-async fn load_farm(
-    pool: &SqlitePool,
-) -> Result<Option<(u64, FarmState)>, (StatusCode, Json<ApiError>)> {
+enum FarmLoadResult {
+    Existing(u64, FarmState),
+    Missing,
+    Incompatible,
+}
+
+async fn load_farm(pool: &SqlitePool) -> Result<FarmLoadResult, (StatusCode, Json<ApiError>)> {
     let row = sqlx::query("SELECT version, state_json FROM farm_save WHERE id = ?")
         .bind(FARM_ID)
         .fetch_optional(pool)
         .await
         .map_err(database_error)?;
     let Some(row) = row else {
-        return Ok(None);
+        return Ok(FarmLoadResult::Missing);
     };
     let version = row.get::<i64, _>("version") as u64;
     let state_json = row.get::<String, _>("state_json");
-    let farm = serde_json::from_str(&state_json).map_err(internal_error)?;
-    Ok(Some((version, farm)))
+    match serde_json::from_str(&state_json) {
+        Ok(farm) => Ok(FarmLoadResult::Existing(version, farm)),
+        Err(_) => Ok(FarmLoadResult::Incompatible),
+    }
+}
+
+fn save_reset_notice() -> FarmNotice {
+    FarmNotice {
+        kind: FarmNoticeKind::SaveReset,
+        message: "Saved farm data was reset because it used an older prototype format.".to_owned(),
+    }
 }
 
 async fn save_farm(

@@ -915,7 +915,7 @@ fn projected_resident_inventory(
     if let Some(queue) = farm.resident_task_queues.get(resident_id) {
         for task in queue {
             for step in &task.steps {
-                let _ = apply_projected_work(catalog, &mut projected, &step.work);
+                let _ = apply_projected_step(farm, catalog, &mut projected, step);
             }
         }
     }
@@ -923,18 +923,19 @@ fn projected_resident_inventory(
     projected
 }
 
-fn apply_projected_work(
+fn apply_projected_step(
+    farm: &FarmState,
     catalog: &CatalogDocument,
     projected: &mut ProjectedInventory,
-    work: &ResidentTaskStepWork,
+    step: &ResidentTaskStep,
 ) -> Result<(), CommandError> {
-    match work {
+    match &step.work {
         ResidentTaskStepWork::PickupItems { items, .. } => {
             add_projected_items(&mut projected.items, items);
         }
         ResidentTaskStepWork::PickupTools { tools, .. } => {
             add_projected_tools(&mut projected.tools, tools);
-            if let ResidentTaskStepWork::PickupTools { source, tools } = work {
+            if let ResidentTaskStepWork::PickupTools { source, tools } = &step.work {
                 for tool in tools {
                     projected
                         .tool_sources
@@ -962,7 +963,7 @@ fn apply_projected_work(
             }
         }
         other => {
-            let inputs = projected_step_inputs(catalog, other);
+            let inputs = step_inventory_inputs(farm, catalog, step)?;
             remove_projected_items(&mut projected.items, &inputs)?;
             let outputs = step_inventory_outputs(catalog, other);
             add_projected_items(&mut projected.items, &outputs);
@@ -1621,17 +1622,34 @@ fn complete_resident_tasks(
             .cloned()
             .collect::<Vec<_>>();
         for resident_id in resident_ids {
-            while let Some((step, completed_at_ms)) =
-                pop_ready_resident_task_step(farm, &resident_id, now_ms)
+            while let Some((task_id, step, completed_at_ms)) =
+                ready_resident_task_step(farm, &resident_id, now_ms)
             {
-                completed_any = true;
-                events.extend(complete_resident_task_step(
+                match complete_resident_task_step(
                     farm,
                     catalog,
                     &resident_id,
-                    step,
+                    step.clone(),
                     completed_at_ms,
-                ));
+                ) {
+                    Ok(step_events) => {
+                        let _ = pop_ready_resident_task_step(farm, &resident_id, now_ms);
+                        farm.blocked_resident_tasks.remove(&resident_id);
+                        completed_any = true;
+                        events.extend(step_events);
+                    }
+                    Err(block) => {
+                        farm.blocked_resident_tasks.insert(
+                            resident_id.clone(),
+                            crate::BlockedResidentTask {
+                                task_id,
+                                reason: block.reason,
+                                message: block.message,
+                            },
+                        );
+                        break;
+                    }
+                }
             }
         }
         if !completed_any {
@@ -1639,6 +1657,37 @@ fn complete_resident_tasks(
         }
     }
     events
+}
+
+struct ResidentTaskBlock {
+    reason: String,
+    message: String,
+}
+
+impl ResidentTaskBlock {
+    fn new(reason: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+            message: message.into(),
+        }
+    }
+}
+
+fn ready_resident_task_step(
+    farm: &FarmState,
+    resident_id: &str,
+    now_ms: i64,
+) -> Option<(String, ResidentTaskStep, i64)> {
+    let queue = farm.resident_task_queues.get(resident_id)?;
+    let task = queue.first()?;
+    if task.ready_at_ms > now_ms {
+        return None;
+    }
+    Some((
+        task.id.clone(),
+        task.steps.first()?.clone(),
+        task.ready_at_ms,
+    ))
 }
 
 fn pop_ready_resident_task_step(
@@ -1677,128 +1726,170 @@ fn complete_resident_task_step(
     resident_id: &str,
     step: ResidentTaskStep,
     completed_at_ms: i64,
-) -> Vec<FarmEvent> {
+) -> Result<Vec<FarmEvent>, ResidentTaskBlock> {
     match step.work {
         ResidentTaskStepWork::PickupItems { items, .. } => {
-            if remove_inventory(farm, &items).is_ok() {
-                add_resident_items(farm, resident_id, &items);
-            }
-            Vec::new()
+            remove_inventory(farm, &items)
+                .map_err(|error| ResidentTaskBlock::new("missing_items", error.message))?;
+            add_resident_items(farm, resident_id, &items);
+            Ok(Vec::new())
         }
         ResidentTaskStepWork::PickupTools { source, tools } => {
-            if remove_tool_source_tools(farm, &source, &tools).is_ok() {
-                add_resident_tools(farm, resident_id, &source, &tools);
-            }
-            Vec::new()
+            remove_tool_source_tools(farm, &source, &tools)
+                .map_err(|error| ResidentTaskBlock::new("missing_tools", error.message))?;
+            add_resident_tools(farm, resident_id, &source, &tools);
+            Ok(Vec::new())
         }
         ResidentTaskStepWork::PlantCrop { crop_id } => {
             let ReservedWorkTarget::FieldPlot { plot_id } = step.reserved_work_target else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_mismatch",
+                    "plant crop step is not assigned to a field plot",
+                ));
             };
             let Ok(plot_index) = find_field_plot_index(farm, &plot_id) else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_missing",
+                    "field plot no longer exists",
+                ));
             };
             if farm.field_plots[plot_index].crop.is_some() {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_unavailable",
+                    "field plot is already planted",
+                ));
             }
             let Some(crop) = catalog.crop(&crop_id) else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new("unknown_crop", "crop is unknown"));
             };
-            if remove_resident_items(farm, resident_id, &[ItemStack::new(&crop_id, 1)]).is_err()
-                && remove_inventory(farm, &[ItemStack::new(&crop_id, 1)]).is_err()
-            {
-                return Vec::new();
-            }
+            remove_resident_items(farm, resident_id, &[ItemStack::new(&crop_id, 1)])
+                .map_err(|error| ResidentTaskBlock::new("missing_carried_items", error.message))?;
             farm.field_plots[plot_index].crop = Some(crate::PlantedCrop {
                 item_id: crop_id.clone(),
                 planted_at_ms: completed_at_ms,
                 ready_at_ms: completed_at_ms
                     + scaled_duration_ms(crop.reference_seconds, catalog.balance.time_scale),
             });
-            vec![FarmEvent::CropPlanted { crop_id }]
+            Ok(vec![FarmEvent::CropPlanted { crop_id }])
         }
         ResidentTaskStepWork::HarvestCrop { crop_id, quantity } => {
             let ReservedWorkTarget::FieldPlot { plot_id } = step.reserved_work_target else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_mismatch",
+                    "harvest step is not assigned to a field plot",
+                ));
             };
             let Ok(plot_index) = find_field_plot_index(farm, &plot_id) else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_missing",
+                    "field plot no longer exists",
+                ));
             };
             farm.field_plots[plot_index].crop = None;
             add_resident_items(farm, resident_id, &[ItemStack::new(&crop_id, quantity)]);
             if let Some(crop) = catalog.crop(&crop_id) {
                 gain_xp(farm, catalog, crop.xp);
             }
-            vec![FarmEvent::CropHarvested { crop_id, quantity }]
+            Ok(vec![FarmEvent::CropHarvested { crop_id, quantity }])
         }
         ResidentTaskStepWork::CollectMachineJob { job_id, recipe_id } => {
             let ReservedWorkTarget::Machine { machine_id } = step.reserved_work_target else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_mismatch",
+                    "machine collection step is not assigned to a machine",
+                ));
             };
             let Some(machine_index) = farm
                 .machines
                 .iter()
                 .position(|machine| machine.id == machine_id)
             else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_missing",
+                    "machine no longer exists",
+                ));
             };
             let Some(job_index) = farm.machines[machine_index]
                 .queue
                 .iter()
                 .position(|job| job.id == job_id)
             else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "job_missing",
+                    "machine job no longer exists",
+                ));
             };
             farm.machines[machine_index].queue.remove(job_index);
             let Some(recipe) = catalog.recipe(&recipe_id) else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "unknown_recipe",
+                    "recipe is unknown",
+                ));
             };
             add_resident_items(farm, resident_id, &recipe.outputs);
             gain_xp(farm, catalog, recipe.xp);
-            vec![FarmEvent::MachineJobCollected {
+            Ok(vec![FarmEvent::MachineJobCollected {
                 recipe_id: recipe.id.clone(),
-            }]
+            }])
         }
         ResidentTaskStepWork::StartOvenRecipe { job_id, recipe_id } => {
             let ReservedWorkTarget::Oven = step.reserved_work_target else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_mismatch",
+                    "oven start step is not assigned to the Oven",
+                ));
             };
             let Some(job_index) = farm.oven.queue.iter().position(|job| job.id == job_id) else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "job_missing",
+                    "oven job no longer exists",
+                ));
             };
             if farm.oven.queue[job_index].status != OvenJobStatus::PendingStart {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "job_unavailable",
+                    "oven job is not pending start",
+                ));
             }
             let Some(recipe) = catalog.recipe(&recipe_id) else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "unknown_recipe",
+                    "recipe is unknown",
+                ));
             };
-            if remove_resident_items(farm, resident_id, &recipe.inputs).is_err()
-                && remove_inventory(farm, &recipe.inputs).is_err()
-            {
-                return Vec::new();
-            }
+            remove_resident_items(farm, resident_id, &recipe.inputs)
+                .map_err(|error| ResidentTaskBlock::new("missing_carried_items", error.message))?;
             farm.oven.queue[job_index].status = OvenJobStatus::Producing;
             farm.oven.queue[job_index].started_at_ms = completed_at_ms;
             farm.oven.queue[job_index].ready_at_ms = completed_at_ms
                 + scaled_duration_ms(recipe.reference_seconds, catalog.balance.time_scale);
-            Vec::new()
+            Ok(Vec::new())
         }
         ResidentTaskStepWork::CollectOvenJob { job_id, recipe_id } => {
             let ReservedWorkTarget::Oven = step.reserved_work_target else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_mismatch",
+                    "oven collection step is not assigned to the Oven",
+                ));
             };
             let Some(job_index) = farm.oven.queue.iter().position(|job| job.id == job_id) else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "job_missing",
+                    "oven job no longer exists",
+                ));
             };
             farm.oven.queue.remove(job_index);
             let Some(recipe) = catalog.recipe(&recipe_id) else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "unknown_recipe",
+                    "recipe is unknown",
+                ));
             };
             add_resident_items(farm, resident_id, &recipe.outputs);
             gain_xp(farm, catalog, recipe.xp);
-            vec![FarmEvent::MachineJobCollected {
+            Ok(vec![FarmEvent::MachineJobCollected {
                 recipe_id: recipe.id.clone(),
-            }]
+            }])
         }
         ResidentTaskStepWork::FeedAnimal => {
             let ReservedWorkTarget::Animal {
@@ -1806,36 +1897,53 @@ fn complete_resident_task_step(
                 animal_slot,
             } = step.reserved_work_target
             else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_mismatch",
+                    "feed step is not assigned to an animal",
+                ));
             };
             let Ok(shelter_index) = find_shelter_index(farm, &shelter_id) else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_missing",
+                    "animal shelter no longer exists",
+                ));
             };
             let Some(def) = catalog.shelter(&farm.shelters[shelter_index].kind) else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "unknown_shelter",
+                    "animal shelter definition is unknown",
+                ));
             };
             if remove_resident_items(farm, resident_id, &[ItemStack::new(&def.feed_item_id, 1)])
                 .is_err()
-                && remove_inventory(farm, &[ItemStack::new(&def.feed_item_id, 1)]).is_err()
             {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "missing_carried_items",
+                    format!("not enough carried {}", def.feed_item_id),
+                ));
             }
             let Some(animal) = farm.shelters[shelter_index]
                 .animals
                 .iter_mut()
                 .find(|animal| animal.id == animal_slot)
             else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_missing",
+                    "animal slot no longer exists",
+                ));
             };
             if !matches!(animal.state, AnimalState::Idle) {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_unavailable",
+                    "animal is not idle",
+                ));
             }
             animal.state = AnimalState::Producing {
                 fed_at_ms: completed_at_ms,
                 ready_at_ms: completed_at_ms
                     + scaled_duration_ms(def.reference_seconds, catalog.balance.time_scale),
             };
-            vec![FarmEvent::AnimalFed { shelter_id }]
+            Ok(vec![FarmEvent::AnimalFed { shelter_id }])
         }
         ResidentTaskStepWork::CollectAnimalProduct { item_id, quantity } => {
             let ReservedWorkTarget::Animal {
@@ -1843,39 +1951,51 @@ fn complete_resident_task_step(
                 animal_slot,
             } = step.reserved_work_target
             else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_mismatch",
+                    "animal collection step is not assigned to an animal",
+                ));
             };
             let Ok(shelter_index) = find_shelter_index(farm, &shelter_id) else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_missing",
+                    "animal shelter no longer exists",
+                ));
             };
             let Some(animal) = farm.shelters[shelter_index]
                 .animals
                 .iter_mut()
                 .find(|animal| animal.id == animal_slot)
             else {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_missing",
+                    "animal slot no longer exists",
+                ));
             };
             if !matches!(animal.state, AnimalState::Ready) {
-                return Vec::new();
+                return Err(ResidentTaskBlock::new(
+                    "target_unavailable",
+                    "animal product is not ready",
+                ));
             }
             animal.state = AnimalState::Idle;
             add_resident_items(farm, resident_id, &[ItemStack::new(&item_id, quantity)]);
             if let Some(def) = catalog.shelter(&farm.shelters[shelter_index].kind) {
                 gain_xp(farm, catalog, def.xp);
             }
-            vec![FarmEvent::AnimalProductCollected { item_id }]
+            Ok(vec![FarmEvent::AnimalProductCollected { item_id }])
         }
         ResidentTaskStepWork::DepositInventory { item_id, quantity } => {
             add_inventory(farm, &item_id, quantity);
-            Vec::new()
+            Ok(Vec::new())
         }
         ResidentTaskStepWork::DepositItems { items, .. } => {
-            if remove_resident_items(farm, resident_id, &items).is_ok() {
-                for item in items {
-                    add_inventory(farm, &item.item_id, item.quantity);
-                }
+            remove_resident_items(farm, resident_id, &items)
+                .map_err(|error| ResidentTaskBlock::new("missing_carried_items", error.message))?;
+            for item in items {
+                add_inventory(farm, &item.item_id, item.quantity);
             }
-            Vec::new()
+            Ok(Vec::new())
         }
         ResidentTaskStepWork::ReturnTools { source, tools } => {
             let tools = if tools.is_empty() {
@@ -1892,10 +2012,10 @@ fn complete_resident_task_step(
             } else {
                 tools
             };
-            if remove_resident_tools(farm, resident_id, &tools).is_ok() {
-                add_tool_source_tools(farm, &source, &tools);
-            }
-            Vec::new()
+            remove_resident_tools(farm, resident_id, &tools)
+                .map_err(|error| ResidentTaskBlock::new("missing_carried_tools", error.message))?;
+            add_tool_source_tools(farm, &source, &tools);
+            Ok(Vec::new())
         }
     }
 }

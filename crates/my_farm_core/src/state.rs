@@ -3,12 +3,13 @@ use crate::{
     ShelterKind, ToolKind, ToolStack, default_tool_stock,
 };
 use schemars::JsonSchema;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 use std::collections::BTreeMap;
 use ts_rs::TS;
 
 pub const DEFAULT_RESIDENT_TASK_STEP_DURATION_MS: i64 = 2_000;
 pub const DEFAULT_RESIDENT_ITEM_CAPACITY: u32 = 30;
+pub const FARM_STATE_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct Tile {
@@ -24,6 +25,7 @@ impl Tile {
 
 #[derive(Debug, Clone, Serialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct FarmState {
+    pub schema_version: u32,
     #[ts(type = "number")]
     pub last_update_ms: i64,
     pub xp: u32,
@@ -68,6 +70,8 @@ pub struct FarmState {
     pub resident_task_queues: BTreeMap<String, Vec<ResidentTask>>,
     #[serde(default = "default_resident_inventories")]
     pub resident_inventories: BTreeMap<String, ResidentInventory>,
+    #[serde(default)]
+    pub blocked_resident_tasks: BTreeMap<String, BlockedResidentTask>,
     #[serde(default = "default_house_interior")]
     pub house_interior: HouseInterior,
     #[ts(type = "number")]
@@ -80,12 +84,13 @@ impl<'de> Deserialize<'de> for FarmState {
         D: Deserializer<'de>,
     {
         let raw = FarmStateSerde::deserialize(deserializer)?;
-        Ok(raw.into_farm_state())
+        raw.into_farm_state().map_err(de::Error::custom)
     }
 }
 
 #[derive(Deserialize)]
 struct FarmStateSerde {
+    schema_version: u32,
     last_update_ms: i64,
     xp: u32,
     level: u32,
@@ -129,13 +134,22 @@ struct FarmStateSerde {
     resident_task_queues: BTreeMap<String, Vec<ResidentTask>>,
     #[serde(default = "default_resident_inventories")]
     resident_inventories: BTreeMap<String, ResidentInventory>,
+    #[serde(default)]
+    blocked_resident_tasks: BTreeMap<String, BlockedResidentTask>,
     #[serde(default = "default_house_interior")]
     house_interior: HouseInterior,
     next_id: u64,
 }
 
 impl FarmStateSerde {
-    fn into_farm_state(self) -> FarmState {
+    fn into_farm_state(self) -> Result<FarmState, String> {
+        if self.schema_version != FARM_STATE_SCHEMA_VERSION {
+            return Err(format!(
+                "unsupported farm save schema version: expected {}, found {}",
+                FARM_STATE_SCHEMA_VERSION, self.schema_version
+            ));
+        }
+
         let forward_oven_present = self.oven.is_some();
         let legacy_bakery = self
             .machines
@@ -143,6 +157,7 @@ impl FarmStateSerde {
             .find(|machine| machine.kind == LegacyMachineKind::Bakery)
             .cloned();
         let mut farm = FarmState {
+            schema_version: self.schema_version,
             last_update_ms: self.last_update_ms,
             xp: self.xp,
             level: self.level,
@@ -174,6 +189,7 @@ impl FarmStateSerde {
             resident_locations: self.resident_locations,
             resident_task_queues: self.resident_task_queues,
             resident_inventories: self.resident_inventories,
+            blocked_resident_tasks: self.blocked_resident_tasks,
             house_interior: self.house_interior,
             next_id: self.next_id,
         };
@@ -186,7 +202,7 @@ impl FarmStateSerde {
             migrate_legacy_bakery(&mut farm, legacy_bakery, forward_oven_present);
         }
 
-        farm
+        Ok(farm)
     }
 }
 
@@ -361,6 +377,13 @@ pub struct ResidentTask {
     pub started_at_ms: i64,
     #[ts(type = "number")]
     pub ready_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct BlockedResidentTask {
+    pub task_id: String,
+    pub reason: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -560,6 +583,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
     inventory.insert("wheat".to_owned(), 6);
     inventory.insert("corn".to_owned(), 3);
     let mut farm = FarmState {
+        schema_version: FARM_STATE_SCHEMA_VERSION,
         last_update_ms: now_ms,
         xp: 0,
         level: 1,
@@ -587,6 +611,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         resident_locations: default_resident_locations(),
         resident_task_queues: default_resident_task_queues(),
         resident_inventories: default_resident_inventories(),
+        blocked_resident_tasks: BTreeMap::new(),
         house_interior: default_house_interior(),
         next_id: 1,
     };

@@ -3,9 +3,9 @@ use axum::http::{Request, StatusCode, header};
 use futures_util::{SinkExt, StreamExt};
 use my_farm_core::{
     AnimalShelterState, AnimalSlot, AnimalState, CatalogDocument, CatalogResponse, CommandRequest,
-    CommandResponse, FarmCommand, FarmEvent, FarmResponse, FarmState, FarmhouseUpgradeKind,
-    MachineJob, MachineKind, MachineState, RoomTile, ShelterKind, StorageKind, Tile,
-    WebsocketClientMessage, WebsocketServerMessage, update_level,
+    CommandResponse, FARM_STATE_SCHEMA_VERSION, FarmCommand, FarmEvent, FarmNoticeKind,
+    FarmResponse, FarmState, FarmhouseUpgradeKind, MachineJob, MachineKind, MachineState, RoomTile,
+    ShelterKind, StorageKind, Tile, WebsocketClientMessage, WebsocketServerMessage, update_level,
 };
 use my_farm_server::{AppState, app, connect_database};
 use std::net::SocketAddr;
@@ -76,7 +76,7 @@ async fn gameplay_websocket_bootstraps_catalog_and_farm_snapshot() {
     };
     assert!(catalog.items.iter().any(|item| item.id == "wheat"));
 
-    let WebsocketServerMessage::FarmSnapshot { version, view } = snapshot_message else {
+    let WebsocketServerMessage::FarmSnapshot { version, view, .. } = snapshot_message else {
         panic!("expected farm snapshot bootstrap message");
     };
     assert_eq!(version, 0);
@@ -115,6 +115,7 @@ async fn websocket_command_persists_journal_and_broadcasts_snapshot_to_connected
         events,
         view,
         error,
+        ..
     } = response
     else {
         panic!("expected command response");
@@ -133,7 +134,7 @@ async fn websocket_command_persists_journal_and_broadcasts_snapshot_to_connected
         Some(5)
     );
     assert!(view.field_plots[0].crop.is_none());
-    assert_eq!(view.resident_task_queues["woman"].len(), 1);
+    assert_eq!(view.resident_work["woman"].queue.len(), 1);
 
     let first_broadcast = websocket_farm_snapshot(&mut first_client).await;
     let second_broadcast = websocket_farm_snapshot(&mut second_client).await;
@@ -197,6 +198,7 @@ async fn websocket_stale_command_returns_authoritative_view_without_writing_jour
         events,
         view,
         error,
+        ..
     } = response
     else {
         panic!("expected command response");
@@ -274,6 +276,7 @@ async fn websocket_reset_persists_version_zero_and_broadcasts_new_farm() {
         events,
         view,
         error,
+        ..
     } = response
     else {
         panic!("expected reset response");
@@ -463,10 +466,13 @@ async fn websocket_elapsed_time_persists_and_broadcasts_resident_task_completion
     assert_eq!(second_elapsed.version, 2);
     assert_eq!(second_elapsed.view, first_elapsed.view);
     assert!(first_elapsed.view.field_plots[0].crop.is_some());
-    assert!(matches!(
-        first_elapsed.view.resident_task_queues["woman"][0].steps[0].work,
-        my_farm_core::ResidentTaskStepWork::ReturnTools { .. }
-    ));
+    assert_eq!(
+        first_elapsed.view.resident_work["woman"]
+            .current_step
+            .as_ref()
+            .map(|step| step.label.as_str()),
+        Some("Return tools")
+    );
 
     let saved_version: i64 =
         sqlx::query_scalar("SELECT version FROM farm_save WHERE id = 'local-farm'")
@@ -780,9 +786,9 @@ async fn post_decoration_commands_persist_state_and_journal_through_restart() {
     assert!(
         placed
             .view
-            .resident_task_queues
+            .resident_work
             .values()
-            .all(|queue| queue.is_empty())
+            .all(|work| work.queue.is_empty())
     );
 
     let placement_id = placed.view.house_interior.rooms[0]
@@ -932,12 +938,7 @@ async fn post_farmhouse_oven_queue_and_collect_persist_state_and_journal_through
     assert!(collected.accepted);
     assert_eq!(collected.version, 2);
     assert_eq!(collected.view.oven.queue.len(), 1);
-    assert!(
-        collected.view.resident_task_queues["woman"][0]
-            .steps
-            .iter()
-            .any(|step| step.reserved_work_target == my_farm_core::ReservedWorkTarget::Oven)
-    );
+    assert!(collected.view.reservations.oven.is_some());
 
     let journal_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM command_journal WHERE command_json LIKE ?")
@@ -958,17 +959,12 @@ async fn post_farmhouse_oven_queue_and_collect_persist_state_and_journal_through
     assert_eq!(reloaded.view.oven.queue.len(), 1);
     assert_eq!(inventory_quantity_from_farm(&reloaded, "wheat"), 3);
     assert_eq!(inventory_quantity_from_farm(&reloaded, "bread"), 0);
-    assert!(
-        reloaded.view.resident_task_queues["woman"][0]
-            .steps
-            .iter()
-            .any(|step| {
-                step.work
-                    == (my_farm_core::ResidentTaskStepWork::CollectOvenJob {
-                        job_id: reloaded.view.oven.queue[0].id.clone(),
-                        recipe_id: "bread".to_owned(),
-                    })
-            })
+    assert_eq!(
+        reloaded.view.resident_work["woman"]
+            .current_task
+            .as_ref()
+            .map(|task| task.label.as_str()),
+        Some("Collect Bread")
     );
     restarted_pool.close().await;
 }
@@ -1028,6 +1024,46 @@ async fn persisted_legacy_bakery_save_loads_as_farmhouse_oven() {
     assert_eq!(reloaded.view.oven.queue[0].id, "job-bread");
     assert!(reloaded.view.machines.is_empty());
     restarted_pool.close().await;
+}
+
+#[tokio::test]
+async fn incompatible_persisted_save_resets_to_fresh_farm_with_notice() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let url = format!("sqlite://{}", tempdir.path().join("farm.db").display());
+    let pool = connect_database(&url).await.unwrap();
+    let router = app(AppState::new(pool.clone()));
+    let _initial = get_farm(router.clone()).await;
+
+    let farm = load_saved_farm(&pool).await;
+    let mut state_json = serde_json::to_value(&farm).unwrap();
+    state_json["schema_version"] = serde_json::json!(FARM_STATE_SCHEMA_VERSION - 1);
+    sqlx::query("UPDATE farm_save SET version = ?, state_json = ? WHERE id = ?")
+        .bind(9_i64)
+        .bind(state_json.to_string())
+        .bind("local-farm")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let reloaded = get_farm(router).await;
+
+    assert_eq!(reloaded.version, 0);
+    assert_eq!(
+        reloaded.notice.as_ref().map(|notice| &notice.kind),
+        Some(&FarmNoticeKind::SaveReset)
+    );
+    assert_eq!(reloaded.view.level, 1);
+    assert_eq!(reloaded.view.field_plots.len(), 6);
+
+    let saved_version: i64 =
+        sqlx::query_scalar("SELECT version FROM farm_save WHERE id = 'local-farm'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(saved_version, 0);
+    let saved = load_saved_farm(&pool).await;
+    assert_eq!(saved.schema_version, FARM_STATE_SCHEMA_VERSION);
+    pool.close().await;
 }
 
 #[tokio::test]
@@ -1190,16 +1226,26 @@ async fn connect_gameplay_websocket(addr: SocketAddr) -> (TestWebSocket, FarmRes
         FarmResponse {
             version: snapshot.version,
             view: snapshot.view,
+            notice: snapshot.notice,
         },
     )
 }
 
 async fn websocket_farm_snapshot(socket: &mut TestWebSocket) -> FarmResponse {
     let message: WebsocketServerMessage = websocket_json(socket).await;
-    let WebsocketServerMessage::FarmSnapshot { version, view } = message else {
+    let WebsocketServerMessage::FarmSnapshot {
+        version,
+        view,
+        notice,
+    } = message
+    else {
         panic!("expected farm snapshot");
     };
-    FarmResponse { version, view }
+    FarmResponse {
+        version,
+        view,
+        notice,
+    }
 }
 
 async fn send_websocket_json<T: serde::Serialize>(socket: &mut TestWebSocket, message: &T) {

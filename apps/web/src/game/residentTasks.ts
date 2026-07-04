@@ -1,26 +1,23 @@
-import { itemName, recipeName } from "./selectors";
 import type {
-  CatalogDocument,
-  FarmResident,
   FarmView,
-  ResidentTask,
-  ReservedWorkTarget,
+  ReservationReasonView,
+  ResidentPathState,
+  ResidentTaskSummaryView,
+  ResidentVisualActivity,
+  ResidentVisualProp,
+  ResidentWorkView,
 } from "../types";
-import { structureFootprint } from "./selectors";
+
+export type { ResidentVisualActivity, ResidentVisualProp };
 
 export type ResidentTaskStatus = {
-  currentTask: ResidentTask | null;
+  currentTask: ResidentTaskSummaryView | null;
   queuedCount: number;
   progress: number;
   label: string;
 };
 
-export type ResidentSceneTarget = {
-  tile: { x: number; y: number };
-  label: string;
-};
-
-export type ResidentSceneState = "idle" | "walking" | "working";
+export type ResidentSceneState = "idle" | "walking" | "working" | "blocked";
 
 export type ResidentScenePose = {
   tile: { x: number; y: number };
@@ -31,51 +28,31 @@ export type ResidentScenePose = {
 export type ResidentScenePath = {
   residentId: string;
   tiles: Array<{ x: number; y: number }>;
-  state: Exclude<ResidentSceneState, "idle">;
+  state: ResidentPathState;
 };
-
-export type ResidentVisualActivity =
-  | "idle"
-  | "walking"
-  | "picking_up_items"
-  | "picking_up_tools"
-  | "planting"
-  | "harvesting"
-  | "collecting_machine"
-  | "starting_oven"
-  | "collecting_oven"
-  | "feeding_animal"
-  | "collecting_animal_product"
-  | "depositing_inventory"
-  | "returning_tools";
-
-export type ResidentVisualProp =
-  | "none"
-  | "seed_pouch"
-  | "basket"
-  | "bucket"
-  | "crate"
-  | "oven_tray"
-  | "tool_bundle";
 
 export type ResidentVisualCue = {
   activity: ResidentVisualActivity;
   prop: ResidentVisualProp;
 };
 
+export function residentWork(view: FarmView, residentId: string): ResidentWorkView | null {
+  return view.resident_work[residentId] ?? null;
+}
+
 export function residentTaskStatus(
-  catalog: CatalogDocument,
+  _catalog: unknown,
   view: FarmView,
   residentId: string,
   nowMs: number,
 ): ResidentTaskStatus {
-  const queue = view.resident_task_queues[residentId] ?? [];
-  const currentTask = queue[0] ?? null;
+  const work = residentWork(view, residentId);
+  const currentTask = work?.current_task ?? null;
   return {
     currentTask,
-    queuedCount: queue.length,
-    progress: currentTask ? residentTaskProgress(currentTask, nowMs) : 0,
-    label: currentTask ? taskLabel(catalog, currentTask) : "Idle",
+    queuedCount: work?.queue.length ?? 0,
+    progress: currentTask ? progressBetween(currentTask.started_at_ms, currentTask.ready_at_ms, nowMs) : 0,
+    label: currentTask?.label ?? "Idle",
   };
 }
 
@@ -91,19 +68,8 @@ export function residentVisualCue(
   if (pose.state === "walking") {
     return { activity: "walking", prop: "none" };
   }
-  const currentWork = view.resident_task_queues[residentId]?.[0]?.steps[0]?.work;
-  return currentWork ? visualCueForResidentWork(currentWork) : { activity: "idle", prop: "none" };
-}
-
-export function currentResidentSceneTarget(view: FarmView, residentId: string): ResidentSceneTarget | null {
-  const currentTask = view.resident_task_queues[residentId]?.[0] ?? null;
-  const currentStep = currentTask?.steps[0] ?? null;
-  if (!currentStep) {
-    return null;
-  }
-  const target = sceneTargetForReservedWorkTarget(view, currentStep.reserved_work_target);
-  const approachTile = currentStep.approach_tile;
-  return approachTile && target ? { ...target, tile: approachTile } : target;
+  const step = residentWork(view, residentId)?.current_step;
+  return step ? { activity: step.activity, prop: step.prop } : { activity: "idle", prop: "none" };
 }
 
 export function currentResidentScenePose(
@@ -111,56 +77,53 @@ export function currentResidentScenePose(
   residentId: string,
   nowMs: number,
 ): ResidentScenePose {
+  const work = residentWork(view, residentId);
   const currentTile = view.resident_locations[residentId] ?? { x: 8, y: 10 };
-  const currentTask = view.resident_task_queues[residentId]?.[0] ?? null;
-  const currentStep = currentTask?.steps[0] ?? null;
-  if (!currentTask || !currentStep) {
+  if (!work || !work.current_task || !work.current_step) {
+    return { tile: currentTile, label: "Farmhouse", state: "idle" };
+  }
+
+  if (work.state === "blocked") {
     return {
-      tile: currentTile,
-      label: "farmhouse",
-      state: "idle",
+      tile: work.scene.tile,
+      label: work.target?.label ?? "Blocked task",
+      state: "blocked",
     };
   }
 
-  const target = currentResidentSceneTarget(view, residentId);
-  const approachTile = currentStep.approach_tile ?? currentStep.walk_path.at(-1) ?? target?.tile ?? currentTile;
-  const walkEndsAtMs = currentTask.started_at_ms + currentStep.walk_duration_ms;
-  if (currentStep.walk_path.length > 0 && nowMs < walkEndsAtMs) {
+  const walkEndsAtMs = work.current_task.started_at_ms + work.current_step.walk_duration_ms;
+  if (work.scene.path.length > 1 && nowMs < walkEndsAtMs) {
+    const [start, ...path] = work.scene.path;
     return {
-      tile: interpolatePath(
-        currentTile,
-        currentStep.walk_path,
-        progressBetween(currentTask.started_at_ms, walkEndsAtMs, nowMs),
-      ),
-      label: target?.label ?? "work",
+      tile: interpolatePath(start, path, progressBetween(work.current_task.started_at_ms, walkEndsAtMs, nowMs)),
+      label: work.target?.label ?? "Work target",
       state: "walking",
     };
   }
 
   return {
-    tile: approachTile,
-    label: target?.label ?? "work",
+    tile: work.scene.tile,
+    label: work.target?.label ?? "Work target",
     state: "working",
   };
 }
 
 export function isResidentInsideHouse(view: FarmView, residentId: string, nowMs: number): boolean {
-  const currentStep = view.resident_task_queues[residentId]?.[0]?.steps[0] ?? null;
-  return (
-    currentStep?.reserved_work_target.type === "oven" &&
-    currentResidentScenePose(view, residentId, nowMs).state === "working"
-  );
+  const work = residentWork(view, residentId);
+  if (!work?.scene.inside_house) {
+    return false;
+  }
+  return currentResidentScenePose(view, residentId, nowMs).state !== "walking";
 }
 
 export function hasActiveResidentWalk(view: FarmView, nowMs: number): boolean {
   return view.residents.slice(0, 2).some((resident) => {
-    const currentTask = view.resident_task_queues[resident.id]?.[0] ?? null;
-    const currentStep = currentTask?.steps[0] ?? null;
-    if (!currentTask || !currentStep || currentStep.walk_path.length === 0) {
+    const work = residentWork(view, resident.id);
+    if (!work?.current_task || !work.current_step || work.scene.path.length <= 1) {
       return false;
     }
-    const walkEndsAtMs = currentTask.started_at_ms + currentStep.walk_duration_ms;
-    return nowMs < walkEndsAtMs && nowMs < currentTask.ready_at_ms;
+    const walkEndsAtMs = work.current_task.started_at_ms + work.current_step.walk_duration_ms;
+    return nowMs < walkEndsAtMs && nowMs < work.current_task.ready_at_ms;
   });
 }
 
@@ -169,239 +132,47 @@ export function currentResidentScenePath(
   residentId: string,
   nowMs = Date.now(),
 ): ResidentScenePath | null {
-  const currentTile = view.resident_locations[residentId] ?? { x: 8, y: 10 };
-  const currentTask = view.resident_task_queues[residentId]?.[0] ?? null;
-  const currentStep = currentTask?.steps[0] ?? null;
-  if (!currentTask || !currentStep || currentStep.walk_path.length === 0) {
+  const work = residentWork(view, residentId);
+  if (!work?.current_task || !work.current_step || work.scene.path.length <= 1) {
     return null;
   }
-  const walkEndsAtMs = currentTask.started_at_ms + currentStep.walk_duration_ms;
+  const walkEndsAtMs = work.current_task.started_at_ms + work.current_step.walk_duration_ms;
   return {
     residentId,
-    tiles: [currentTile, ...currentStep.walk_path],
+    tiles: work.scene.path,
     state: nowMs < walkEndsAtMs ? "walking" : "working",
   };
 }
 
-export function residentTaskProgress(task: ResidentTask, nowMs: number) {
-  return progressBetween(task.started_at_ms, task.ready_at_ms, nowMs);
-}
-
 export function reservedFieldReason(view: FarmView, plotId: string): string | null {
-  return reservedTargetReason(view, { type: "field_plot", plot_id: plotId });
+  return reservationReason(view.reservations.field_plots[plotId]);
 }
 
 export function reservedMachineReason(view: FarmView, machineId: string): string | null {
-  return reservedTargetReason(view, { type: "machine", machine_id: machineId });
+  return reservationReason(view.reservations.machines[machineId]);
 }
 
 export function reservedOvenReason(view: FarmView): string | null {
-  return reservedTargetReason(view, { type: "oven" });
+  return reservationReason(view.reservations.oven);
 }
 
 export function reservedAnimalReason(view: FarmView, shelterId: string, animalSlot: string): string | null {
-  return reservedTargetReason(view, { type: "animal", shelter_id: shelterId, animal_slot: animalSlot });
+  const reservation = view.reservations.animals.find(
+    ([key]) => key.shelter_id === shelterId && key.animal_slot === animalSlot,
+  )?.[1];
+  return reservationReason(reservation);
 }
 
-export function reservedTargetReason(view: FarmView, target: ReservedWorkTarget): string | null {
-  const reservation = findReservation(view, target);
-  if (!reservation) {
-    return null;
-  }
-  return `Reserved for ${reservation.resident.display_name}'s task`;
+export function taskLabel(_catalog: unknown, task: ResidentTaskSummaryView) {
+  return task.label;
 }
 
-function findReservation(view: FarmView, target: ReservedWorkTarget) {
-  for (const resident of view.residents) {
-    for (const task of view.resident_task_queues[resident.id] ?? []) {
-      if (task.steps.some((step) => sameReservedTarget(step.reserved_work_target, target))) {
-        return { resident, task };
-      }
-    }
-  }
-  return null as { resident: FarmResident; task: ResidentTask } | null;
+export function residentTaskStepLabel(_catalog: unknown, step: { label: string }) {
+  return step.label;
 }
 
-function sceneTargetForReservedWorkTarget(
-  view: FarmView,
-  target: ReservedWorkTarget,
-): ResidentSceneTarget | null {
-  if (target.type === "field_plot") {
-    const plot = view.field_plots.find((entry) => entry.id === target.plot_id);
-    return plot ? { tile: plot.tile, label: `field:${plot.id}` } : null;
-  }
-  if (target.type === "silo") {
-    return {
-      tile: footprintCenter(view.silo_tile, structureFootprint("silo")),
-      label: "silo",
-    };
-  }
-  if (target.type === "barn") {
-    return {
-      tile: footprintCenter(view.barn_tile, structureFootprint("barn")),
-      label: "barn",
-    };
-  }
-  if (target.type === "tool_source") {
-    if (view.tool_shed) {
-      return {
-        tile: view.tool_shed.tile,
-        label: "tool_shed",
-      };
-    }
-    return {
-      tile: { x: 8.5, y: 8.5 },
-      label: "farmhouse",
-    };
-  }
-  if (target.type === "machine") {
-    const machine = view.machines.find((entry) => entry.id === target.machine_id);
-    if (!machine) {
-      return null;
-    }
-    return {
-      tile: footprintCenter(machine.tile, structureFootprint(machine.kind)),
-      label: `machine:${machine.id}`,
-    };
-  }
-  if (target.type === "oven") {
-    return {
-      tile: { x: 8.5, y: 8.5 },
-      label: "oven",
-    };
-  }
-  const shelter = view.shelters.find((entry) => entry.id === target.shelter_id);
-  if (!shelter) {
-    return null;
-  }
-  const center = footprintCenter(shelter.tile, structureFootprint(shelter.kind));
-  const slotIndex = shelter.animals.findIndex((animal) => animal.id === target.animal_slot);
-  const slotOffset = slotIndex >= 0 ? (slotIndex - (shelter.animals.length - 1) / 2) * 0.32 : 0;
-  return {
-    tile: { x: center.x + slotOffset, y: center.y + 0.18 },
-    label: `animal:${shelter.id}:${target.animal_slot}`,
-  };
-}
-
-function footprintCenter(tile: { x: number; y: number }, footprint: { width: number; height: number }) {
-  return {
-    x: tile.x + (footprint.width - 1) / 2,
-    y: tile.y + (footprint.height - 1) / 2,
-  };
-}
-
-function sameReservedTarget(left: ReservedWorkTarget, right: ReservedWorkTarget) {
-  if (left.type !== right.type) {
-    return false;
-  }
-  if (left.type === "field_plot" && right.type === "field_plot") {
-    return left.plot_id === right.plot_id;
-  }
-  if (left.type === "machine" && right.type === "machine") {
-    return left.machine_id === right.machine_id;
-  }
-  if (left.type === "oven" && right.type === "oven") {
-    return true;
-  }
-  if (
-    (left.type === "silo" && right.type === "silo") ||
-    (left.type === "barn" && right.type === "barn") ||
-    (left.type === "tool_source" && right.type === "tool_source")
-  ) {
-    return true;
-  }
-  return (
-    left.type === "animal" &&
-    right.type === "animal" &&
-    left.shelter_id === right.shelter_id &&
-    left.animal_slot === right.animal_slot
-  );
-}
-
-export function taskLabel(catalog: CatalogDocument, task: ResidentTask) {
-  const firstWork = task.steps.find((step) => !isResourceStepWork(step.work))?.work ?? task.steps[0]?.work;
-  if (!firstWork) {
-    return task.kind.type === "field_work" ? "Field work" : "Production work";
-  }
-  return residentTaskStepLabel(catalog, firstWork);
-}
-
-export function residentTaskStepLabel(
-  catalog: CatalogDocument,
-  work: ResidentTask["steps"][number]["work"],
-) {
-  switch (work.type) {
-    case "pickup_items":
-      return `Pick up ${stackListLabel(catalog, work.items)}`;
-    case "pickup_tools":
-      return `Pick up ${toolListLabel(work.tools)}`;
-    case "plant_crop":
-      return `Plant ${itemName(catalog, work.crop_id)}`;
-    case "harvest_crop":
-      return `Harvest ${itemName(catalog, work.crop_id)}`;
-    case "collect_machine_job":
-      return `Collect ${recipeName(catalog, work.recipe_id)}`;
-    case "start_oven_recipe":
-      return `Start ${recipeName(catalog, work.recipe_id)}`;
-    case "collect_oven_job":
-      return `Collect ${recipeName(catalog, work.recipe_id)}`;
-    case "feed_animal":
-      return "Feed animal";
-    case "collect_animal_product":
-      return `Collect ${itemName(catalog, work.item_id)}`;
-    case "deposit_inventory":
-      return `Store ${itemName(catalog, work.item_id)}`;
-    case "deposit_items":
-      return `Store ${stackListLabel(catalog, work.items)}`;
-    case "return_tools":
-      return "Return tools";
-  }
-}
-
-function visualCueForResidentWork(work: ResidentTask["steps"][number]["work"]): ResidentVisualCue {
-  switch (work.type) {
-    case "pickup_items":
-      return { activity: "picking_up_items", prop: "crate" };
-    case "pickup_tools":
-      return { activity: "picking_up_tools", prop: "tool_bundle" };
-    case "plant_crop":
-      return { activity: "planting", prop: "seed_pouch" };
-    case "harvest_crop":
-      return { activity: "harvesting", prop: "basket" };
-    case "collect_machine_job":
-      return { activity: "collecting_machine", prop: "crate" };
-    case "start_oven_recipe":
-      return { activity: "starting_oven", prop: "oven_tray" };
-    case "collect_oven_job":
-      return { activity: "collecting_oven", prop: "oven_tray" };
-    case "feed_animal":
-      return { activity: "feeding_animal", prop: "bucket" };
-    case "collect_animal_product":
-      return { activity: "collecting_animal_product", prop: "basket" };
-    case "deposit_inventory":
-    case "deposit_items":
-      return { activity: "depositing_inventory", prop: "crate" };
-    case "return_tools":
-      return { activity: "returning_tools", prop: "tool_bundle" };
-  }
-}
-
-function isResourceStepWork(work: ResidentTask["steps"][number]["work"]) {
-  return (
-    work.type === "pickup_items" ||
-    work.type === "pickup_tools" ||
-    work.type === "deposit_inventory" ||
-    work.type === "deposit_items" ||
-    work.type === "return_tools"
-  );
-}
-
-function stackListLabel(catalog: CatalogDocument, items: Array<{ item_id: string; quantity: number }>) {
-  return items.map((item) => `${item.quantity} ${itemName(catalog, item.item_id)}`).join(", ");
-}
-
-function toolListLabel(tools: Array<{ tool_kind: string; quantity: number }>) {
-  return tools.map((tool) => `${tool.quantity} ${tool.tool_kind.replaceAll("_", " ")}`).join(", ");
+function reservationReason(reservation: ReservationReasonView | null | undefined) {
+  return reservation?.reason ?? null;
 }
 
 function progressBetween(startMs: number, readyAtMs: number, nowMs: number) {

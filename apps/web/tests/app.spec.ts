@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import type { CatalogDocument, CommandRequest, FarmView, ResidentTask } from "../src/types";
+import type { CatalogDocument, CommandRequest, FarmView, ResidentTask, ResidentWorkView } from "../src/types";
 
 test("renders the playable farm shell", async ({ page }) => {
   await page.goto("/");
@@ -276,9 +276,7 @@ test("Bedroom Family Tree trims successful resident renames and shows rejected r
 
 test("resident selector shows queue counts and live task progress", async ({ page }) => {
   const now = Date.now();
-  const view: FarmView = {
-    ...farmView,
-    resident_task_queues: {
+  const view = withResidentTaskQueues(farmView, {
       woman: [
         {
           id: "task-1",
@@ -308,8 +306,7 @@ test("resident selector shows queue counts and live task progress", async ({ pag
         },
       ],
       man: [],
-    },
-  };
+  });
   await mockFarmApi(page, view);
 
   await openFarm(page);
@@ -327,7 +324,7 @@ test("resident selector shows queue counts and live task progress", async ({ pag
 test("reserved work targets disable direct actions with a pending reason", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop selection panel is covered here.");
   const now = Date.now();
-  const view: FarmView = {
+  const viewBase: FarmView = {
     ...farmView,
     field_plots: [
       {
@@ -345,7 +342,8 @@ test("reserved work targets disable direct actions with a pending reason", async
         queue: [{ id: "job-1", recipe_id: "chicken_feed", started_at_ms: now - 20_000, ready_at_ms: now - 1_000 }],
       },
     ],
-    resident_task_queues: {
+  };
+  const view = withResidentTaskQueues(viewBase, {
       woman: [
         {
           id: "field-task",
@@ -388,8 +386,7 @@ test("reserved work targets disable direct actions with a pending reason", async
         },
       ],
       man: [],
-    },
-  };
+  });
   await mockFarmApi(page, view);
   await openFarm(page);
 
@@ -455,8 +452,8 @@ test("renders both farm residents idle near the Farmhouse", async ({ page }) => 
   await expect(jon).toBeVisible();
   await expect(mara).toHaveAttribute("data-resident-state", "idle");
   await expect(jon).toHaveAttribute("data-resident-state", "idle");
-  await expect(mara).toHaveAttribute("data-resident-target", "farmhouse");
-  await expect(jon).toHaveAttribute("data-resident-target", "farmhouse");
+  await expect(mara).toHaveAttribute("data-resident-target", "Farmhouse");
+  await expect(jon).toHaveAttribute("data-resident-target", "Farmhouse");
 
   const farmhouseCenter = await elementCenter(farmhouse);
   const maraCenter = await elementCenter(mara);
@@ -470,13 +467,13 @@ test("renders both farm residents idle near the Farmhouse", async ({ page }) => 
 
 test("moves a resident toward the current task target over authoritative task time", async ({ page }) => {
   const startedAt = Date.now() + 1_500;
-  const view: FarmView = {
+  const view = withResidentTaskQueues({
     ...farmView,
     resident_locations: {
       ...farmView.resident_locations,
       man: { x: 0, y: 3 },
     },
-    resident_task_queues: {
+  }, {
       woman: [],
       man: [
         {
@@ -501,14 +498,13 @@ test("moves a resident toward the current task target over authoritative task ti
           ],
         },
       ],
-    },
-  };
+  });
   await mockFarmApi(page, view);
   await openFarm(page);
 
   const resident = page.getByTestId("farm-scene-resident-man");
   await expect(resident).toHaveAttribute("data-resident-state", "walking");
-  await expect(resident).toHaveAttribute("data-resident-target", "field:plot-1");
+  await expect(resident).toHaveAttribute("data-resident-target", "Field Plot plot-1");
   await page.waitForTimeout(Math.max(0, startedAt + 500 - Date.now()));
 
   const firstCenter = await elementCenter(resident);
@@ -528,13 +524,13 @@ test("moves a resident toward the current task target over authoritative task ti
 test("clicking a farm resident selects them, sends assignment command, and shows only their path", async ({ page }) => {
   const commands: CommandRequest[] = [];
   const now = Date.now();
-  const view: FarmView = {
+  const view = withResidentTaskQueues({
     ...farmView,
     resident_locations: {
       woman: { x: 8, y: 10 },
       man: { x: 0, y: 3 },
     },
-    resident_task_queues: {
+  }, {
       woman: [
         {
           id: "woman-task",
@@ -581,8 +577,7 @@ test("clicking a farm resident selects them, sends assignment command, and shows
           ],
         },
       ],
-    },
-  };
+  });
   await mockFarmApi(page, view, catalog, (request) => commands.push(request));
   await openFarm(page);
 
@@ -608,9 +603,7 @@ test("clicking a farm resident selects them, sends assignment command, and shows
 
 test("renders resident as working after walking to the approach tile", async ({ page }) => {
   const now = Date.now();
-  const view: FarmView = {
-    ...farmView,
-    resident_task_queues: {
+  const view = withResidentTaskQueues(farmView, {
       woman: [
         {
           id: "task-1",
@@ -631,23 +624,20 @@ test("renders resident as working after walking to the approach tile", async ({ 
         },
       ],
       man: [],
-    },
-  };
+  });
   await mockFarmApi(page, view);
   await openFarm(page);
 
   const resident = page.getByTestId("farm-scene-resident-woman");
   await expect(resident).toHaveAttribute("data-resident-state", "working");
-  await expect(resident).toHaveAttribute("data-resident-target", "field:plot-1");
+  await expect(resident).toHaveAttribute("data-resident-target", "Field Plot plot-1");
   await expect(resident).toHaveAttribute("data-resident-activity", "planting");
   await expect(resident).toHaveAttribute("data-resident-prop", "seed_pouch");
 });
 
 test("renders task-specific resident harvest visual cue", async ({ page }) => {
   const now = Date.now();
-  const view: FarmView = {
-    ...farmView,
-    resident_task_queues: {
+  const view = withResidentTaskQueues(farmView, {
       woman: [
         {
           id: "task-harvest",
@@ -665,8 +655,7 @@ test("renders task-specific resident harvest visual cue", async ({ page }) => {
         },
       ],
       man: [],
-    },
-  };
+  });
   await mockFarmApi(page, view);
   await openFarm(page);
 
@@ -678,9 +667,7 @@ test("renders task-specific resident harvest visual cue", async ({ page }) => {
 
 test("uses the first remaining batch task step as the scene movement target", async ({ page }) => {
   const now = Date.now();
-  const batchView: FarmView = {
-    ...farmView,
-    resident_task_queues: {
+  const batchView = withResidentTaskQueues(farmView, {
       woman: [
         {
           id: "task-1",
@@ -704,18 +691,15 @@ test("uses the first remaining batch task step as the scene movement target", as
         },
       ],
       man: [],
-    },
-  };
+  });
   await installMockGameplayWebSocket(page, [{ version: 1, view: batchView, catalog }]);
   await rejectRestGameplay(page);
   await openFarm(page);
 
   const resident = page.getByTestId("farm-scene-resident-woman");
-  await expect(resident).toHaveAttribute("data-resident-target", "field:plot-1");
+  await expect(resident).toHaveAttribute("data-resident-target", "Field Plot plot-1");
 
-  const nextStepView: FarmView = {
-    ...batchView,
-    resident_task_queues: {
+  const nextStepView = withResidentTaskQueues(batchView, {
       woman: [
         {
           id: "task-1",
@@ -733,15 +717,14 @@ test("uses the first remaining batch task step as the scene movement target", as
         },
       ],
       man: [],
-    },
-  };
+  });
   await page.evaluate((view) => {
     (window as unknown as {
       __pushLatestGameplayFarmSnapshot: (snapshot: { version: number; view: FarmView }) => void;
     }).__pushLatestGameplayFarmSnapshot({ version: 2, view });
   }, nextStepView);
 
-  await expect(resident).toHaveAttribute("data-resident-target", "field:plot-2");
+  await expect(resident).toHaveAttribute("data-resident-target", "Field Plot plot-2");
 });
 
 test("idle machines do not show production status badges", async ({ page }) => {
@@ -1588,7 +1571,7 @@ test("Kitchen Oven Workstation sends oven commands and shows pending resident wo
       }),
     ],
   };
-  const view: FarmView = {
+  const view = withResidentTaskQueues({
     ...farmView,
     level: 2,
     owned_farmhouse_upgrades: ["oven"],
@@ -1597,11 +1580,10 @@ test("Kitchen Oven Workstation sends oven commands and shows pending resident wo
       id: "oven",
       queue: [{ id: "job-1", recipe_id: "bread", status: "pending_start", started_at_ms: 0, ready_at_ms: 0 }],
     },
-    resident_task_queues: {
-      ...farmView.resident_task_queues,
+  }, {
+      man: [],
       woman: [ovenTask],
-    },
-  };
+  });
   await mockFarmApi(page, view, catalog, (request) => {
     commands.push(request);
   });
@@ -3129,9 +3111,12 @@ const farmView: FarmView = {
     woman: { x: 8, y: 10 },
     man: { x: 9, y: 10 },
   },
-  resident_task_queues: {
-    woman: [],
-    man: [],
+  resident_work: {},
+  reservations: {
+    field_plots: {},
+    machines: {},
+    animals: [],
+    path_tiles: [],
   },
   house_interior: {
     rooms: [
@@ -3189,6 +3174,197 @@ function taskStep(
     walk_duration_ms: step.walk_duration_ms ?? 0,
     work_duration_ms: step.work_duration_ms ?? step.duration_ms,
   };
+}
+
+function withResidentTaskQueues(
+  view: FarmView,
+  queues: Record<string, ResidentTask[]>,
+): FarmView {
+  const residentWork: FarmView["resident_work"] = Object.fromEntries(
+    view.residents.map((resident) => {
+      const queue = queues[resident.id] ?? [];
+      const currentTask = queue[0] ?? null;
+      const currentStep = currentTask?.steps[0] ?? null;
+      const currentTile = view.resident_locations[resident.id] ?? { x: 8, y: 10 };
+      const path = currentStep?.walk_path.length ? [currentTile, ...currentStep.walk_path] : [];
+      const target = currentStep ? targetViewForStep(view, currentStep) : undefined;
+      const state = currentTask && currentStep
+        ? currentStep.walk_path.length > 0 && Date.now() < currentTask.started_at_ms + currentStep.walk_duration_ms
+          ? "walking"
+          : "working"
+        : "idle";
+      const work: ResidentWorkView = {
+        resident_id: resident.id,
+        display_name: resident.display_name,
+        selected: resident.id === view.selected_resident_id,
+        state,
+        current_task: currentTask ? taskSummary(currentTask, "current") : undefined,
+        queue: queue.map((task, index) => taskSummary(task, index === 0 ? "current" : "queued")),
+        current_step: currentStep ? stepView(currentStep) : undefined,
+        target,
+        scene: {
+          tile: currentStep?.approach_tile ?? target?.tile ?? currentTile,
+          path,
+          path_state: path.length ? (state === "walking" ? "walking" : "working") : undefined,
+          inside_house: currentStep?.reserved_work_target.type === "oven" && state === "working",
+        },
+        carry: { items: [], tools: [] },
+      };
+      return [
+        resident.id,
+        work,
+      ];
+    }),
+  );
+  return {
+    ...view,
+    resident_work: residentWork,
+    reservations: reservationsForQueues(view, queues),
+  };
+}
+
+function taskSummary(task: ResidentTask, queueState: "current" | "queued" | "blocked") {
+  return {
+    id: task.id,
+    kind: task.kind,
+    label: taskLabelForStep(task.steps.find((step) => !isResourceStep(step)) ?? task.steps[0]),
+    step_count: task.steps.length,
+    queue_state: queueState,
+    started_at_ms: task.started_at_ms,
+    ready_at_ms: task.ready_at_ms,
+  };
+}
+
+function stepView(step: ResidentTask["steps"][number]) {
+  const cue = visualCueForStep(step);
+  return {
+    label: taskLabelForStep(step),
+    activity: cue.activity,
+    prop: cue.prop,
+    walk_duration_ms: step.walk_duration_ms,
+    work_duration_ms: step.work_duration_ms,
+    duration_ms: step.duration_ms,
+  };
+}
+
+function targetViewForStep(view: FarmView, step: ResidentTask["steps"][number]) {
+  const target = step.reserved_work_target;
+  const tile = step.approach_tile ?? step.walk_path.at(-1) ?? { x: 8, y: 10 };
+  if (target.type === "field_plot") {
+    return { kind: "field_plot" as const, id: target.plot_id, label: `Field Plot ${target.plot_id}`, tile };
+  }
+  if (target.type === "machine") {
+    return { kind: "machine" as const, id: target.machine_id, label: "Machine", tile };
+  }
+  if (target.type === "oven") {
+    return { kind: "oven" as const, id: view.oven.id, label: "Oven", tile };
+  }
+  if (target.type === "animal") {
+    return { kind: "animal" as const, id: `${target.shelter_id}:${target.animal_slot}`, label: "Animal", tile };
+  }
+  if (target.type === "silo") {
+    return { kind: "silo" as const, label: "Silo", tile };
+  }
+  if (target.type === "barn") {
+    return { kind: "barn" as const, label: "Barn", tile };
+  }
+  return { kind: "tool_source" as const, label: "Farmhouse", tile };
+}
+
+function reservationsForQueues(view: FarmView, queues: Record<string, ResidentTask[]>): FarmView["reservations"] {
+  const reservations: FarmView["reservations"] = {
+    field_plots: {},
+    machines: {},
+    animals: [],
+    path_tiles: [],
+  };
+  for (const resident of view.residents) {
+    for (const task of queues[resident.id] ?? []) {
+      const reason = {
+        resident_id: resident.id,
+        resident_name: resident.display_name,
+        task_id: task.id,
+        reason: `Reserved for ${resident.display_name}'s task`,
+      };
+      for (const step of task.steps) {
+        const target = step.reserved_work_target;
+        if (target.type === "field_plot") {
+          reservations.field_plots[target.plot_id] = reason;
+        } else if (target.type === "machine") {
+          reservations.machines[target.machine_id] = reason;
+        } else if (target.type === "oven") {
+          reservations.oven = reason;
+        } else if (target.type === "animal") {
+          reservations.animals.push([{ shelter_id: target.shelter_id, animal_slot: target.animal_slot }, reason]);
+        }
+        for (const tile of step.walk_path) {
+          reservations.path_tiles.push({ tile, resident_id: resident.id, task_id: task.id });
+        }
+      }
+    }
+  }
+  return reservations;
+}
+
+function taskLabelForStep(step: ResidentTask["steps"][number] | undefined): string {
+  if (!step) {
+    return "Idle";
+  }
+  const work = step.work;
+  if (work.type === "plant_crop") return `Plant ${itemLabel(work.crop_id)}`;
+  if (work.type === "harvest_crop") return `Harvest ${itemLabel(work.crop_id)}`;
+  if (work.type === "collect_machine_job") return `Collect ${recipeLabel(work.recipe_id)}`;
+  if (work.type === "start_oven_recipe") return `Start ${recipeLabel(work.recipe_id)}`;
+  if (work.type === "collect_oven_job") return `Collect ${recipeLabel(work.recipe_id)}`;
+  if (work.type === "collect_animal_product") return `Collect ${itemLabel(work.item_id)}`;
+  if (work.type === "feed_animal") return "Feed animal";
+  if (work.type === "pickup_items") return "Pick up items";
+  if (work.type === "pickup_tools") return "Pick up tools";
+  if (work.type === "deposit_items" || work.type === "deposit_inventory") return "Store items";
+  return "Return tools";
+}
+
+function visualCueForStep(step: ResidentTask["steps"][number]) {
+  switch (step.work.type) {
+    case "plant_crop":
+      return { activity: "planting" as const, prop: "seed_pouch" as const };
+    case "harvest_crop":
+      return { activity: "harvesting" as const, prop: "basket" as const };
+    case "collect_machine_job":
+      return { activity: "collecting_machine" as const, prop: "crate" as const };
+    case "start_oven_recipe":
+      return { activity: "starting_oven" as const, prop: "oven_tray" as const };
+    case "collect_oven_job":
+      return { activity: "collecting_oven" as const, prop: "oven_tray" as const };
+    case "feed_animal":
+      return { activity: "feeding_animal" as const, prop: "bucket" as const };
+    case "collect_animal_product":
+      return { activity: "collecting_animal_product" as const, prop: "basket" as const };
+    case "pickup_items":
+      return { activity: "picking_up_items" as const, prop: "crate" as const };
+    case "pickup_tools":
+      return { activity: "picking_up_tools" as const, prop: "tool_bundle" as const };
+    case "deposit_inventory":
+    case "deposit_items":
+      return { activity: "depositing_inventory" as const, prop: "crate" as const };
+    case "return_tools":
+      return { activity: "returning_tools" as const, prop: "tool_bundle" as const };
+  }
+}
+
+function isResourceStep(step: ResidentTask["steps"][number]) {
+  return ["pickup_items", "pickup_tools", "deposit_inventory", "deposit_items", "return_tools"].includes(step.work.type);
+}
+
+function itemLabel(itemId: string) {
+  return itemId.charAt(0).toUpperCase() + itemId.slice(1).replaceAll("_", " ");
+}
+
+function recipeLabel(recipeId: string) {
+  return recipeId
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function buildableFarmView(): FarmView {

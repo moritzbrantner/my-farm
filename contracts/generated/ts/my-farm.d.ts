@@ -71,6 +71,10 @@ export type AnimalSlot = { id: string, state: AnimalState, };
 
 export type FarmResident = { id: string, display_name: string, };
 
+export type FarmNoticeKind = "save_reset";
+
+export type FarmNotice = { kind: FarmNoticeKind, message: string, };
+
 export type ReservedWorkTarget = { "type": "silo" } | { "type": "barn" } | { "type": "tool_source" } | { "type": "field_plot", plot_id: string, } | { "type": "machine", machine_id: string, } | { "type": "oven" } | { "type": "animal", shelter_id: string, animal_slot: string, };
 
 export type StorageSourceRef = { "type": "silo" } | { "type": "barn" };
@@ -95,9 +99,51 @@ export type HouseInterior = { rooms: Array<Room>, };
 
 export type ResidentInventory = { items: { [key in string]?: number }, tools: { [key in ToolKind]?: number }, tool_sources: { [key in ToolKind]?: ToolSourceRef }, item_capacity: number, };
 
+export type ResidentScenePoint = { x: number, y: number, };
+
+export type ResidentWorkState = "idle" | "walking" | "working" | "blocked";
+
+export type ResidentPathState = "walking" | "working";
+
+export type ResidentVisualActivity = "idle" | "walking" | "picking_up_items" | "picking_up_tools" | "planting" | "harvesting" | "collecting_machine" | "starting_oven" | "collecting_oven" | "feeding_animal" | "collecting_animal_product" | "depositing_inventory" | "returning_tools";
+
+export type ResidentVisualProp = "none" | "seed_pouch" | "basket" | "bucket" | "crate" | "oven_tray" | "tool_bundle";
+
+export type ResidentTargetKind = "farmhouse" | "field_plot" | "silo" | "barn" | "tool_source" | "machine" | "oven" | "animal" | "work";
+
+export type ResidentTargetView = { kind: ResidentTargetKind, id?: string, label: string, tile: ResidentScenePoint, };
+
+export type ResidentSceneView = { tile: ResidentScenePoint, path: Array<ResidentScenePoint>, path_state?: ResidentPathState, inside_house: boolean, };
+
+export type ResidentStepView = { label: string, activity: ResidentVisualActivity, prop: ResidentVisualProp, walk_duration_ms: number, work_duration_ms: number, duration_ms: number, };
+
+export type ResidentTaskQueueState = "current" | "queued" | "blocked";
+
+export type ResidentTaskSummaryView = { id: string, kind: ResidentTaskKind, label: string, step_count: number, queue_state: ResidentTaskQueueState, started_at_ms: number, ready_at_ms: number, };
+
+export type ResidentCarryItemView = { item_id: string, name: string, quantity: number, kind: ItemKind, };
+
+export type ResidentCarryToolView = { tool_kind: ToolKind, label: string, quantity: number, };
+
+export type ResidentCarryView = { items: Array<ResidentCarryItemView>, tools: Array<ResidentCarryToolView>, };
+
+export type BlockedResidentTaskView = { task_id: string, resident_id: string, reason: string, message: string, };
+
+export type ResidentWorkView = { resident_id: string, display_name: string, selected: boolean, state: ResidentWorkState, current_task?: ResidentTaskSummaryView, queue: Array<ResidentTaskSummaryView>, current_step?: ResidentStepView, target?: ResidentTargetView, scene: ResidentSceneView, carry: ResidentCarryView, block?: BlockedResidentTaskView, };
+
+export type ReservationReasonView = { resident_id: string, resident_name: string, task_id: string, reason: string, };
+
+export type AnimalReservationKey = { shelter_id: string, animal_slot: string, };
+
+export type ReservedPathTileView = { tile: Tile, resident_id: string, task_id: string, };
+
+export type ReservationView = { field_plots: { [key in string]?: ReservationReasonView }, machines: { [key in string]?: ReservationReasonView }, oven?: ReservationReasonView, animals: Array<[AnimalReservationKey, ReservationReasonView]>, path_tiles: Array<ReservedPathTileView>, };
+
 export type ResidentCleanupBlock = { reason: string, destination: StorageSourceRef, items: Array<ItemStack>, };
 
-export type FarmState = { last_update_ms: number, xp: number, level: number, coins: number, silo_capacity: number, silo_upgrade_tier: number, silo_tile: Tile, barn_capacity: number, barn_upgrade_tier: number, barn_tile: Tile, inventory: { [key in string]?: number }, farmhouse_tool_stock: { [key in ToolKind]?: number }, claimed_crop_unlocks: Array<string>, field_plots: Array<FieldPlot>, machines: Array<MachineState>, owned_farmhouse_upgrades: Array<FarmhouseUpgradeKind>, oven: OvenState, shelters: Array<AnimalShelterState>, delivery_board_built: boolean, delivery_board_tile: Tile, tool_shed?: ToolShedState, delivery_orders: Array<DeliveryOrder>, residents: Array<FarmResident>, selected_resident_id: string, resident_locations: { [key in string]?: Tile }, resident_task_queues: { [key in string]?: Array<ResidentTask> }, resident_inventories: { [key in string]?: ResidentInventory }, house_interior: HouseInterior, next_id: number, };
+export type BlockedResidentTask = { task_id: string, reason: string, message: string, };
+
+export type FarmState = { schema_version: number, last_update_ms: number, xp: number, level: number, coins: number, silo_capacity: number, silo_upgrade_tier: number, silo_tile: Tile, barn_capacity: number, barn_upgrade_tier: number, barn_tile: Tile, inventory: { [key in string]?: number }, farmhouse_tool_stock: { [key in ToolKind]?: number }, claimed_crop_unlocks: Array<string>, field_plots: Array<FieldPlot>, machines: Array<MachineState>, owned_farmhouse_upgrades: Array<FarmhouseUpgradeKind>, oven: OvenState, shelters: Array<AnimalShelterState>, delivery_board_built: boolean, delivery_board_tile: Tile, tool_shed?: ToolShedState, delivery_orders: Array<DeliveryOrder>, residents: Array<FarmResident>, selected_resident_id: string, resident_locations: { [key in string]?: Tile }, resident_task_queues: { [key in string]?: Array<ResidentTask> }, resident_inventories: { [key in string]?: ResidentInventory }, blocked_resident_tasks: { [key in string]?: BlockedResidentTask }, house_interior: HouseInterior, next_id: number, };
 
 export type FieldPlot = { id: string, tile: Tile, crop: PlantedCrop | null, };
 
@@ -111,7 +157,7 @@ export type InventoryItemView = { item_id: string, name: string, quantity: numbe
 
 export type UnlockView = { level: number, label: string, unlocked: boolean, };
 
-export type FarmView = { last_update_ms: number, xp: number, level: number, coins: number, silo_used: number, silo_capacity: number, silo_upgrade_tier: number, silo_tile: Tile, barn_used: number, barn_capacity: number, barn_upgrade_tier: number, barn_tile: Tile, inventory: Array<InventoryItemView>, resident_inventories?: { [key in string]?: ResidentInventory }, field_plots: Array<FieldPlot>, machines: Array<MachineState>, owned_farmhouse_upgrades: Array<FarmhouseUpgradeKind>, oven: OvenState, shelters: Array<AnimalShelterState>, delivery_board_built: boolean, delivery_board_tile: Tile, tool_shed?: ToolShedState, delivery_orders: Array<DeliveryOrder>, residents: Array<FarmResident>, selected_resident_id: string, resident_locations: { [key in string]?: Tile }, resident_task_queues: { [key in string]?: Array<ResidentTask> }, resident_cleanup_blocks?: { [key in string]?: ResidentCleanupBlock }, house_interior: HouseInterior, unlocks: Array<UnlockView>, };
+export type FarmView = { last_update_ms: number, xp: number, level: number, coins: number, silo_used: number, silo_capacity: number, silo_upgrade_tier: number, silo_tile: Tile, barn_used: number, barn_capacity: number, barn_upgrade_tier: number, barn_tile: Tile, inventory: Array<InventoryItemView>, field_plots: Array<FieldPlot>, machines: Array<MachineState>, owned_farmhouse_upgrades: Array<FarmhouseUpgradeKind>, oven: OvenState, shelters: Array<AnimalShelterState>, delivery_board_built: boolean, delivery_board_tile: Tile, tool_shed?: ToolShedState, delivery_orders: Array<DeliveryOrder>, residents: Array<FarmResident>, selected_resident_id: string, resident_locations: { [key in string]?: Tile }, resident_work: { [key in string]?: ResidentWorkView }, reservations: ReservationView, resident_cleanup_blocks?: { [key in string]?: ResidentCleanupBlock }, house_interior: HouseInterior, unlocks: Array<UnlockView>, };
 
 export type FarmCommand = { "type": "plant_crop", plot_id: string, crop_id: string, } | { "type": "sweep_plant", crop_id: string, plot_ids: Array<string>, } | { "type": "harvest_crop", plot_id: string, } | { "type": "sweep_harvest", plot_ids: Array<string>, harvest_mode?: SweepHarvestMode, } | { "type": "buy_structure", structure_kind: StructureKind, tile: Tile, } | { "type": "buy_farmhouse_upgrade", upgrade_kind: FarmhouseUpgradeKind, } | { "type": "upgrade_storage", storage_kind: StorageKind, } | { "type": "buy_field_plot", tile: Tile, } | { "type": "move_structure", target: StructureTarget, tile: Tile, } | { "type": "queue_recipe", machine_id: string, recipe_id: string, } | { "type": "queue_oven_recipe", recipe_id: string, } | { "type": "collect_machine_job", machine_id: string, } | { "type": "collect_oven_job" } | { "type": "feed_animal", shelter_id: string, animal_slot: string, } | { "type": "collect_animal_product", shelter_id: string, animal_slot: string, } | { "type": "fulfill_delivery_order", order_id: string, } | { "type": "discard_delivery_order", order_id: string, } | { "type": "discard_inventory", item_id: string, quantity: number, } | { "type": "select_resident", resident_id: string, } | { "type": "rename_resident", resident_id: string, display_name: string, } | { "type": "buy_market_item", item_id: string, quantity: number, } | { "type": "sell_market_item", item_id: string, quantity: number, } | { "type": "place_decoration", room_id: string, decoration_id: string, tile: RoomTile, } | { "type": "move_decoration", room_id: string, placement_id: string, tile: RoomTile, } | { "type": "remove_decoration", room_id: string, placement_id: string, };
 
@@ -119,13 +165,13 @@ export type FarmEvent = { "type": "crop_planted", crop_id: string, } | { "type":
 
 export type CommandRequest = { expected_version: number, command: FarmCommand, };
 
-export type CommandResponse = { accepted: boolean, version: number, events: Array<FarmEvent>, view: FarmView, error: string | null, };
+export type CommandResponse = { accepted: boolean, version: number, events: Array<FarmEvent>, view: FarmView, error: string | null, notice?: FarmNotice, };
 
-export type FarmResponse = { version: number, view: FarmView, };
+export type FarmResponse = { version: number, view: FarmView, notice?: FarmNotice, };
 
 export type WebsocketClientMessage = { "type": "submit_command", request_id: string, expected_version: number, command: FarmCommand, } | { "type": "reset_farm", request_id: string, };
 
 export type WebsocketError = { code: string, message: string, };
 
-export type WebsocketServerMessage = { "type": "catalog", catalog: CatalogDocument, } | { "type": "farm_snapshot", version: number, view: FarmView, } | { "type": "command_response", request_id: string, accepted: boolean, version: number, events: Array<FarmEvent>, view: FarmView, error: string | null, } | { "type": "error", error: WebsocketError, };
+export type WebsocketServerMessage = { "type": "catalog", catalog: CatalogDocument, } | { "type": "farm_snapshot", version: number, view: FarmView, notice?: FarmNotice, } | { "type": "command_response", request_id: string, accepted: boolean, version: number, events: Array<FarmEvent>, view: FarmView, error: string | null, notice?: FarmNotice, } | { "type": "error", error: WebsocketError, };
 

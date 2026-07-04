@@ -36,7 +36,7 @@ test("interpolates resident walking along stored path", () => {
 
   expect(currentResidentScenePose(view, "woman", 1_500)).toEqual({
     tile: { x: 9, y: 10 },
-    label: "field:plot-1",
+    label: "Field Plot plot-1",
     state: "walking",
   });
 });
@@ -62,7 +62,7 @@ test("resident works at approach tile after walking finishes", () => {
 
   expect(currentResidentScenePose(view, "woman", 1_750)).toEqual({
     tile: { x: 10, y: 10 },
-    label: "field:plot-1",
+    label: "Field Plot plot-1",
     state: "working",
   });
 });
@@ -72,7 +72,7 @@ test("idle resident renders from authoritative resident location", () => {
 
   expect(currentResidentScenePose(view, "woman", 1_000)).toEqual({
     tile: { x: 8, y: 10 },
-    label: "farmhouse",
+    label: "Farmhouse",
     state: "idle",
   });
 });
@@ -88,7 +88,7 @@ test("idle man renders from his authoritative resident location", () => {
 
   expect(currentResidentScenePose(view, "man", 1_000)).toEqual({
     tile: { x: 2, y: 4 },
-    label: "farmhouse",
+    label: "Farmhouse",
     state: "idle",
   });
 });
@@ -386,6 +386,15 @@ test("uses idle and walking visual cues from authoritative scene state", () => {
 });
 
 function farmViewWithTask(task: ResidentTask | null): FarmView {
+  const residentLocations = {
+    woman: { x: 8, y: 10 },
+    man: { x: 9, y: 10 },
+  };
+  const currentStep = task?.steps[0] ?? null;
+  const target = currentStep ? targetViewForStep(currentStep) : undefined;
+  const path = currentStep?.walk_path.length
+    ? [residentLocations.woman, ...currentStep.walk_path]
+    : [];
   return {
     last_update_ms: 0,
     xp: 0,
@@ -413,15 +422,123 @@ function farmViewWithTask(task: ResidentTask | null): FarmView {
       { id: "man", display_name: "Man" },
     ],
     selected_resident_id: "woman",
-    resident_locations: {
-      woman: { x: 8, y: 10 },
-      man: { x: 9, y: 10 },
+    resident_locations: residentLocations,
+    resident_work: {
+      woman: {
+        resident_id: "woman",
+        display_name: "Woman",
+        selected: true,
+        state: task ? "working" : "idle",
+        current_task: task
+          ? {
+              id: task.id,
+              kind: task.kind,
+              label: currentStep ? taskLabelForStep(currentStep) : "Field work",
+              step_count: task.steps.length,
+              queue_state: "current",
+              started_at_ms: task.started_at_ms,
+              ready_at_ms: task.ready_at_ms,
+            }
+          : undefined,
+        queue: task
+          ? [{
+              id: task.id,
+              kind: task.kind,
+              label: currentStep ? taskLabelForStep(currentStep) : "Field work",
+              step_count: task.steps.length,
+              queue_state: "current",
+              started_at_ms: task.started_at_ms,
+              ready_at_ms: task.ready_at_ms,
+            }]
+          : [],
+        current_step: currentStep
+          ? {
+              label: taskLabelForStep(currentStep),
+              ...visualCueForStep(currentStep),
+              walk_duration_ms: currentStep.walk_duration_ms,
+              work_duration_ms: currentStep.work_duration_ms,
+              duration_ms: currentStep.duration_ms,
+            }
+          : undefined,
+        target,
+        scene: {
+          tile: currentStep?.approach_tile ?? target?.tile ?? residentLocations.woman,
+          path,
+          path_state: path.length ? "working" : undefined,
+          inside_house: currentStep?.reserved_work_target.type === "oven",
+        },
+        carry: { items: [], tools: [] },
+      },
+      man: {
+        resident_id: "man",
+        display_name: "Man",
+        selected: false,
+        state: "idle",
+        queue: [],
+        scene: { tile: residentLocations.man, path: [], inside_house: false },
+        carry: { items: [], tools: [] },
+      },
     },
-    resident_task_queues: {
-      woman: task ? [task] : [],
-      man: [],
+    reservations: {
+      field_plots: {},
+      machines: {},
+      animals: [],
+      path_tiles: [],
     },
     house_interior: { rooms: [] },
     unlocks: [],
   };
+}
+
+function targetViewForStep(step: ResidentTask["steps"][number]) {
+  const tile = step.approach_tile ?? step.walk_path.at(-1) ?? { x: 8, y: 10 };
+  const target = step.reserved_work_target;
+  if (target.type === "field_plot") {
+    return { kind: "field_plot" as const, id: target.plot_id, label: `Field Plot ${target.plot_id}`, tile };
+  }
+  if (target.type === "oven") {
+    return { kind: "oven" as const, id: "oven", label: "Oven", tile };
+  }
+  return { kind: "work" as const, label: "Work target", tile };
+}
+
+function taskLabelForStep(step: ResidentTask["steps"][number]) {
+  const work = step.work;
+  if (work.type === "plant_crop") return `Plant ${itemLabel(work.crop_id)}`;
+  if (work.type === "harvest_crop") return `Harvest ${itemLabel(work.crop_id)}`;
+  if (work.type === "start_oven_recipe") return "Start Bread";
+  if (work.type === "collect_oven_job") return "Collect Bread";
+  return "Resident task";
+}
+
+function visualCueForStep(step: ResidentTask["steps"][number]) {
+  switch (step.work.type) {
+    case "pickup_items":
+      return { activity: "picking_up_items" as const, prop: "crate" as const };
+    case "pickup_tools":
+      return { activity: "picking_up_tools" as const, prop: "tool_bundle" as const };
+    case "plant_crop":
+      return { activity: "planting" as const, prop: "seed_pouch" as const };
+    case "harvest_crop":
+      return { activity: "harvesting" as const, prop: "basket" as const };
+    case "collect_machine_job":
+      return { activity: "collecting_machine" as const, prop: "crate" as const };
+    case "start_oven_recipe":
+      return { activity: "starting_oven" as const, prop: "oven_tray" as const };
+    case "collect_oven_job":
+      return { activity: "collecting_oven" as const, prop: "oven_tray" as const };
+    case "feed_animal":
+      return { activity: "feeding_animal" as const, prop: "bucket" as const };
+    case "collect_animal_product":
+      return { activity: "collecting_animal_product" as const, prop: "basket" as const };
+    case "deposit_inventory":
+    case "deposit_items":
+      return { activity: "depositing_inventory" as const, prop: "crate" as const };
+    case "return_tools":
+      return { activity: "returning_tools" as const, prop: "tool_bundle" as const };
+  }
+}
+
+function itemLabel(itemId: string) {
+  return itemId.charAt(0).toUpperCase() + itemId.slice(1).replaceAll("_", " ");
 }

@@ -10,7 +10,7 @@ export type FarmResidentPresentation = {
   displayName: string;
   variant: "woman" | "man";
   position: [number, number, number];
-  state: "idle" | "walking" | "working";
+  state: "idle" | "walking" | "working" | "blocked";
   activity: ResidentVisualActivity;
   prop: ResidentVisualProp;
   targetLabel: string;

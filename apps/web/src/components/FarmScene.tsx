@@ -1750,7 +1750,7 @@ function worldToTile(value: number) {
   return value - BOARD_ORIGIN;
 }
 
-function residentVisualOffset(index: number, state: "idle" | "walking" | "working") {
+function residentVisualOffset(index: number, state: "idle" | "walking" | "working" | "blocked") {
   if (state === "walking") {
     return [0, 0] as const;
   }

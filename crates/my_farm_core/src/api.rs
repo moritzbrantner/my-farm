@@ -9,11 +9,14 @@ pub struct HealthResponse {
     pub service: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
 pub struct FarmResponse {
     #[ts(type = "number")]
     pub version: u64,
     pub view: FarmView,
+    #[serde(default)]
+    #[ts(optional)]
+    pub notice: Option<FarmNotice>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -23,7 +26,7 @@ pub struct CommandRequest {
     pub command: FarmCommand,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
 pub struct CommandResponse {
     pub accepted: bool,
     #[ts(type = "number")]
@@ -31,11 +34,26 @@ pub struct CommandResponse {
     pub events: Vec<FarmEvent>,
     pub view: FarmView,
     pub error: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub notice: Option<FarmNotice>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct CatalogResponse {
     pub catalog: CatalogDocument,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct FarmNotice {
+    pub kind: FarmNoticeKind,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FarmNoticeKind {
+    SaveReset,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -58,7 +76,7 @@ pub struct WebsocketError {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum WebsocketServerMessage {
     Catalog {
@@ -68,6 +86,9 @@ pub enum WebsocketServerMessage {
         #[ts(type = "number")]
         version: u64,
         view: FarmView,
+        #[serde(default)]
+        #[ts(optional)]
+        notice: Option<FarmNotice>,
     },
     CommandResponse {
         request_id: String,
@@ -77,6 +98,9 @@ pub enum WebsocketServerMessage {
         events: Vec<FarmEvent>,
         view: FarmView,
         error: Option<String>,
+        #[serde(default)]
+        #[ts(optional)]
+        notice: Option<FarmNotice>,
     },
     Error {
         error: WebsocketError,

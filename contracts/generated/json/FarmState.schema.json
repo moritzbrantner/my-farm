@@ -13,6 +13,7 @@
     "level",
     "machines",
     "next_id",
+    "schema_version",
     "shelters",
     "silo_capacity",
     "xp"
@@ -39,6 +40,13 @@
       "type": "integer",
       "format": "uint32",
       "minimum": 0.0
+    },
+    "blocked_resident_tasks": {
+      "default": {},
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/BlockedResidentTask"
+      }
     },
     "claimed_crop_unlocks": {
       "default": [
@@ -898,6 +906,11 @@
         "$ref": "#/definitions/FarmResident"
       }
     },
+    "schema_version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
     "selected_resident_id": {
       "default": "woman",
       "type": "string"
@@ -1044,6 +1057,25 @@
           }
         }
       ]
+    },
+    "BlockedResidentTask": {
+      "type": "object",
+      "required": [
+        "message",
+        "reason",
+        "task_id"
+      ],
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        }
+      }
     },
     "DecorationPlacement": {
       "type": "object",
