@@ -284,6 +284,16 @@
             "$ref": "#/definitions/FarmhouseUpgradeKind"
           }
         },
+        "resident_cleanup_blocks": {
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "$ref": "#/definitions/ResidentCleanupBlock"
+          }
+        },
         "resident_inventories": {
           "default": null,
           "type": [
@@ -734,6 +744,28 @@
         }
       ]
     },
+    "ResidentCleanupBlock": {
+      "type": "object",
+      "required": [
+        "destination",
+        "items",
+        "reason"
+      ],
+      "properties": {
+        "destination": {
+          "$ref": "#/definitions/StorageSourceRef"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ItemStack"
+          }
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
     "ResidentInventory": {
       "type": "object",
       "required": [
@@ -753,6 +785,13 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0.0
+          }
+        },
+        "tool_sources": {
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/ToolSourceRef"
           }
         },
         "tools": {

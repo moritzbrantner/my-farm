@@ -347,6 +347,8 @@ pub struct FarmResident {
 pub struct ResidentInventory {
     pub items: BTreeMap<String, u32>,
     pub tools: BTreeMap<ToolKind, u32>,
+    #[serde(default)]
+    pub tool_sources: BTreeMap<ToolKind, ToolSourceRef>,
     pub item_capacity: u32,
 }
 
@@ -755,6 +757,7 @@ pub fn default_resident_inventory() -> ResidentInventory {
     ResidentInventory {
         items: BTreeMap::new(),
         tools: BTreeMap::new(),
+        tool_sources: BTreeMap::new(),
         item_capacity: DEFAULT_RESIDENT_ITEM_CAPACITY,
     }
 }

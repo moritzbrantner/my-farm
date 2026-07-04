@@ -93,7 +93,7 @@ fn demo_runtime_supports_buying_and_persisting_the_farmhouse_oven() {
             ],
             harvest_mode: None,
         },
-        36_000.0,
+        50_000.0,
     );
     let bought = command(
         &mut runtime,
@@ -149,7 +149,7 @@ fn demo_runtime_supports_decoration_commands_and_persists_saved_placements() {
             ],
             harvest_mode: None,
         },
-        36_000.0,
+        50_000.0,
     );
 
     let placed = command(
@@ -253,16 +253,16 @@ fn demo_runtime_ticks_completed_resident_tasks_and_preserves_save_state() {
     assert_eq!(queued.version, 3);
     assert_eq!(queued.view.selected_resident_id, "man");
     assert_eq!(queued.view.resident_task_queues["man"].len(), 1);
-    assert_eq!(queued.view.resident_task_queues["man"][0].steps.len(), 3);
+    assert_eq!(queued.view.resident_task_queues["man"][0].steps.len(), 5);
 
-    let ticked = farm(&mut runtime, 17_000.0);
+    let ticked = farm(&mut runtime, 30_000.0);
     assert_eq!(ticked.version, 4);
     assert!(ticked.view.field_plots[0].crop.is_some());
-    assert_eq!(ticked.view.resident_task_queues["man"][0].steps.len(), 2);
+    assert_eq!(ticked.view.resident_task_queues["man"][0].steps.len(), 1);
 
     let save = runtime.save_json();
-    let mut restored = DemoFarmRuntime::new(Some(save), 17_000.0);
-    let restored_farm = farm(&mut restored, 17_000.0);
+    let mut restored = DemoFarmRuntime::new(Some(save), 30_000.0);
+    let restored_farm = farm(&mut restored, 30_000.0);
 
     assert_eq!(restored_farm.version, 4);
     assert_eq!(restored_farm.view.selected_resident_id, "man");
@@ -272,7 +272,7 @@ fn demo_runtime_ticks_completed_resident_tasks_and_preserves_save_state() {
         restored_farm.view.resident_task_queues["man"][0]
             .steps
             .len(),
-        2
+        1
     );
 }
 
@@ -398,7 +398,7 @@ fn demo_runtime_supports_crop_and_farmhouse_oven_loop() {
             ],
             harvest_mode: None,
         },
-        36_000.0,
+        50_000.0,
     );
     command(
         &mut runtime,
@@ -416,7 +416,7 @@ fn demo_runtime_supports_crop_and_farmhouse_oven_loop() {
         },
         150_000.0,
     );
-    let response = command(&mut runtime, 4, FarmCommand::CollectOvenJob, 181_000.0);
+    let response = command(&mut runtime, 4, FarmCommand::CollectOvenJob, 250_000.0);
 
     assert!(response.accepted);
     assert_eq!(
@@ -429,7 +429,7 @@ fn demo_runtime_supports_crop_and_farmhouse_oven_loop() {
         None
     );
 
-    let farm = farm(&mut runtime, 230_000.0);
+    let farm = farm(&mut runtime, 320_000.0);
     assert_eq!(
         farm.view
             .inventory

@@ -6,11 +6,11 @@ use my_farm_core::{
     FarmState, FarmView, FarmhouseUpgradeDef, FarmhouseUpgradeKind, FieldPlot, HealthResponse,
     HouseInterior, InventoryItemView, ItemDef, ItemKind, ItemStack, MachineDef, MachineJob,
     MachineKind, MachineState, MarketItemDef, OvenJob, OvenJobStatus, OvenState, PlantedCrop,
-    RecipeDef, RecipeTarget, ReservedWorkTarget, ResidentInventory, ResidentTask, ResidentTaskKind,
-    ResidentTaskStep, ResidentTaskStepWork, Room, RoomTile, ShelterDef, ShelterKind, StorageKind,
-    StorageSourceRef, StorageUpgradeDef, StructureKind, StructureTarget, SweepHarvestMode, Tile,
-    ToolKind, ToolSourceRef, ToolStack, UnlockView, WebsocketClientMessage, WebsocketError,
-    WebsocketServerMessage,
+    RecipeDef, RecipeTarget, ReservedWorkTarget, ResidentCleanupBlock, ResidentInventory,
+    ResidentTask, ResidentTaskKind, ResidentTaskStep, ResidentTaskStepWork, Room, RoomTile,
+    ShelterDef, ShelterKind, StorageKind, StorageSourceRef, StorageUpgradeDef, StructureKind,
+    StructureTarget, SweepHarvestMode, Tile, ToolKind, ToolSourceRef, ToolStack, UnlockView,
+    WebsocketClientMessage, WebsocketError, WebsocketServerMessage,
 };
 use schemars::{JsonSchema, schema_for};
 use std::fs;
@@ -114,6 +114,7 @@ fn outputs() -> anyhow::Result<Vec<Output>> {
                 Room::decl(),
                 HouseInterior::decl(),
                 ResidentInventory::decl(),
+                ResidentCleanupBlock::decl(),
                 FarmState::decl(),
                 FieldPlot::decl(),
                 MachineState::decl(),

@@ -838,11 +838,13 @@
         "man": {
           "item_capacity": 30,
           "items": {},
+          "tool_sources": {},
           "tools": {}
         },
         "woman": {
           "item_capacity": 30,
           "items": {},
+          "tool_sources": {},
           "tools": {}
         }
       },
@@ -1442,6 +1444,13 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0.0
+          }
+        },
+        "tool_sources": {
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/ToolSourceRef"
           }
         },
         "tools": {

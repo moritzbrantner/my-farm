@@ -1,6 +1,6 @@
 use crate::{
-    CatalogDocument, FarmState, ItemKind, ResidentTaskStepWork, barn_storage_used,
-    crop_storage_used,
+    CatalogDocument, FarmState, ItemKind, ItemStack, ResidentTaskStepWork, StorageSourceRef,
+    barn_storage_used, crop_storage_used,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -40,6 +40,9 @@ pub struct FarmView {
     pub selected_resident_id: String,
     pub resident_locations: std::collections::BTreeMap<String, crate::Tile>,
     pub resident_task_queues: std::collections::BTreeMap<String, Vec<crate::ResidentTask>>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub resident_cleanup_blocks: Option<std::collections::BTreeMap<String, ResidentCleanupBlock>>,
     pub house_interior: crate::HouseInterior,
     pub unlocks: Vec<UnlockView>,
 }
@@ -63,6 +66,13 @@ pub struct UnlockView {
     pub level: u32,
     pub label: String,
     pub unlocked: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct ResidentCleanupBlock {
+    pub reason: String,
+    pub destination: StorageSourceRef,
+    pub items: Vec<ItemStack>,
 }
 
 pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
@@ -111,6 +121,7 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
         selected_resident_id: farm.selected_resident_id.clone(),
         resident_locations: farm.resident_locations.clone(),
         resident_task_queues: farm.resident_task_queues.clone(),
+        resident_cleanup_blocks: cleanup_blocks(farm, catalog),
         house_interior: farm.house_interior.clone(),
         unlocks: vec![
             unlock(1, "Fields and wheat", farm.level),
@@ -122,6 +133,108 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
             unlock(7, "Tomatoes and tomato tart", farm.level),
         ],
     }
+}
+
+fn cleanup_blocks(
+    farm: &FarmState,
+    catalog: &CatalogDocument,
+) -> Option<std::collections::BTreeMap<String, ResidentCleanupBlock>> {
+    let mut blocks = std::collections::BTreeMap::new();
+    let (reserved_crop, reserved_barn) = reserved_deposits(farm, catalog);
+    for (resident_id, inventory) in &farm.resident_inventories {
+        if farm
+            .resident_task_queues
+            .get(resident_id)
+            .is_some_and(|queue| !queue.is_empty())
+        {
+            continue;
+        }
+
+        let crop_items = inventory
+            .items
+            .iter()
+            .filter(|(item_id, _)| {
+                catalog
+                    .item_kind(item_id)
+                    .is_some_and(|kind| *kind == ItemKind::Crop)
+            })
+            .map(|(item_id, quantity)| ItemStack::new(item_id, *quantity))
+            .collect::<Vec<_>>();
+        let crop_quantity = crop_items.iter().map(|item| item.quantity).sum::<u32>();
+        if crop_quantity > 0
+            && crop_storage_used(farm, catalog) + reserved_crop + crop_quantity > farm.silo_capacity
+        {
+            blocks.insert(
+                resident_id.clone(),
+                ResidentCleanupBlock {
+                    reason: "storage_full".to_owned(),
+                    destination: StorageSourceRef::Silo,
+                    items: crop_items,
+                },
+            );
+            continue;
+        }
+
+        let barn_items = inventory
+            .items
+            .iter()
+            .filter(|(item_id, _)| {
+                !catalog
+                    .item_kind(item_id)
+                    .is_some_and(|kind| *kind == ItemKind::Crop)
+            })
+            .map(|(item_id, quantity)| ItemStack::new(item_id, *quantity))
+            .collect::<Vec<_>>();
+        let barn_quantity = barn_items.iter().map(|item| item.quantity).sum::<u32>();
+        if barn_quantity > 0
+            && barn_storage_used(farm, catalog) + reserved_barn + barn_quantity > farm.barn_capacity
+        {
+            blocks.insert(
+                resident_id.clone(),
+                ResidentCleanupBlock {
+                    reason: "storage_full".to_owned(),
+                    destination: StorageSourceRef::Barn,
+                    items: barn_items,
+                },
+            );
+        }
+    }
+
+    if blocks.is_empty() {
+        None
+    } else {
+        Some(blocks)
+    }
+}
+
+fn reserved_deposits(farm: &FarmState, catalog: &CatalogDocument) -> (u32, u32) {
+    let mut reserved_crop = 0;
+    let mut reserved_barn = 0;
+    for step in farm
+        .resident_task_queues
+        .values()
+        .flat_map(|queue| queue.iter())
+        .flat_map(|task| task.steps.iter())
+    {
+        let items = match &step.work {
+            ResidentTaskStepWork::DepositInventory { item_id, quantity } => {
+                vec![ItemStack::new(item_id, *quantity)]
+            }
+            ResidentTaskStepWork::DepositItems { items, .. } => items.clone(),
+            _ => Vec::new(),
+        };
+        for item in items {
+            if catalog
+                .item_kind(&item.item_id)
+                .is_some_and(|kind| *kind == ItemKind::Crop)
+            {
+                reserved_crop += item.quantity;
+            } else {
+                reserved_barn += item.quantity;
+            }
+        }
+    }
+    (reserved_crop, reserved_barn)
 }
 
 fn reserved_item_pickups(farm: &FarmState, item_id: &str) -> u32 {

@@ -81,7 +81,7 @@ The per-resident FIFO list of Resident Tasks saved on the Farm. Later work may e
 _Avoid_: Local queue, animation queue
 
 **Resident Inventory**:
-The authoritative per-Farm Resident carried inventory used while that resident has queued work. It contains carried item stacks and durable Tools, and should be empty when the Resident Task Queue becomes empty.
+The authoritative per-Farm Resident carried inventory used while that resident has queued work. It contains carried item stacks, durable Tools, and each Tool's checkout source; it should be empty when the Resident Task Queue becomes empty unless cleanup is blocked by storage capacity.
 _Avoid_: Backpack, global inventory, storage
 
 **Projected Resident Inventory**:
@@ -105,7 +105,7 @@ A Resident Task step that walks collected inventory to its storage destination. 
 _Avoid_: Instant payout, work-tile storage
 
 **Return Tools Step**:
-The final cleanup step appended to Resident Tasks so the Farm Resident walks back to a Tool Source after completing assigned work and deposits.
+The final cleanup step appended to Resident Tasks so the Farm Resident walks back to the Tool Source where carried Tools were checked out after completing assigned work and deposits.
 _Avoid_: Teleport home, idle reset
 
 **Reserved Work Target**:
@@ -125,7 +125,7 @@ A tile that can hold one planted crop job.
 _Avoid_: Farmland, crop tile
 
 **Crop**:
-A harvestable plant stored in the silo.
+A harvestable and plantable crop item stored in the Silo. Planting consumes an existing stored Crop item rather than a separate Seed item.
 _Avoid_: Seed, plant item
 
 **Animal Shelter**:
@@ -147,6 +147,10 @@ _Avoid_: Tool inventory, resource source
 **Tool**:
 A durable named piece of equipment carried by a Farm Resident while performing work, such as a hoe, sickle, mixing bowl, oven mitt, feed bucket, collection pail, or wrench. Tools are not consumable catalog Items.
 _Avoid_: Consumable item, ingredient
+
+**Sickle**:
+The canonical harvest Tool used by Farm Residents for crop harvesting.
+_Avoid_: Scythe
 
 **Tool Source Inventory**:
 The limited stock of durable Tools held by a Tool Source. Farm Residents check Tools out into Resident Inventory and return them before becoming idle.

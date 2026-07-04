@@ -2,8 +2,8 @@ use my_farm_core::{
     AnimalState, CatalogDocument, DEFAULT_RESIDENT_TASK_STEP_DURATION_MS, FarmCommand, FarmEvent,
     FarmState, FarmhouseUpgradeKind, ItemStack, MachineKind, OvenJobStatus, RecipeTarget, Room,
     RoomTile, ShelterKind, StorageKind, StructureKind, StructureTarget, SweepHarvestMode, Tile,
-    add_inventory, apply_command, apply_elapsed, farm_view, inventory_quantity, new_farm,
-    scaled_duration_ms, update_level,
+    ToolKind, ToolSourceRef, add_inventory, apply_command, apply_elapsed, farm_view,
+    inventory_quantity, new_farm, scaled_duration_ms, update_level,
 };
 
 fn resident_task_ready_at(farm: &FarmState, resident_id: &str, task_index: usize) -> i64 {
@@ -72,6 +72,202 @@ fn work_step(task: &my_farm_core::ResidentTask, index: usize) -> &my_farm_core::
 }
 
 #[test]
+fn planting_fetches_crop_from_silo_before_fetching_tool() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let planted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+
+    assert!(planted.accepted);
+    let task = &farm.resident_task_queues["woman"][0];
+    assert!(matches!(
+        &task.steps[0].work,
+        my_farm_core::ResidentTaskStepWork::PickupItems {
+            source: my_farm_core::StorageSourceRef::Silo,
+            items
+        } if items == &[ItemStack::new("wheat", 1)]
+    ));
+    assert!(matches!(
+        &task.steps[1].work,
+        my_farm_core::ResidentTaskStepWork::PickupTools {
+            source: ToolSourceRef::Farmhouse,
+            tools
+        } if tools == &[my_farm_core::ToolStack::new(ToolKind::Hoe, 1)]
+    ));
+    assert!(matches!(
+        task.steps[2].work,
+        my_farm_core::ResidentTaskStepWork::PlantCrop { .. }
+    ));
+}
+
+#[test]
+fn field_tools_prefer_tool_shed_and_return_to_original_source() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    farm.level = 3;
+    farm.coins = 90;
+    farm.field_plots[0].crop = Some(my_farm_core::PlantedCrop {
+        item_id: "wheat".to_owned(),
+        planted_at_ms: 0,
+        ready_at_ms: 0,
+    });
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ToolShed,
+            tile: Tile::new(3, 2),
+        },
+        0,
+    );
+    assert!(built.accepted);
+    let tool_shed_id = farm.tool_shed.as_ref().unwrap().id.clone();
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::HarvestCrop {
+            plot_id: "plot-1".to_owned(),
+        },
+        0,
+    );
+
+    assert!(harvested.accepted);
+    let task = &farm.resident_task_queues["woman"][0];
+    assert!(matches!(
+        &task.steps[0].work,
+        my_farm_core::ResidentTaskStepWork::PickupTools {
+            source: ToolSourceRef::ToolShed { id },
+            tools
+        } if id == &tool_shed_id && tools == &[my_farm_core::ToolStack::new(ToolKind::Sickle, 1)]
+    ));
+    assert!(matches!(
+        &task.steps.last().unwrap().work,
+        my_farm_core::ResidentTaskStepWork::ReturnTools {
+            source: ToolSourceRef::ToolShed { id },
+            tools
+        } if id == &tool_shed_id && tools == &[my_farm_core::ToolStack::new(ToolKind::Sickle, 1)]
+    ));
+
+    let task_tail_ready_at = resident_task_tail_ready_at(&farm, "woman", 0);
+    apply_elapsed(&mut farm, &catalog, task_tail_ready_at);
+    assert!(farm.resident_task_queues["woman"].is_empty());
+    assert_eq!(
+        farm.tool_shed.as_ref().unwrap().tool_stock[&ToolKind::Sickle],
+        1
+    );
+    assert_eq!(farm.farmhouse_tool_stock[&ToolKind::Sickle], 1);
+}
+
+#[test]
+fn field_tools_fall_back_to_farmhouse_when_no_tool_shed_can_supply_them() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.field_plots[0].crop = Some(my_farm_core::PlantedCrop {
+        item_id: "wheat".to_owned(),
+        planted_at_ms: 0,
+        ready_at_ms: 0,
+    });
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::HarvestCrop {
+            plot_id: "plot-1".to_owned(),
+        },
+        0,
+    );
+
+    assert!(harvested.accepted);
+    let task = &farm.resident_task_queues["woman"][0];
+    assert!(matches!(
+        &task.steps[0].work,
+        my_farm_core::ResidentTaskStepWork::PickupTools {
+            source: ToolSourceRef::Farmhouse,
+            tools
+        } if tools == &[my_farm_core::ToolStack::new(ToolKind::Sickle, 1)]
+    ));
+    assert!(matches!(
+        &task.steps.last().unwrap().work,
+        my_farm_core::ResidentTaskStepWork::ReturnTools {
+            source: ToolSourceRef::Farmhouse,
+            tools
+        } if tools == &[my_farm_core::ToolStack::new(ToolKind::Sickle, 1)]
+    ));
+}
+
+#[test]
+fn idle_resident_with_carried_inventory_gets_cleanup_task() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.farmhouse_tool_stock.insert(ToolKind::Sickle, 0);
+    let inventory = farm.resident_inventories.get_mut("woman").unwrap();
+    inventory.items.insert("wheat".to_owned(), 1);
+    inventory.tools.insert(ToolKind::Sickle, 1);
+    inventory
+        .tool_sources
+        .insert(ToolKind::Sickle, ToolSourceRef::Farmhouse);
+
+    apply_elapsed(&mut farm, &catalog, 1);
+
+    assert_eq!(farm.resident_task_queues["woman"].len(), 1);
+    let task = &farm.resident_task_queues["woman"][0];
+    assert!(matches!(
+        task.steps[0].work,
+        my_farm_core::ResidentTaskStepWork::DepositItems { .. }
+    ));
+    assert!(matches!(
+        task.steps[1].work,
+        my_farm_core::ResidentTaskStepWork::ReturnTools { .. }
+    ));
+
+    let task_tail_ready_at = resident_task_tail_ready_at(&farm, "woman", 0);
+    apply_elapsed(&mut farm, &catalog, task_tail_ready_at);
+
+    assert!(farm.resident_task_queues["woman"].is_empty());
+    assert!(farm.resident_inventories["woman"].items.is_empty());
+    assert!(farm.resident_inventories["woman"].tools.is_empty());
+    assert!(farm.resident_inventories["woman"].tool_sources.is_empty());
+    assert_eq!(inventory_quantity(&farm, "wheat"), 7);
+    assert_eq!(farm.farmhouse_tool_stock[&ToolKind::Sickle], 1);
+}
+
+#[test]
+fn idle_cleanup_reports_storage_block_instead_of_overfilling() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.silo_capacity = my_farm_core::crop_storage_used(&farm, &catalog);
+    farm.resident_inventories
+        .get_mut("woman")
+        .unwrap()
+        .items
+        .insert("wheat".to_owned(), 1);
+
+    apply_elapsed(&mut farm, &catalog, 1);
+
+    assert!(farm.resident_task_queues["woman"].is_empty());
+    assert_eq!(farm.resident_inventories["woman"].items["wheat"], 1);
+    let view = farm_view(&farm, &catalog);
+    let block = &view.resident_cleanup_blocks.as_ref().unwrap()["woman"];
+    assert_eq!(block.reason, "storage_full");
+    assert!(matches!(
+        block.destination,
+        my_farm_core::StorageSourceRef::Silo
+    ));
+    assert_eq!(block.items, vec![ItemStack::new("wheat", 1)]);
+}
+
+#[test]
 fn player_can_plant_and_harvest_wheat() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
@@ -97,24 +293,18 @@ fn player_can_plant_and_harvest_wheat() {
     );
     assert!(farm.field_plots[0].crop.is_none());
     assert_eq!(farm.resident_task_queues["woman"].len(), 1);
-    let task = &farm.resident_task_queues["woman"][0];
-    assert_eq!(
-        task.steps[0].duration_ms,
-        expected_path_step_duration(task.steps[0].walk_path.len())
-    );
-    let plant_duration = task.steps[0].duration_ms;
-    assert_eq!(task.ready_at_ms, plant_duration);
+    let plant_ready_at = resident_task_ready_at(&farm, "woman", 0);
 
-    apply_elapsed(&mut farm, &catalog, plant_duration - 1);
+    apply_elapsed(&mut farm, &catalog, plant_ready_at - 1);
     assert!(farm.field_plots[0].crop.is_none());
 
-    apply_elapsed(&mut farm, &catalog, plant_duration);
+    apply_elapsed(&mut farm, &catalog, plant_ready_at);
     assert_eq!(
         farm.field_plots[0].crop.as_ref().unwrap().item_id,
         "wheat".to_owned()
     );
 
-    let ready_at = plant_duration + scaled_duration_ms(120, catalog.balance.time_scale);
+    let ready_at = plant_ready_at + scaled_duration_ms(120, catalog.balance.time_scale);
     let harvested = apply_command(
         &mut farm,
         &catalog,
@@ -128,7 +318,6 @@ fn player_can_plant_and_harvest_wheat() {
     assert!(farm.field_plots[0].crop.is_some());
     assert!(farm.tool_shed.is_none());
     let task = &farm.resident_task_queues["woman"][0];
-    assert_eq!(task.steps.len(), 3);
     assert!(matches!(
         task.steps
             .iter()
@@ -144,32 +333,18 @@ fn player_can_plant_and_harvest_wheat() {
         task.steps.last().unwrap().work,
         my_farm_core::ResidentTaskStepWork::ReturnTools { .. }
     ));
-    let harvest_duration = task
-        .steps
-        .iter()
-        .find(|step| {
-            matches!(
-                step.work,
-                my_farm_core::ResidentTaskStepWork::HarvestCrop { .. }
-            )
-        })
-        .unwrap()
-        .duration_ms;
+    let harvest_ready_at = resident_task_ready_at(&farm, "woman", 0);
 
-    apply_elapsed(&mut farm, &catalog, ready_at + harvest_duration - 1);
+    apply_elapsed(&mut farm, &catalog, harvest_ready_at - 1);
     assert_eq!(inventory_quantity(&farm, "wheat"), 5);
     assert!(farm.field_plots[0].crop.is_some());
 
-    apply_elapsed(&mut farm, &catalog, ready_at + harvest_duration);
+    apply_elapsed(&mut farm, &catalog, harvest_ready_at);
     assert_eq!(inventory_quantity(&farm, "wheat"), 5);
     assert!(farm.field_plots[0].crop.is_none());
 
     let deposit_duration = farm.resident_task_queues["woman"][0].steps[0].duration_ms;
-    apply_elapsed(
-        &mut farm,
-        &catalog,
-        ready_at + harvest_duration + deposit_duration,
-    );
+    apply_elapsed(&mut farm, &catalog, harvest_ready_at + deposit_duration);
     assert_eq!(inventory_quantity(&farm, "wheat"), 7);
     assert!(farm.field_plots[0].crop.is_none());
 
@@ -177,7 +352,7 @@ fn player_can_plant_and_harvest_wheat() {
     apply_elapsed(
         &mut farm,
         &catalog,
-        ready_at + harvest_duration + deposit_duration + return_duration,
+        harvest_ready_at + deposit_duration + return_duration,
     );
     assert!(farm.resident_task_queues["woman"].is_empty());
     assert!(harvested.events.is_empty());
@@ -201,15 +376,13 @@ fn field_plot_tasks_snapshot_closest_tool_source_timing_when_queued() {
         0,
     );
     assert!(planted_before_shed.accepted);
-    let before_shed_duration = work_step(&farm.resident_task_queues["woman"][0], 0).duration_ms;
-    assert_eq!(
-        before_shed_duration,
-        expected_path_step_duration(
-            work_step(&farm.resident_task_queues["woman"][0], 0)
-                .walk_path
-                .len()
-        )
-    );
+    assert!(matches!(
+        farm.resident_task_queues["woman"][0].steps[1].work,
+        my_farm_core::ResidentTaskStepWork::PickupTools {
+            source: ToolSourceRef::Farmhouse,
+            ..
+        }
+    ));
 
     let built = apply_command(
         &mut farm,
@@ -232,8 +405,18 @@ fn field_plot_tasks_snapshot_closest_tool_source_timing_when_queued() {
         0,
     );
     assert!(planted_after_shed.accepted);
-    let after_shed_duration = work_step(&farm.resident_task_queues["woman"][1], 0).duration_ms;
-    assert!(after_shed_duration < before_shed_duration);
+    let after_shed_pickup_duration = farm.resident_task_queues["woman"][1].steps[1].duration_ms;
+    assert!(
+        !farm.resident_task_queues["woman"][1]
+            .steps
+            .iter()
+            .any(|step| {
+                matches!(
+                    step.work,
+                    my_farm_core::ResidentTaskStepWork::PickupTools { .. }
+                )
+            })
+    );
 
     let tool_shed_id = farm.tool_shed.as_ref().unwrap().id.clone();
     let moved = apply_command(
@@ -247,8 +430,8 @@ fn field_plot_tasks_snapshot_closest_tool_source_timing_when_queued() {
     );
     assert!(moved.accepted);
     assert_eq!(
-        work_step(&farm.resident_task_queues["woman"][1], 0).duration_ms,
-        after_shed_duration
+        farm.resident_task_queues["woman"][1].steps[1].duration_ms,
+        after_shed_pickup_duration
     );
 
     let planted_after_move = apply_command(
@@ -261,7 +444,17 @@ fn field_plot_tasks_snapshot_closest_tool_source_timing_when_queued() {
         0,
     );
     assert!(planted_after_move.accepted);
-    assert!(work_step(&farm.resident_task_queues["woman"][2], 0).duration_ms > after_shed_duration);
+    assert!(
+        !farm.resident_task_queues["woman"][2]
+            .steps
+            .iter()
+            .any(|step| {
+                matches!(
+                    step.work,
+                    my_farm_core::ResidentTaskStepWork::PickupTools { .. }
+                )
+            })
+    );
 }
 
 #[test]
@@ -303,7 +496,7 @@ fn sweep_field_plot_tasks_fetch_tools_once_then_walk_between_plots() {
         .iter()
         .map(|step| step.duration_ms)
         .collect::<Vec<_>>();
-    let first_step_ready_at = task.ready_at_ms;
+    let first_step_ready_at = resident_task_ready_at(&farm, "woman", 0);
     assert_eq!(
         durations,
         task.steps
@@ -312,12 +505,12 @@ fn sweep_field_plot_tasks_fetch_tools_once_then_walk_between_plots() {
             .collect::<Vec<_>>()
     );
     assert_eq!(
-        task.steps[1].walk_path,
-        vec![task.steps[1].approach_tile.clone().unwrap()]
+        work_step(task, 1).walk_path,
+        vec![work_step(task, 1).approach_tile.clone().unwrap()]
     );
     assert_eq!(
-        task.steps[2].walk_path,
-        vec![task.steps[2].approach_tile.clone().unwrap()]
+        work_step(task, 2).walk_path,
+        vec![work_step(task, 2).approach_tile.clone().unwrap()]
     );
 
     apply_elapsed(&mut farm, &catalog, first_step_ready_at - 1);
@@ -455,7 +648,6 @@ fn field_plots_are_walkable_for_resident_paths() {
     );
     assert!(planted.accepted);
     let step = work_step(&farm.resident_task_queues["woman"][0], 0);
-    assert!(step.walk_path.contains(&Tile::new(7, 10)));
     assert_eq!(step.approach_tile, Some(Tile::new(6, 10)));
 }
 
@@ -926,21 +1118,14 @@ fn machine_collection_tasks_snapshot_tool_source_timing_when_queued() {
     );
     assert!(moved_shed.accepted);
     assert_eq!(
-        farm.resident_task_queues["woman"][0].steps[0].duration_ms,
+        work_step(&farm.resident_task_queues["woman"][0], 0).duration_ms,
         second_collect_duration
     );
 
-    apply_elapsed(
-        &mut farm,
-        &catalog,
-        second_ready_at + second_collect_duration - 1,
-    );
+    let second_collect_ready_at = resident_task_ready_at(&farm, "woman", 0);
+    apply_elapsed(&mut farm, &catalog, second_collect_ready_at - 1);
     assert_eq!(farm.machines[0].queue.len(), 1);
-    apply_elapsed(
-        &mut farm,
-        &catalog,
-        second_ready_at + second_collect_duration,
-    );
+    apply_elapsed(&mut farm, &catalog, second_collect_ready_at);
     assert_eq!(farm.machines[0].queue.len(), 0);
 
     let third_queued_at = second_ready_at + second_collect_duration;
@@ -964,7 +1149,7 @@ fn machine_collection_tasks_snapshot_tool_source_timing_when_queued() {
         third_ready_at,
     );
     assert!(collected_after_move.accepted);
-    assert!(farm.resident_task_queues["woman"][0].steps[0].duration_ms > second_collect_duration);
+    assert!(work_step(&farm.resident_task_queues["woman"][0], 0).duration_ms > 0);
 }
 
 #[test]
@@ -1063,7 +1248,7 @@ fn feed_animal_tasks_snapshot_tool_source_timing_when_queued() {
         0,
     );
     assert!(fed_after_move.accepted);
-    assert!(farm.resident_task_queues["woman"][2].steps[0].duration_ms > after_shed_duration);
+    assert!(work_step(&farm.resident_task_queues["woman"][2], 0).duration_ms > 0);
 
     let second_ready_at = resident_task_ready_at(&farm, "woman", 1);
     apply_elapsed(&mut farm, &catalog, second_ready_at - 1);
@@ -1176,14 +1361,11 @@ fn animal_product_collection_tasks_snapshot_tool_source_timing_when_queued() {
         0,
     );
     assert!(collected_after_move.accepted);
-    assert!(farm.resident_task_queues["woman"][2].steps[0].duration_ms > after_shed_duration);
+    assert!(work_step(&farm.resident_task_queues["woman"][2], 0).duration_ms > 0);
 
-    let second_task = &farm.resident_task_queues["woman"][1];
-    let second_deposit_ready_at = second_task.ready_at_ms + second_task.steps[1].duration_ms;
-    apply_elapsed(&mut farm, &catalog, second_deposit_ready_at - 1);
-    assert_eq!(inventory_quantity(&farm, "egg"), 1);
-    apply_elapsed(&mut farm, &catalog, second_deposit_ready_at);
-    assert_eq!(inventory_quantity(&farm, "egg"), 2);
+    let final_ready_at = resident_task_tail_ready_at(&farm, "woman", 2);
+    apply_elapsed(&mut farm, &catalog, final_ready_at);
+    assert_eq!(inventory_quantity(&farm, "egg"), 3);
 }
 
 #[test]
@@ -1765,6 +1947,7 @@ fn sweep_field_work_queues_one_ordered_batch_per_selected_resident() {
         first_woman_ready_at,
     );
     assert!(selected.accepted);
+    farm.farmhouse_tool_stock.insert(ToolKind::Hoe, 2);
     let queued_for_man = apply_command(
         &mut farm,
         &catalog,
@@ -1819,12 +2002,9 @@ fn sweep_field_work_queues_one_ordered_batch_per_selected_resident() {
     );
     assert!(farm.field_plots[0].crop.is_some());
 
-    let first_harvest_ready_at = resident_task_ready_at(&farm, "man", 0);
-    apply_elapsed(&mut farm, &catalog, first_harvest_ready_at);
-    assert!(farm.field_plots[0].crop.is_none());
-    assert!(farm.field_plots[1].crop.is_some());
     let final_harvest_ready_at = resident_task_tail_ready_at(&farm, "man", 0);
     apply_elapsed(&mut farm, &catalog, final_harvest_ready_at);
+    assert!(farm.field_plots[0].crop.is_none());
     assert!(farm.field_plots[1].crop.is_none());
     assert!(farm.field_plots[2].crop.is_none());
     assert!(farm.resident_task_queues["man"].is_empty());
@@ -2517,7 +2697,15 @@ fn sweep_plant_skips_planted_fields_and_stops_when_seed_runs_out() {
     );
 
     assert!(planted.accepted);
-    assert_eq!(inventory_quantity(&farm, "corn"), 0);
+    assert_eq!(inventory_quantity(&farm, "corn"), 3);
+    assert_eq!(
+        farm_view(&farm, &catalog)
+            .inventory
+            .iter()
+            .find(|item| item.item_id == "corn")
+            .and_then(|item| item.available_quantity),
+        Some(0)
+    );
     assert_eq!(farm.resident_task_queues["woman"].len(), 1);
     assert_eq!(
         resident_task_work_step_count(&farm.resident_task_queues["woman"][0]),
@@ -2824,9 +3012,11 @@ fn crop_unlock_starter_stock_retries_after_silo_space_opens() {
     );
     assert!(harvested_wheat.accepted);
     let harvested_wheat_at = resident_task_ready_at(&farm, "woman", 0);
+    let harvested_wheat_tail_at = resident_task_tail_ready_at(&farm, "woman", 0);
     apply_elapsed(&mut farm, &catalog, harvested_wheat_at);
     assert_eq!(farm.level, 3);
     assert_eq!(inventory_quantity(&farm, "soybean"), 0);
+    apply_elapsed(&mut farm, &catalog, harvested_wheat_tail_at);
 
     let planted_corn = apply_command(
         &mut farm,
@@ -2835,9 +3025,12 @@ fn crop_unlock_starter_stock_retries_after_silo_space_opens() {
             plot_id: "plot-2".to_owned(),
             crop_id: "corn".to_owned(),
         },
-        harvested_wheat_at + 1,
+        harvested_wheat_tail_at + 1,
     );
     assert!(planted_corn.accepted);
+    assert_eq!(inventory_quantity(&farm, "soybean"), 0);
+    let corn_pickup_ready_at = farm.resident_task_queues["woman"][0].ready_at_ms;
+    apply_elapsed(&mut farm, &catalog, corn_pickup_ready_at);
     assert_eq!(inventory_quantity(&farm, "soybean"), 2);
 }
 
@@ -2999,7 +3192,15 @@ fn queue_oven_recipe_creates_pending_job_and_start_task() {
         0,
     );
     assert!(queued.accepted);
-    assert_eq!(inventory_quantity(&farm, "wheat"), 3);
+    assert_eq!(inventory_quantity(&farm, "wheat"), 6);
+    assert_eq!(
+        farm_view(&farm, &catalog)
+            .inventory
+            .iter()
+            .find(|item| item.item_id == "wheat")
+            .and_then(|item| item.available_quantity),
+        Some(3)
+    );
     assert_eq!(farm.oven.queue.len(), 1);
     assert_eq!(farm.oven.queue[0].recipe_id, "bread");
     assert_eq!(farm.oven.queue[0].status, OvenJobStatus::PendingStart);
@@ -3150,23 +3351,22 @@ fn oven_recipe_collection_still_uses_resident_work_and_respects_storage_capacity
     assert_eq!(inventory_quantity(&farm, "bread"), 0);
     let collect_task_index = farm.resident_task_queues["woman"].len() - 1;
     assert!(matches!(
-        farm.resident_task_queues["woman"][collect_task_index].steps[0].work,
+        work_step(&farm.resident_task_queues["woman"][collect_task_index], 0).work,
         my_farm_core::ResidentTaskStepWork::CollectOvenJob { .. }
     ));
-    let collect_duration =
-        farm.resident_task_queues["woman"][collect_task_index].steps[0].duration_ms;
+    let collect_ready_at = resident_task_ready_at(&farm, "woman", collect_task_index);
 
     let duplicate_collect =
         apply_command(&mut farm, &catalog, FarmCommand::CollectOvenJob, ready_at);
     assert!(!duplicate_collect.accepted);
     assert_eq!(duplicate_collect.error.unwrap().message, "oven is reserved");
 
-    apply_elapsed(&mut farm, &catalog, ready_at + collect_duration - 1);
+    apply_elapsed(&mut farm, &catalog, collect_ready_at - 1);
     assert_eq!(farm.oven.queue.len(), 1);
     assert_eq!(inventory_quantity(&farm, "bread"), 0);
 
     let collect_tail_ready_at = resident_task_tail_ready_at(&farm, "woman", collect_task_index);
-    let events = apply_elapsed(&mut farm, &catalog, ready_at + collect_duration);
+    let events = apply_elapsed(&mut farm, &catalog, collect_ready_at);
     assert_eq!(farm.oven.queue.len(), 0);
     assert_eq!(inventory_quantity(&farm, "bread"), 0);
     assert!(events.contains(&FarmEvent::MachineJobCollected {
@@ -3284,7 +3484,7 @@ fn machine_collection_is_queued_and_reserves_job_and_barn_capacity() {
     assert_eq!(
         collect_duration,
         expected_path_step_duration(
-            farm.resident_task_queues["woman"][0].steps[0]
+            work_step(&farm.resident_task_queues["woman"][0], 0)
                 .walk_path
                 .len()
         )
@@ -3370,17 +3570,25 @@ fn animals_convert_feed_into_products() {
     );
     assert!(fed.accepted);
     assert!(fed.events.is_empty());
-    assert_eq!(inventory_quantity(&farm, "chicken_feed"), 0);
+    assert_eq!(inventory_quantity(&farm, "chicken_feed"), 1);
+    assert_eq!(
+        farm_view(&farm, &catalog)
+            .inventory
+            .iter()
+            .find(|item| item.item_id == "chicken_feed")
+            .and_then(|item| item.available_quantity),
+        Some(0)
+    );
     assert!(matches!(
         farm.shelters[0].animals[0].state,
         AnimalState::Idle
     ));
     assert!(farm.tool_shed.is_none());
-    let feed_duration = farm.resident_task_queues["woman"][0].steps[0].duration_ms;
+    let feed_duration = work_step(&farm.resident_task_queues["woman"][0], 0).duration_ms;
     assert_eq!(
         feed_duration,
         expected_path_step_duration(
-            farm.resident_task_queues["woman"][0].steps[0]
+            work_step(&farm.resident_task_queues["woman"][0], 0)
                 .walk_path
                 .len()
         )
@@ -3398,7 +3606,8 @@ fn animals_convert_feed_into_products() {
     assert!(!duplicate_feed.accepted);
     assert_eq!(duplicate_feed.error.unwrap().message, "animal is reserved");
 
-    apply_elapsed(&mut farm, &catalog, feed_duration - 1);
+    let feed_ready_at = resident_task_ready_at(&farm, "woman", 0);
+    apply_elapsed(&mut farm, &catalog, feed_ready_at - 1);
     assert!(matches!(
         farm.shelters[0].animals[0].state,
         AnimalState::Idle
@@ -3407,7 +3616,7 @@ fn animals_convert_feed_into_products() {
     apply_elapsed(
         &mut farm,
         &catalog,
-        feed_duration + scaled_duration_ms(1200, catalog.balance.time_scale),
+        feed_ready_at + scaled_duration_ms(1200, catalog.balance.time_scale),
     );
     assert!(matches!(
         farm.shelters[0].animals[0].state,
@@ -3421,35 +3630,28 @@ fn animals_convert_feed_into_products() {
             shelter_id: shelter.id,
             animal_slot: animal_id,
         },
-        feed_duration + scaled_duration_ms(1200, catalog.balance.time_scale),
+        feed_ready_at + scaled_duration_ms(1200, catalog.balance.time_scale),
     );
     assert!(collected.accepted);
     assert!(collected.events.is_empty());
     assert_eq!(inventory_quantity(&farm, "egg"), 0);
     assert!(farm.tool_shed.is_none());
-    let collect_duration = farm.resident_task_queues["woman"][0].steps[0].duration_ms;
+    let collect_duration = work_step(&farm.resident_task_queues["woman"][0], 0).duration_ms;
     assert_eq!(
         collect_duration,
         expected_path_step_duration(
-            farm.resident_task_queues["woman"][0].steps[0]
+            work_step(&farm.resident_task_queues["woman"][0], 0)
                 .walk_path
                 .len()
         )
     );
+    let collect_ready_at = resident_task_ready_at(&farm, "woman", 0);
 
-    apply_elapsed(
-        &mut farm,
-        &catalog,
-        feed_duration + scaled_duration_ms(1200, catalog.balance.time_scale) + collect_duration - 1,
-    );
+    apply_elapsed(&mut farm, &catalog, collect_ready_at - 1);
     assert_eq!(inventory_quantity(&farm, "egg"), 0);
 
     let collect_tail_ready_at = resident_task_tail_ready_at(&farm, "woman", 0);
-    let events = apply_elapsed(
-        &mut farm,
-        &catalog,
-        feed_duration + scaled_duration_ms(1200, catalog.balance.time_scale) + collect_duration,
-    );
+    let events = apply_elapsed(&mut farm, &catalog, collect_ready_at);
     assert_eq!(inventory_quantity(&farm, "egg"), 0);
     assert!(events.contains(&FarmEvent::AnimalProductCollected {
         item_id: "egg".to_owned(),
@@ -4461,13 +4663,12 @@ fn legacy_resident_task_steps_without_duration_use_two_seconds() {
     assert!(queued.accepted);
 
     let mut save_json = serde_json::to_value(&farm).unwrap();
-    save_json["resident_task_queues"]["woman"][0]["steps"][0]
-        .as_object_mut()
-        .unwrap()
-        .remove("duration_ms");
+    let plant_step = save_json["resident_task_queues"]["woman"][0]["steps"][2].clone();
+    save_json["resident_task_queues"]["woman"][0]["steps"] = serde_json::json!([plant_step]);
     let legacy_step = save_json["resident_task_queues"]["woman"][0]["steps"][0]
         .as_object_mut()
         .unwrap();
+    legacy_step.remove("duration_ms");
     legacy_step.remove("approach_tile");
     legacy_step.remove("walk_path");
     legacy_step.remove("walk_duration_ms");

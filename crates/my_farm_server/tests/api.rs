@@ -124,7 +124,14 @@ async fn websocket_command_persists_journal_and_broadcasts_snapshot_to_connected
     assert_eq!(version, 1);
     assert!(error.is_none());
     assert!(events.is_empty());
-    assert_eq!(inventory_quantity_from_view(&view, "wheat"), 5);
+    assert_eq!(inventory_quantity_from_view(&view, "wheat"), 6);
+    assert_eq!(
+        view.inventory
+            .iter()
+            .find(|item| item.item_id == "wheat")
+            .and_then(|item| item.available_quantity),
+        Some(5)
+    );
     assert!(view.field_plots[0].crop.is_none());
     assert_eq!(view.resident_task_queues["woman"].len(), 1);
 
@@ -134,11 +141,20 @@ async fn websocket_command_persists_journal_and_broadcasts_snapshot_to_connected
     assert_eq!(second_broadcast.version, 1);
     assert_eq!(
         inventory_quantity_from_view(&first_broadcast.view, "wheat"),
-        5
+        6
+    );
+    assert_eq!(
+        first_broadcast
+            .view
+            .inventory
+            .iter()
+            .find(|item| item.item_id == "wheat")
+            .and_then(|item| item.available_quantity),
+        Some(5)
     );
     assert_eq!(
         inventory_quantity_from_view(&second_broadcast.view, "wheat"),
-        5
+        6
     );
 
     let saved_version: i64 =
@@ -401,6 +417,26 @@ async fn websocket_elapsed_time_persists_and_broadcasts_resident_task_completion
 
     let ready_at_ms = chrono::Utc::now().timestamp_millis() + 150;
     let mut farm = load_saved_farm(&pool).await;
+    let catalog = CatalogDocument::default_catalog();
+    loop {
+        let Some(step) = farm
+            .resident_task_queues
+            .get("woman")
+            .and_then(|queue| queue.first())
+            .and_then(|task| task.steps.first())
+        else {
+            break;
+        };
+        if !matches!(
+            step.work,
+            my_farm_core::ResidentTaskStepWork::PickupItems { .. }
+                | my_farm_core::ResidentTaskStepWork::PickupTools { .. }
+        ) {
+            break;
+        }
+        let ready_at = farm.resident_task_queues["woman"][0].ready_at_ms;
+        my_farm_core::apply_elapsed(&mut farm, &catalog, ready_at);
+    }
     farm.last_update_ms = ready_at_ms - 1_000;
     farm.resident_task_queues
         .get_mut("woman")
@@ -468,7 +504,16 @@ async fn post_command_persists_state_and_rejects_stale_versions() {
             .find(|item| item.item_id == "wheat")
             .unwrap()
             .quantity,
-        5
+        6
+    );
+    assert_eq!(
+        planted
+            .view
+            .inventory
+            .iter()
+            .find(|item| item.item_id == "wheat")
+            .and_then(|item| item.available_quantity),
+        Some(5)
     );
 
     let stale = post_command(
@@ -853,11 +898,25 @@ async fn post_farmhouse_oven_queue_and_collect_persist_state_and_journal_through
     assert_eq!(queued.version, 1);
     assert_eq!(queued.view.oven.queue.len(), 1);
     assert_eq!(queued.view.oven.queue[0].recipe_id, "bread");
-    assert_eq!(inventory_quantity(&queued, "wheat"), 3);
+    assert_eq!(inventory_quantity(&queued, "wheat"), 6);
+    assert_eq!(
+        queued
+            .view
+            .inventory
+            .iter()
+            .find(|item| item.item_id == "wheat")
+            .and_then(|item| item.available_quantity),
+        Some(3)
+    );
 
     let mut ready_farm = load_saved_farm(&pool).await;
-    let start_ready_at = ready_farm.resident_task_queues["woman"][0].ready_at_ms;
-    my_farm_core::apply_elapsed(&mut ready_farm, &catalog, start_ready_at);
+    while matches!(
+        ready_farm.oven.queue[0].status,
+        my_farm_core::OvenJobStatus::PendingStart
+    ) {
+        let start_ready_at = ready_farm.resident_task_queues["woman"][0].ready_at_ms;
+        my_farm_core::apply_elapsed(&mut ready_farm, &catalog, start_ready_at);
+    }
     ready_farm.oven.queue[0].ready_at_ms = 0;
     save_test_farm(&pool, queued.version, &ready_farm).await;
 
@@ -873,9 +932,11 @@ async fn post_farmhouse_oven_queue_and_collect_persist_state_and_journal_through
     assert!(collected.accepted);
     assert_eq!(collected.version, 2);
     assert_eq!(collected.view.oven.queue.len(), 1);
-    assert_eq!(
-        collected.view.resident_task_queues["woman"][0].steps[0].reserved_work_target,
-        my_farm_core::ReservedWorkTarget::Oven
+    assert!(
+        collected.view.resident_task_queues["woman"][0]
+            .steps
+            .iter()
+            .any(|step| step.reserved_work_target == my_farm_core::ReservedWorkTarget::Oven)
     );
 
     let journal_count: i64 =
@@ -897,12 +958,17 @@ async fn post_farmhouse_oven_queue_and_collect_persist_state_and_journal_through
     assert_eq!(reloaded.view.oven.queue.len(), 1);
     assert_eq!(inventory_quantity_from_farm(&reloaded, "wheat"), 3);
     assert_eq!(inventory_quantity_from_farm(&reloaded, "bread"), 0);
-    assert_eq!(
-        reloaded.view.resident_task_queues["woman"][0].steps[0].work,
-        my_farm_core::ResidentTaskStepWork::CollectOvenJob {
-            job_id: reloaded.view.oven.queue[0].id.clone(),
-            recipe_id: "bread".to_owned(),
-        }
+    assert!(
+        reloaded.view.resident_task_queues["woman"][0]
+            .steps
+            .iter()
+            .any(|step| {
+                step.work
+                    == (my_farm_core::ResidentTaskStepWork::CollectOvenJob {
+                        job_id: reloaded.view.oven.queue[0].id.clone(),
+                        recipe_id: "bread".to_owned(),
+                    })
+            })
     );
     restarted_pool.close().await;
 }
