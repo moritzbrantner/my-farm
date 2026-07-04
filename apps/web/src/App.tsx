@@ -64,6 +64,8 @@ import type {
   ItemStack,
   MachineState,
   MarketItemDef,
+  ResidentStepView,
+  ResidentTaskSummaryView,
   StructureKind,
   SweepHarvestMode,
 } from "./types";
@@ -1224,6 +1226,15 @@ export function App() {
                   nowMs={nowMs}
                   onSelectResident={selectResidentForWork}
                 />
+                <SelectionPanel
+                  catalog={catalog}
+                  view={view}
+                  selection={selection}
+                  nowMs={nowMs}
+                  send={send}
+                  demoMode={demoMode}
+                  onClearSelection={() => setSelection(null)}
+                />
                 <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
                 {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
                 <FieldTools
@@ -1238,14 +1249,6 @@ export function App() {
                   onHarvest={selectHarvestFieldTool}
                   onHarvestMode={selectHarvestMode}
                   onBuild={selectBuildTool}
-                />
-                <SelectionPanel
-                  catalog={catalog}
-                  view={view}
-                  selection={selection}
-                  nowMs={nowMs}
-                  send={send}
-                  demoMode={demoMode}
                 />
                 {!demoMode && selection?.type === "delivery_board" ? (
                   <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
@@ -2373,6 +2376,7 @@ function SelectionPanel({
   nowMs,
   send,
   demoMode,
+  onClearSelection,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
@@ -2380,6 +2384,7 @@ function SelectionPanel({
   nowMs: number;
   send: SendCommand;
   demoMode: boolean;
+  onClearSelection: () => void;
 }) {
   const plot = selectedPlot(view, selection);
   const machine = selectedMachine(view, selection);
@@ -2390,8 +2395,15 @@ function SelectionPanel({
   const isBarn = selection?.type === "barn";
   const isToolShed = selection?.type === "tool_shed";
   return (
-    <section className="panel-section">
-      <h2>Selection</h2>
+    <section className={resident ? "panel-section resident-details-panel" : "panel-section"}>
+      <div className="selection-panel__header">
+        <h2>{resident ? "Resident Details" : "Selection"}</h2>
+        {resident ? (
+          <button type="button" aria-label="Close Resident Details" onClick={onClearSelection}>
+            Close
+          </button>
+        ) : null}
+      </div>
       {isSilo ? (
         demoMode ? (
           <StorageStatus label="Silo" used={view.silo_used} capacity={view.silo_capacity} unit="crops" />
@@ -2511,21 +2523,96 @@ function ResidentActions({
         {queue.length === 0 ? (
           <p>Idle</p>
         ) : (
-          <ol>
+          <ol className="resident-queue__list">
             {queue.map((task, index) => (
-              <li key={task.id}>
-                <span>{taskLabel(catalog, task)}</span>
-                <small>
-                  {task.queue_state === "blocked" ? "Blocked" : index === 0 ? "Current" : "Queued"} - {task.step_count}{" "}
-                  {task.step_count === 1 ? "step" : "steps"}
-                </small>
-              </li>
+              <ResidentTaskQueueRow
+                key={task.id}
+                catalog={catalog}
+                task={task}
+                fallbackQueueState={index === 0 ? "Current" : "Queued"}
+              />
             ))}
           </ol>
         )}
       </div>
     </div>
   );
+}
+
+function ResidentTaskQueueRow({
+  catalog,
+  task,
+  fallbackQueueState,
+}: {
+  catalog: CatalogDocument;
+  task: ResidentTaskSummaryView;
+  fallbackQueueState: string;
+}) {
+  return (
+    <li className="resident-queue-task">
+      <details>
+        <summary>
+          <span>{taskLabel(catalog, task)}</span>
+          <small>
+            {queueStateLabel(task, fallbackQueueState)} - {task.step_count}{" "}
+            {task.step_count === 1 ? "step" : "steps"}
+          </small>
+        </summary>
+        <ol className="resident-queue-steps">
+          {task.steps.map((step, index) => (
+            <li key={`${task.id}-${index}`}>
+              <div>
+                <strong>{residentTaskStepLabel(catalog, step)}</strong>
+                <small>{step.target?.label ?? "Work target"}</small>
+              </div>
+              <span>
+                {formatStepTiming(step)} - {formatStepQuantity(step)}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </details>
+    </li>
+  );
+}
+
+function queueStateLabel(task: ResidentTaskSummaryView, fallback: string) {
+  if (task.queue_state === "blocked") {
+    return "Blocked";
+  }
+  if (task.queue_state === "current") {
+    return "Current";
+  }
+  if (task.queue_state === "queued") {
+    return "Queued";
+  }
+  return fallback;
+}
+
+function formatStepTiming(step: ResidentStepView) {
+  return `Walk ${formatDuration(step.walk_duration_ms)} / Work ${formatDuration(step.work_duration_ms)}`;
+}
+
+function formatDuration(durationMs: number) {
+  if (durationMs <= 0) {
+    return "0s";
+  }
+  const seconds = Math.round(durationMs / 1000);
+  return `${seconds}s`;
+}
+
+function formatStepQuantity(step: ResidentStepView) {
+  if (step.quantity === 0) {
+    return itemKindLabel(step.kind);
+  }
+  return `${step.quantity} ${itemKindLabel(step.kind)}`;
+}
+
+function itemKindLabel(kind: ResidentStepView["kind"]) {
+  if (kind === "animal_product") {
+    return "animal product";
+  }
+  return kind;
 }
 
 function ResidentCarrySummary({

@@ -435,6 +435,7 @@ function farmViewWithTask(task: ResidentTask | null): FarmView {
               kind: task.kind,
               label: currentStep ? taskLabelForStep(currentStep) : "Field work",
               step_count: task.steps.length,
+              steps: task.steps.map(stepView),
               queue_state: "current",
               started_at_ms: task.started_at_ms,
               ready_at_ms: task.ready_at_ms,
@@ -446,6 +447,7 @@ function farmViewWithTask(task: ResidentTask | null): FarmView {
               kind: task.kind,
               label: currentStep ? taskLabelForStep(currentStep) : "Field work",
               step_count: task.steps.length,
+              steps: task.steps.map(stepView),
               queue_state: "current",
               started_at_ms: task.started_at_ms,
               ready_at_ms: task.ready_at_ms,
@@ -455,6 +457,8 @@ function farmViewWithTask(task: ResidentTask | null): FarmView {
           ? {
               label: taskLabelForStep(currentStep),
               ...visualCueForStep(currentStep),
+              target,
+              ...stepQuantityAndKind(currentStep),
               walk_duration_ms: currentStep.walk_duration_ms,
               work_duration_ms: currentStep.work_duration_ms,
               duration_ms: currentStep.duration_ms,
@@ -500,6 +504,28 @@ function targetViewForStep(step: ResidentTask["steps"][number]) {
     return { kind: "oven" as const, id: "oven", label: "Oven", tile };
   }
   return { kind: "work" as const, label: "Work target", tile };
+}
+
+function stepView(step: ResidentTask["steps"][number]) {
+  return {
+    label: taskLabelForStep(step),
+    ...visualCueForStep(step),
+    target: targetViewForStep(step),
+    ...stepQuantityAndKind(step),
+    walk_duration_ms: step.walk_duration_ms,
+    work_duration_ms: step.work_duration_ms,
+    duration_ms: step.duration_ms,
+  };
+}
+
+function stepQuantityAndKind(step: ResidentTask["steps"][number]) {
+  const work = step.work;
+  if (work.type === "plant_crop") return { quantity: 1, kind: "crop" as const };
+  if (work.type === "harvest_crop") return { quantity: work.quantity, kind: "crop" as const };
+  if (work.type === "start_oven_recipe" || work.type === "collect_oven_job") {
+    return { quantity: 1, kind: "product" as const };
+  }
+  return { quantity: 0, kind: "product" as const };
 }
 
 function taskLabelForStep(step: ResidentTask["steps"][number]) {

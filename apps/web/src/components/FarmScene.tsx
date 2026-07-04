@@ -37,6 +37,8 @@ import {
   currentResidentScenePose,
   hasActiveResidentWalk,
   isResidentInsideHouse,
+  residentTaskStatus,
+  residentWork,
   residentVisualCue,
 } from "../game/residentTasks";
 
@@ -295,6 +297,7 @@ export function FarmScene({
         ) : null}
         <ResidentPathOverlay view={view} selection={selection} nowMs={nowMs} />
         <FarmResidents
+          catalog={catalog}
           view={view}
           nowMs={nowMs}
           visualClockPaused={visualClockPaused}
@@ -328,12 +331,14 @@ export function FarmScene({
 }
 
 function FarmResidents({
+  catalog,
   view,
   nowMs,
   visualClockPaused,
   selection,
   onSelectResident,
 }: {
+  catalog: CatalogDocument;
   view: FarmView;
   nowMs: number;
   visualClockPaused: boolean;
@@ -347,6 +352,8 @@ function FarmResidents({
     .map((resident, index): FarmResidentPresentation => {
       const pose = currentResidentScenePose(view, resident.id, residentNowMs);
       const visualCue = residentVisualCue(view, resident.id, residentNowMs);
+      const work = residentWork(view, resident.id);
+      const status = residentTaskStatus(catalog, view, resident.id, residentNowMs);
       const offset = residentVisualOffset(index, pose.state);
       const position: [number, number, number] = [
         tileToWorld(pose.tile.x) + offset[0],
@@ -362,8 +369,10 @@ function FarmResidents({
         state: pose.state,
         activity: visualCue.activity,
         prop: visualCue.prop,
+        taskLabel: work?.current_step?.label ?? status.currentTask?.label ?? status.label,
         targetLabel: pose.label,
         selected: selection?.type === "resident" && selection.id === resident.id,
+        blocked: pose.state === "blocked",
         animationPaused: visualClockPaused,
       };
     });

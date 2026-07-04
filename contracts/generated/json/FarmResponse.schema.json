@@ -936,8 +936,10 @@
       "required": [
         "activity",
         "duration_ms",
+        "kind",
         "label",
         "prop",
+        "quantity",
         "walk_duration_ms",
         "work_duration_ms"
       ],
@@ -949,11 +951,30 @@
           "type": "integer",
           "format": "int64"
         },
+        "kind": {
+          "$ref": "#/definitions/ItemKind"
+        },
         "label": {
           "type": "string"
         },
         "prop": {
           "$ref": "#/definitions/ResidentVisualProp"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "target": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ResidentTargetView"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "walk_duration_ms": {
           "type": "integer",
@@ -1054,7 +1075,8 @@
         "queue_state",
         "ready_at_ms",
         "started_at_ms",
-        "step_count"
+        "step_count",
+        "steps"
       ],
       "properties": {
         "id": {
@@ -1081,6 +1103,12 @@
           "type": "integer",
           "format": "uint32",
           "minimum": 0.0
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResidentStepView"
+          }
         }
       }
     },

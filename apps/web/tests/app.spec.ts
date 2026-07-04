@@ -213,9 +213,10 @@ test("resident selector shows both residents and sends selected resident command
     resident_id: "man",
   });
   const selection = page.locator(".panel-section").filter({
-    has: page.getByRole("heading", { name: "Selection" }),
+    has: page.getByRole("heading", { name: "Resident Details" }),
   });
   await expect(selection.getByText("Jon")).toBeVisible();
+  await expect(selection.getByText("Inspecting")).toBeVisible();
   await expect(selection.getByText("Task queue")).toBeVisible();
 });
 
@@ -593,12 +594,114 @@ test("clicking a farm resident selects them, sends assignment command, and shows
   await expect(page.getByTestId("resident-path-man")).toBeVisible();
   await expect(page.getByTestId("resident-path-man")).toHaveAttribute("data-path-tile-count", "4");
   await expect(page.getByTestId("resident-path-woman")).toHaveCount(0);
+  const cue = page.getByTestId("farm-scene-resident-cue-man");
+  await expect(cue).toBeVisible();
+  await expect(cue).toContainText("Plant Corn");
+  await expect(cue).toContainText("Field Plot plot-1");
   const selection = page.locator(".panel-section").filter({
-    has: page.getByRole("heading", { name: "Selection" }),
+    has: page.getByRole("heading", { name: "Resident Details" }),
   });
   await expect(selection.getByText("Jon")).toBeVisible();
+  await expect(selection.getByText("Inspecting")).toBeVisible();
+  await expect(selection.getByText("Walking")).toBeVisible();
+  await expect(selection.getByText("Current task")).toBeVisible();
+  await expect(selection.getByText("Plant Corn", { exact: true }).first()).toBeVisible();
+  await expect(selection.getByText("Current step")).toBeVisible();
+  await expect(selection.getByText("Target")).toBeVisible();
+  await expect(selection.getByText("Field Plot plot-1", { exact: true }).first()).toBeVisible();
+  await expect(selection.getByLabel("Jon task progress")).toBeVisible();
+  await expect(selection.getByText("Carrying")).toBeVisible();
+  await expect(selection.getByText("Empty")).toBeVisible();
   await expect(selection.getByText("Task queue")).toBeVisible();
-  await expect(selection.getByRole("listitem").filter({ hasText: "Plant Corn" })).toBeVisible();
+  const taskRow = selection.getByRole("listitem").filter({ hasText: "Plant Corn" }).first();
+  await expect(taskRow).toBeVisible();
+  await expect(taskRow).toContainText("Current");
+  await expect(taskRow).toContainText("1 step");
+  await taskRow.locator("summary").click();
+  await expect(taskRow).toContainText("Walk 4s / Work 1s");
+  await expect(taskRow).toContainText("1 crop");
+});
+
+test("blocked resident work shows a scene warning and Resident Details reason", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop scene warning is covered here; mobile drawer behavior is covered separately.");
+  const now = Date.now();
+  const view = withResidentTaskQueues(farmView, {
+      woman: [
+        {
+          id: "blocked-task",
+          kind: { type: "field_work" },
+          started_at_ms: now - 5_000,
+          ready_at_ms: now + 5_000,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "plant_crop", crop_id: "wheat" },
+              approach_tile: { x: 0, y: 0 },
+              duration_ms: 10_000,
+            }),
+          ],
+        },
+      ],
+      man: [],
+  });
+  const womanWork = view.resident_work.woman;
+  if (!womanWork) {
+    throw new Error("Expected Mara resident work in blocked fixture");
+  }
+  const blockedView: FarmView = {
+    ...view,
+    resident_work: {
+      ...view.resident_work,
+      woman: {
+        ...womanWork,
+        state: "blocked",
+        queue: womanWork.queue.map((task, index) => ({
+          ...task,
+          queue_state: index === 0 ? "blocked" : task.queue_state,
+        })),
+        block: {
+          task_id: "blocked-task",
+          resident_id: "woman",
+          reason: "missing_carried_items",
+          message: "Plant Wheat is blocked because Mara is missing carried Wheat.",
+        },
+      },
+    },
+  };
+  await mockFarmApi(page, blockedView);
+  await openFarm(page);
+
+  await page.getByTestId("farm-scene-resident-woman").click({ force: true });
+
+  const cue = page.getByTestId("farm-scene-resident-cue-woman");
+  await expect(cue).toBeVisible();
+  await expect(cue).toHaveAttribute("data-resident-blocked", "true");
+  await expect(cue).toContainText("!");
+  await expect(cue).toContainText("Plant Wheat");
+
+  const details = page.locator(".resident-details-panel");
+  await expect(details.getByRole("heading", { name: "Resident Details" })).toBeVisible();
+  await expect(details.getByText("Blocked", { exact: true }).first()).toBeVisible();
+  await expect(details.getByText("Plant Wheat is blocked because Mara is missing carried Wheat.")).toBeVisible();
+  await expect(details.getByRole("listitem").filter({ hasText: "Plant Wheat" })).toContainText("Blocked");
+});
+
+test("mobile opens Resident Details as a bottom sheet", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "Mobile bottom sheet behavior is covered in the mobile project.");
+  await mockFarmApi(page);
+  await openFarm(page);
+
+  await page.getByTestId("farm-scene-resident-woman").click({ force: true });
+
+  const details = page.locator(".resident-details-panel");
+  await expect(details.getByRole("heading", { name: "Resident Details" })).toBeVisible();
+  await expect(details.getByRole("button", { name: "Close Resident Details" })).toBeVisible();
+  const box = await details.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(box!.y + box!.height).toBeGreaterThan(viewport!.height - 40);
+  expect(box!.height).toBeLessThan(viewport!.height * 0.6);
 });
 
 test("renders resident as working after walking to the approach tile", async ({ page }) => {
@@ -3198,9 +3301,9 @@ function withResidentTaskQueues(
         display_name: resident.display_name,
         selected: resident.id === view.selected_resident_id,
         state,
-        current_task: currentTask ? taskSummary(currentTask, "current") : undefined,
-        queue: queue.map((task, index) => taskSummary(task, index === 0 ? "current" : "queued")),
-        current_step: currentStep ? stepView(currentStep) : undefined,
+        current_task: currentTask ? taskSummary(view, currentTask, "current") : undefined,
+        queue: queue.map((task, index) => taskSummary(view, task, index === 0 ? "current" : "queued")),
+        current_step: currentStep ? stepView(view, currentStep) : undefined,
         target,
         scene: {
           tile: currentStep?.approach_tile ?? target?.tile ?? currentTile,
@@ -3223,28 +3326,56 @@ function withResidentTaskQueues(
   };
 }
 
-function taskSummary(task: ResidentTask, queueState: "current" | "queued" | "blocked") {
+function taskSummary(view: FarmView, task: ResidentTask, queueState: "current" | "queued" | "blocked") {
   return {
     id: task.id,
     kind: task.kind,
     label: taskLabelForStep(task.steps.find((step) => !isResourceStep(step)) ?? task.steps[0]),
     step_count: task.steps.length,
+    steps: task.steps.map((step) => stepView(view, step)),
     queue_state: queueState,
     started_at_ms: task.started_at_ms,
     ready_at_ms: task.ready_at_ms,
   };
 }
 
-function stepView(step: ResidentTask["steps"][number]) {
+function stepView(view: FarmView, step: ResidentTask["steps"][number]) {
   const cue = visualCueForStep(step);
+  const target = targetViewForStep(view, step);
+  const { quantity, kind } = stepQuantityAndKind(step);
   return {
     label: taskLabelForStep(step),
     activity: cue.activity,
     prop: cue.prop,
+    target,
+    quantity,
+    kind,
     walk_duration_ms: step.walk_duration_ms,
     work_duration_ms: step.work_duration_ms,
     duration_ms: step.duration_ms,
   };
+}
+
+function stepQuantityAndKind(step: ResidentTask["steps"][number]) {
+  const work = step.work;
+  if (work.type === "plant_crop") return { quantity: 1, kind: "crop" as const };
+  if (work.type === "harvest_crop") return { quantity: work.quantity, kind: "crop" as const };
+  if (work.type === "collect_animal_product") return { quantity: work.quantity, kind: "animal_product" as const };
+  if (work.type === "feed_animal") return { quantity: 1, kind: "feed" as const };
+  if (work.type === "pickup_items" || work.type === "deposit_items") {
+    return {
+      quantity: work.items.reduce((total, item) => total + item.quantity, 0),
+      kind: "product" as const,
+    };
+  }
+  if (work.type === "deposit_inventory") return { quantity: work.quantity, kind: "product" as const };
+  if (work.type === "pickup_tools" || work.type === "return_tools") {
+    return {
+      quantity: work.tools.reduce((total, tool) => total + tool.quantity, 0),
+      kind: "product" as const,
+    };
+  }
+  return { quantity: 1, kind: "product" as const };
 }
 
 function targetViewForStep(view: FarmView, step: ResidentTask["steps"][number]) {

@@ -571,6 +571,14 @@ button[aria-disabled="true"] {
   pointer-events: none !important;
 }
 
+.farm-scene-resident-ui {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  pointer-events: none;
+}
+
 .farm-scene-marker {
   width: 10px;
   height: 10px;
@@ -585,6 +593,68 @@ button[aria-disabled="true"] {
   padding: 0;
   cursor: pointer;
   pointer-events: auto;
+}
+
+.farm-scene-resident-cue {
+  display: inline-grid;
+  grid-template-columns: 22px minmax(0, max-content);
+  align-items: center;
+  gap: 6px;
+  max-width: 190px;
+  padding: 5px 7px;
+  border: 1px solid rgba(32, 49, 43, 0.26);
+  border-radius: 7px;
+  background: rgba(255, 253, 245, 0.94);
+  color: #20312b;
+  box-shadow: 0 8px 20px rgba(32, 49, 43, 0.18);
+  transform: translateY(-4px);
+}
+
+.farm-scene-resident-cue--blocked {
+  border-color: rgba(143, 51, 47, 0.72);
+  background: rgba(255, 238, 222, 0.96);
+}
+
+.farm-scene-resident-cue__icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #446d38;
+  color: #fffdf5;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.farm-scene-resident-cue--blocked .farm-scene-resident-cue__icon {
+  background: #8f332f;
+}
+
+.farm-scene-resident-cue__body {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.farm-scene-resident-cue__body strong,
+.farm-scene-resident-cue__body small {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-scene-resident-cue__body strong {
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.farm-scene-resident-cue__body small {
+  color: #536a5e;
+  font-size: 10px;
+  font-weight: 850;
 }
 
 .structure-status {
@@ -1168,16 +1238,27 @@ button[aria-disabled="true"] {
   gap: 9px;
 }
 
-.resident-details__header,
-.resident-queue li {
+.selection-panel__header,
+.resident-details__header {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   min-width: 0;
 }
 
+.selection-panel__header h2 {
+  margin-bottom: 0;
+}
+
+.selection-panel__header button {
+  min-height: 30px;
+  padding: 4px 8px;
+}
+
 .resident-details__header span,
-.resident-queue small {
+.resident-queue small,
+.resident-queue-steps span {
   color: #536a5e;
   font-size: 12px;
   font-weight: 800;
@@ -1188,16 +1269,81 @@ button[aria-disabled="true"] {
   gap: 6px;
 }
 
-.resident-queue ol {
+.resident-queue__list {
   display: grid;
   gap: 5px;
   margin: 0;
-  padding-left: 18px;
+  padding-left: 0;
+  list-style: none;
 }
 
-.resident-queue li span {
+.resident-queue-task {
+  min-width: 0;
+}
+
+.resident-queue-task details {
+  border: 1px solid rgba(32, 49, 43, 0.13);
+  border-radius: 6px;
+  background: rgba(255, 253, 245, 0.72);
+}
+
+.resident-queue-task summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 7px;
+  cursor: pointer;
+}
+
+.resident-queue-task summary::marker {
+  color: #536a5e;
+}
+
+.resident-queue-task summary span {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.resident-queue-steps {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0 7px 7px;
+  list-style: none;
+}
+
+.resident-queue-steps li {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 6px;
+  border-radius: 5px;
+  background: #e5edd4;
+}
+
+.resident-queue-steps li div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.resident-queue-steps strong,
+.resident-queue-steps small,
+.resident-queue-steps span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.resident-task-blocked {
+  padding: 7px;
+  border: 1px solid rgba(143, 51, 47, 0.34);
+  border-radius: 6px;
+  background: #ffeede;
+  color: #7c2e2b;
+  font-size: 12px;
+  font-weight: 850;
 }
 
 h1,
@@ -2155,6 +2301,21 @@ h2 {
 
   .panel-section {
     padding: 10px;
+  }
+
+  .side-panel .resident-details-panel {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 720;
+    max-height: min(48vh, 420px);
+    overflow-y: auto;
+    border-radius: 12px 12px 8px 8px;
+  }
+
+  .side-panel .resident-details-panel .resident-details {
+    gap: 8px;
   }
 
   .farmers-market {

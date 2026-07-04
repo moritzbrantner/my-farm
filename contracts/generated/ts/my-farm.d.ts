@@ -115,11 +115,11 @@ export type ResidentTargetView = { kind: ResidentTargetKind, id?: string, label:
 
 export type ResidentSceneView = { tile: ResidentScenePoint, path: Array<ResidentScenePoint>, path_state?: ResidentPathState, inside_house: boolean, };
 
-export type ResidentStepView = { label: string, activity: ResidentVisualActivity, prop: ResidentVisualProp, walk_duration_ms: number, work_duration_ms: number, duration_ms: number, };
+export type ResidentStepView = { label: string, activity: ResidentVisualActivity, prop: ResidentVisualProp, target?: ResidentTargetView, quantity: number, kind: ItemKind, walk_duration_ms: number, work_duration_ms: number, duration_ms: number, };
 
 export type ResidentTaskQueueState = "current" | "queued" | "blocked";
 
-export type ResidentTaskSummaryView = { id: string, kind: ResidentTaskKind, label: string, step_count: number, queue_state: ResidentTaskQueueState, started_at_ms: number, ready_at_ms: number, };
+export type ResidentTaskSummaryView = { id: string, kind: ResidentTaskKind, label: string, step_count: number, steps: Array<ResidentStepView>, queue_state: ResidentTaskQueueState, started_at_ms: number, ready_at_ms: number, };
 
 export type ResidentCarryItemView = { item_id: string, name: string, quantity: number, kind: ItemKind, };
 

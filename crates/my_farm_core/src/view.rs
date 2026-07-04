@@ -169,11 +169,16 @@ pub struct ResidentSceneView {
     pub inside_house: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
 pub struct ResidentStepView {
     pub label: String,
     pub activity: ResidentVisualActivity,
     pub prop: ResidentVisualProp,
+    #[serde(default)]
+    #[ts(optional)]
+    pub target: Option<ResidentTargetView>,
+    pub quantity: u32,
+    pub kind: ItemKind,
     #[ts(type = "number")]
     pub walk_duration_ms: i64,
     #[ts(type = "number")]
@@ -190,12 +195,13 @@ pub enum ResidentTaskQueueState {
     Blocked,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
 pub struct ResidentTaskSummaryView {
     pub id: String,
     pub kind: ResidentTaskKind,
     pub label: String,
     pub step_count: u32,
+    pub steps: Vec<ResidentStepView>,
     pub queue_state: ResidentTaskQueueState,
     #[ts(type = "number")]
     pub started_at_ms: i64,
@@ -371,6 +377,7 @@ fn resident_work(
                 .map(|(index, task)| {
                     resident_task_summary(
                         catalog,
+                        farm,
                         task,
                         if index == 0 && block.is_some() {
                             ResidentTaskQueueState::Blocked
@@ -385,6 +392,7 @@ fn resident_work(
             let current_task_view = current_task.map(|task| {
                 resident_task_summary(
                     catalog,
+                    farm,
                     task,
                     if block.is_some() {
                         ResidentTaskQueueState::Blocked
@@ -393,7 +401,7 @@ fn resident_work(
                     },
                 )
             });
-            let current_step_view = current_step.map(|step| resident_step_view(catalog, step));
+            let current_step_view = current_step.map(|step| resident_step_view(farm, catalog, step));
             let block_view = block.map(|block| BlockedResidentTaskView {
                 task_id: block.task_id.clone(),
                 resident_id: resident.id.clone(),
@@ -551,6 +559,7 @@ fn interpolate_resident_path(
 
 fn resident_task_summary(
     catalog: &CatalogDocument,
+    farm: &FarmState,
     task: &ResidentTask,
     queue_state: ResidentTaskQueueState,
 ) -> ResidentTaskSummaryView {
@@ -559,22 +568,101 @@ fn resident_task_summary(
         kind: task.kind.clone(),
         label: task_label(catalog, task),
         step_count: task.steps.len() as u32,
+        steps: task
+            .steps
+            .iter()
+            .map(|step| resident_step_view(farm, catalog, step))
+            .collect(),
         queue_state,
         started_at_ms: task.started_at_ms,
         ready_at_ms: task.ready_at_ms,
     }
 }
 
-fn resident_step_view(catalog: &CatalogDocument, step: &ResidentTaskStep) -> ResidentStepView {
+fn resident_step_view(
+    farm: &FarmState,
+    catalog: &CatalogDocument,
+    step: &ResidentTaskStep,
+) -> ResidentStepView {
     let (activity, prop) = visual_cue_for_work(&step.work);
+    let (quantity, kind) = step_quantity_and_kind(catalog, &step.work);
     ResidentStepView {
         label: resident_task_step_label(catalog, &step.work),
         activity,
         prop,
+        target: resident_target_view(farm, step),
+        quantity,
+        kind,
         walk_duration_ms: step.walk_duration_ms,
         work_duration_ms: step.work_duration_ms,
         duration_ms: step.duration_ms,
     }
+}
+
+fn step_quantity_and_kind(
+    catalog: &CatalogDocument,
+    work: &ResidentTaskStepWork,
+) -> (u32, ItemKind) {
+    match work {
+        ResidentTaskStepWork::PickupItems { items, .. }
+        | ResidentTaskStepWork::DepositItems { items, .. } => quantity_and_kind_for_stacks(catalog, items),
+        ResidentTaskStepWork::PlantCrop { crop_id } => (
+            1,
+            catalog
+                .item(crop_id)
+                .map(|item| item.kind.clone())
+                .unwrap_or(ItemKind::Crop),
+        ),
+        ResidentTaskStepWork::HarvestCrop { crop_id, quantity } => (
+            *quantity,
+            catalog
+                .item(crop_id)
+                .map(|item| item.kind.clone())
+                .unwrap_or(ItemKind::Crop),
+        ),
+        ResidentTaskStepWork::StartOvenRecipe { recipe_id, .. } => catalog
+            .recipe(recipe_id)
+            .map(|recipe| quantity_and_kind_for_stacks(catalog, &recipe.inputs))
+            .unwrap_or((0, ItemKind::Product)),
+        ResidentTaskStepWork::CollectMachineJob { recipe_id, .. }
+        | ResidentTaskStepWork::CollectOvenJob { recipe_id, .. } => catalog
+            .recipe(recipe_id)
+            .map(|recipe| quantity_and_kind_for_stacks(catalog, &recipe.outputs))
+            .unwrap_or((0, ItemKind::Product)),
+        ResidentTaskStepWork::FeedAnimal => (1, ItemKind::Product),
+        ResidentTaskStepWork::CollectAnimalProduct { item_id, quantity } => (
+            *quantity,
+            catalog
+                .item(item_id)
+                .map(|item| item.kind.clone())
+                .unwrap_or(ItemKind::Product),
+        ),
+        ResidentTaskStepWork::DepositInventory { item_id, quantity } => (
+            *quantity,
+            catalog
+                .item(item_id)
+                .map(|item| item.kind.clone())
+                .unwrap_or(ItemKind::Product),
+        ),
+        ResidentTaskStepWork::PickupTools { tools, .. }
+        | ResidentTaskStepWork::ReturnTools { tools, .. } => (
+            tools.iter().map(|tool| tool.quantity).sum(),
+            ItemKind::Product,
+        ),
+    }
+}
+
+fn quantity_and_kind_for_stacks(
+    catalog: &CatalogDocument,
+    stacks: &[ItemStack],
+) -> (u32, ItemKind) {
+    let quantity = stacks.iter().map(|stack| stack.quantity).sum();
+    let kind = stacks
+        .first()
+        .and_then(|stack| catalog.item(&stack.item_id))
+        .map(|item| item.kind.clone())
+        .unwrap_or(ItemKind::Product);
+    (quantity, kind)
 }
 
 fn task_label(catalog: &CatalogDocument, task: &ResidentTask) -> String {

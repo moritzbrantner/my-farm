@@ -84,6 +84,10 @@ _Avoid_: Instant oven queueing, make cake
 The per-resident FIFO list of Resident Tasks saved on the Farm. Later work may enqueue physical production tasks here; empty queues still exist for each Farm Resident.
 _Avoid_: Local queue, animation queue
 
+**Resident Details**:
+The selected-Farm Resident UI surface that shows current Resident Task state, current step, target, progress, carried Resident Inventory, blocked reason, and expandable Resident Task Queue.
+_Avoid_: Worker debug panel, task queue modal, character stats
+
 **Resident Inventory**:
 The authoritative per-Farm Resident carried inventory used while that resident has queued work. It contains carried item stacks, durable Tools, and each Tool's checkout source; it should be empty when the Resident Task Queue becomes empty unless cleanup is blocked by storage capacity.
 _Avoid_: Backpack, global inventory, storage

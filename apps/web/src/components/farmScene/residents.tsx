@@ -13,8 +13,10 @@ export type FarmResidentPresentation = {
   state: "idle" | "walking" | "working" | "blocked";
   activity: ResidentVisualActivity;
   prop: ResidentVisualProp;
+  taskLabel: string;
   targetLabel: string;
   selected: boolean;
+  blocked: boolean;
   animationPaused: boolean;
 };
 
@@ -70,21 +72,70 @@ export function FarmResidentFigure({
         />
       </group>
       <Html position={[0, 0.96, 0]} center zIndexRange={[88, 0]} wrapperClass="farm-scene-resident-marker-wrapper">
-        <button
-          type="button"
-          className="farm-scene-marker farm-scene-resident-marker"
-          data-testid={`farm-scene-resident-${resident.id}`}
-          data-resident-state={resident.state}
-          data-resident-activity={resident.activity}
-          data-resident-prop={resident.prop}
-          data-resident-target={resident.targetLabel}
-          aria-label={`${resident.displayName} Farm Resident`}
-          aria-pressed={resident.selected}
-          onClick={onSelect}
-        />
+        <div className="farm-scene-resident-ui">
+          <button
+            type="button"
+            className="farm-scene-marker farm-scene-resident-marker"
+            data-testid={`farm-scene-resident-${resident.id}`}
+            data-resident-state={resident.state}
+            data-resident-activity={resident.activity}
+            data-resident-prop={resident.prop}
+            data-resident-target={resident.targetLabel}
+            aria-label={`${resident.displayName} Farm Resident`}
+            aria-pressed={resident.selected}
+            onClick={onSelect}
+          />
+          {resident.selected ? (
+            <div
+              className={
+                resident.blocked
+                  ? "farm-scene-resident-cue farm-scene-resident-cue--blocked"
+                  : "farm-scene-resident-cue"
+              }
+              data-testid={`farm-scene-resident-cue-${resident.id}`}
+              data-resident-blocked={resident.blocked}
+            >
+              <span className="farm-scene-resident-cue__icon" aria-hidden="true">
+                {resident.blocked ? "!" : activityToken(resident.activity)}
+              </span>
+              <span className="farm-scene-resident-cue__body">
+                <strong>{resident.taskLabel}</strong>
+                <small>{resident.targetLabel}</small>
+              </span>
+            </div>
+          ) : null}
+        </div>
       </Html>
     </group>
   );
+}
+
+function activityToken(activity: ResidentVisualActivity) {
+  switch (activity) {
+    case "walking":
+      return "Go";
+    case "planting":
+      return "Pl";
+    case "harvesting":
+      return "Hv";
+    case "picking_up_items":
+    case "depositing_inventory":
+      return "Cr";
+    case "picking_up_tools":
+    case "returning_tools":
+      return "Tl";
+    case "starting_oven":
+    case "collecting_oven":
+      return "Ov";
+    case "feeding_animal":
+      return "Fd";
+    case "collecting_animal_product":
+      return "An";
+    case "collecting_machine":
+      return "Mc";
+    case "idle":
+      return "Id";
+  }
 }
 
 export function ResidentModel({
