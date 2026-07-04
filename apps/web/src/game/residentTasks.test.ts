@@ -2,7 +2,13 @@
 
 import { expect, test } from "bun:test";
 import type { FarmView, ResidentTask } from "../types";
-import { currentResidentScenePose, hasActiveResidentWalk, interpolatePath } from "./residentTasks";
+import { selectedResident } from "./selectors";
+import {
+  currentResidentScenePath,
+  currentResidentScenePose,
+  hasActiveResidentWalk,
+  interpolatePath,
+} from "./residentTasks";
 
 test("interpolates resident walking along stored path", () => {
   const view = farmViewWithTask({
@@ -162,6 +168,98 @@ test("does not report active resident walking for legacy steps without paths", (
 
 test("does not report active resident walking while residents are idle", () => {
   expect(hasActiveResidentWalk(farmViewWithTask(null), 1_500)).toBe(false);
+});
+
+test("selected resident lookup returns selected resident", () => {
+  const view = farmViewWithTask(null);
+
+  expect(selectedResident(view, { type: "resident", id: "man" })).toEqual({
+    id: "man",
+    display_name: "Man",
+  });
+  expect(selectedResident(view, { type: "resident", id: "missing" })).toBeNull();
+  expect(selectedResident(view, { type: "plot", id: "plot-1" })).toBeNull();
+});
+
+test("returns visible scene path for a resident current step", () => {
+  const view = farmViewWithTask({
+    id: "task-1",
+    kind: { type: "field_work" },
+    started_at_ms: 1_000,
+    ready_at_ms: 4_000,
+    steps: [
+      {
+        reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+        work: { type: "plant_crop", crop_id: "wheat" },
+        approach_tile: { x: 10, y: 10 },
+        walk_path: [
+          { x: 9, y: 10 },
+          { x: 10, y: 10 },
+        ],
+        walk_duration_ms: 1_000,
+        work_duration_ms: 2_000,
+        duration_ms: 3_000,
+      },
+    ],
+  });
+
+  expect(currentResidentScenePath(view, "woman", 1_500)).toEqual({
+    residentId: "woman",
+    tiles: [
+      { x: 8, y: 10 },
+      { x: 9, y: 10 },
+      { x: 10, y: 10 },
+    ],
+    state: "walking",
+  });
+});
+
+test("keeps current step path visible during work phase", () => {
+  const view = farmViewWithTask({
+    id: "task-1",
+    kind: { type: "field_work" },
+    started_at_ms: 1_000,
+    ready_at_ms: 4_000,
+    steps: [
+      {
+        reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+        work: { type: "plant_crop", crop_id: "wheat" },
+        approach_tile: { x: 10, y: 10 },
+        walk_path: [{ x: 10, y: 10 }],
+        walk_duration_ms: 1_000,
+        work_duration_ms: 2_000,
+        duration_ms: 3_000,
+      },
+    ],
+  });
+
+  expect(currentResidentScenePath(view, "woman", 2_000)?.state).toBe("working");
+});
+
+test("does not return scene path for idle residents or empty walk paths", () => {
+  expect(currentResidentScenePath(farmViewWithTask(null), "woman", 1_500)).toBeNull();
+  expect(
+    currentResidentScenePath(
+      farmViewWithTask({
+        id: "task-1",
+        kind: { type: "field_work" },
+        started_at_ms: 1_000,
+        ready_at_ms: 4_000,
+        steps: [
+          {
+            reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+            work: { type: "plant_crop", crop_id: "wheat" },
+            walk_path: [],
+            walk_duration_ms: 0,
+            work_duration_ms: 3_000,
+            duration_ms: 3_000,
+          },
+        ],
+      }),
+      "woman",
+      1_500,
+    ),
+  ).toBeNull();
 });
 
 function farmViewWithTask(task: ResidentTask | null): FarmView {

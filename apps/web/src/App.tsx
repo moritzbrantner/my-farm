@@ -23,6 +23,7 @@ import {
   secondsRemaining,
   selectedMachine,
   selectedPlot,
+  selectedResident,
   selectedShelter,
   selectedStructureLabel,
   structureLabel,
@@ -40,11 +41,15 @@ import {
   type StructureMenuModel,
 } from "./game/structureMenu";
 import {
+  currentResidentScenePath,
+  currentResidentScenePose,
   reservedAnimalReason,
   reservedFieldReason,
   reservedMachineReason,
   reservedOvenReason,
   residentTaskStatus,
+  residentTaskStepLabel,
+  taskLabel,
 } from "./game/residentTasks";
 import { decorationPlacementStatus, type RoomTile } from "./game/houseInterior";
 import type {
@@ -466,6 +471,25 @@ export function App() {
     [applyFarmSnapshot, gameplayPaused],
   );
 
+  const selectResidentForWork = useCallback(
+    async (residentId: string) => {
+      setSelection({ type: "resident", id: residentId });
+      setFieldMenu(null);
+      setStructureMenu(null);
+      setBuildPlacement(null);
+      setMovingStructure(null);
+      plantSweepRef.current = null;
+      harvestSweepRef.current = null;
+      setPlantSweep(null);
+      setHarvestSweep(null);
+      if (!view || view.selected_resident_id === residentId) {
+        return;
+      }
+      await send({ type: "select_resident", resident_id: residentId });
+    },
+    [send, view],
+  );
+
   const reset = useCallback(async () => {
     const response = await client.reset();
     applyFarmSnapshot(response.version, response.view, { force: true });
@@ -747,6 +771,17 @@ export function App() {
       }
     },
     [send, view],
+  );
+
+  const renameResident = useCallback(
+    async (residentId: string, displayName: string) => {
+      return send({
+        type: "rename_resident",
+        resident_id: residentId,
+        display_name: displayName.trim(),
+      });
+    },
+    [send],
   );
 
   const selectPlantFieldTool = useCallback(
@@ -1083,6 +1118,9 @@ export function App() {
       : null;
   const menuModel = demoMode && fullMenuModel ? demoMenuModel(fullMenuModel) : fullMenuModel;
   const menuPoint = fieldMenu ?? structureMenu;
+  const selectedPath = selection?.type === "resident"
+    ? currentResidentScenePath(view, selection.id, nowMs)
+    : null;
 
   return (
     <main className={`app ${appToolClass}`}>
@@ -1100,6 +1138,7 @@ export function App() {
             onPlaceDecoration={placeDecoration}
             onMoveDecoration={moveDecoration}
             onRemoveDecoration={removeDecoration}
+            onRenameResident={renameResident}
             onBackToFarm={returnToFarmScene}
           />
         ) : (
@@ -1115,6 +1154,7 @@ export function App() {
             plantSweep={plantSweep}
             harvestSweep={harvestSweep}
             onSelect={select}
+            onSelectResident={selectResidentForWork}
             onOpenFieldMenu={openFieldMenu}
             onOpenStructureMenu={openStructureMenu}
             onPlaceNewStructure={placeNewStructure}
@@ -1127,6 +1167,14 @@ export function App() {
             onEnterHouseInterior={enterHouseInterior}
           />
         )}
+        {screen === "playing" && playScene === "farm" && selectedPath ? (
+          <div
+            className="resident-path-marker"
+            data-testid={`resident-path-${selectedPath.residentId}`}
+            data-path-tile-count={selectedPath.tiles.length}
+            aria-hidden="true"
+          />
+        ) : null}
         {screen === "playing" ? (
           playScene === "farm" ? (
             <>
@@ -1138,7 +1186,12 @@ export function App() {
               />
               <aside className="side-panel">
                 <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
-                <ResidentSelector catalog={catalog} view={view} nowMs={nowMs} send={send} />
+                <ResidentSelector
+                  catalog={catalog}
+                  view={view}
+                  nowMs={nowMs}
+                  onSelectResident={selectResidentForWork}
+                />
                 <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
                 {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
                 <FieldTools
@@ -1547,12 +1600,12 @@ function ResidentSelector({
   catalog,
   view,
   nowMs,
-  send,
+  onSelectResident,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
   nowMs: number;
-  send: SendCommand;
+  onSelectResident: (residentId: string) => void;
 }) {
   const residents = view.residents.slice(0, 2);
 
@@ -1568,7 +1621,7 @@ function ResidentSelector({
             resident={resident}
             selected={resident.id === view.selected_resident_id}
             nowMs={nowMs}
-            send={send}
+            onSelectResident={onSelectResident}
           />
         ))}
       </div>
@@ -1582,95 +1635,30 @@ function ResidentCard({
   resident,
   selected,
   nowMs,
-  send,
+  onSelectResident,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
   resident: FarmResident;
   selected: boolean;
   nowMs: number;
-  send: SendCommand;
+  onSelectResident: (residentId: string) => void;
 }) {
-  const [draftName, setDraftName] = useState(resident.display_name);
-  const [renameError, setRenameError] = useState<string | null>(null);
   const status = residentTaskStatus(catalog, view, resident.id, nowMs);
 
-  useEffect(() => {
-    setDraftName(resident.display_name);
-    setRenameError(null);
-  }, [resident.display_name]);
-
-  const submitRename = async () => {
-    const trimmed = draftName.trim();
-    if (trimmed === resident.display_name) {
-      setDraftName(resident.display_name);
-      setRenameError(null);
-      return;
-    }
-    const result = await send({
-      type: "rename_resident",
-      resident_id: resident.id,
-      display_name: trimmed,
-    });
-    if (!result.accepted) {
-      setDraftName(resident.display_name);
-      setRenameError(result.error ?? "Rename rejected");
-      return;
-    }
-    setRenameError(null);
-  };
-
   const selectResident = async () => {
-    if (selected) {
-      return;
-    }
-    await send({ type: "select_resident", resident_id: resident.id });
+    await onSelectResident(resident.id);
   };
 
   return (
     <article className={selected ? "resident-card resident-card--selected" : "resident-card"}>
       <div className="resident-card__topline">
         <strong>{selected ? "Selected Resident" : "Farm Resident"}</strong>
-        <button type="button" disabled={selected} onClick={selectResident}>
+        <button type="button" disabled={selected} onClick={() => void selectResident()}>
           {selected ? "Selected" : "Select"}
         </button>
       </div>
-      <label className="resident-card__name">
-        <span>Display name</span>
-        <input
-          aria-label={`${resident.display_name} display name`}
-          value={draftName}
-          onChange={(event) => {
-            setDraftName(event.target.value);
-            setRenameError(null);
-          }}
-          onBlur={() => {
-            void submitRename();
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.currentTarget.blur();
-            }
-            if (event.key === "Escape") {
-              setDraftName(resident.display_name);
-              setRenameError(null);
-              event.currentTarget.blur();
-            }
-          }}
-        />
-      </label>
-      <button
-        className="resident-card__rename"
-        type="button"
-        disabled={draftName.trim() === resident.display_name}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => {
-          void submitRename();
-        }}
-      >
-        Rename
-      </button>
-      {renameError ? <small className="resident-card__error">{renameError}</small> : null}
+      <strong className="resident-card__display-name">{resident.display_name}</strong>
       <dl className="resident-card__status">
         <div>
           <dt>Current task</dt>
@@ -2356,6 +2344,7 @@ function SelectionPanel({
   const plot = selectedPlot(view, selection);
   const machine = selectedMachine(view, selection);
   const shelter = selectedShelter(view, selection);
+  const resident = selectedResident(view, selection);
   const isFarmhouse = selection?.type === "farmhouse";
   const isSilo = selection?.type === "silo";
   const isBarn = selection?.type === "barn";
@@ -2405,11 +2394,15 @@ function SelectionPanel({
       {shelter ? (
         <ShelterActions catalog={catalog} view={view} shelter={shelter} nowMs={nowMs} send={send} />
       ) : null}
+      {resident ? (
+        <ResidentActions catalog={catalog} view={view} resident={resident} nowMs={nowMs} />
+      ) : null}
       {!demoMode && selection?.type === "delivery_board" ? <p>Use delivery orders below.</p> : null}
       {isToolShed ? <p>Tool Shed</p> : null}
       {!plot &&
       !machine &&
       !shelter &&
+      !resident &&
       !isFarmhouse &&
       !isSilo &&
       !isBarn &&
@@ -2423,6 +2416,105 @@ function SelectionPanel({
       ) : null}
     </section>
   );
+}
+
+function ResidentActions({
+  catalog,
+  view,
+  resident,
+  nowMs,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  resident: FarmResident;
+  nowMs: number;
+}) {
+  const status = residentTaskStatus(catalog, view, resident.id, nowMs);
+  const pose = currentResidentScenePose(view, resident.id, nowMs);
+  const currentStep = status.currentTask?.steps[0] ?? null;
+  const queue = view.resident_task_queues[resident.id] ?? [];
+  return (
+    <div className="action-stack resident-details">
+      <div className="resident-details__header">
+        <strong>{resident.display_name}</strong>
+        <span>{resident.id === view.selected_resident_id ? "Selected for work" : "Inspecting"}</span>
+      </div>
+      <dl className="resident-card__status">
+        <div>
+          <dt>State</dt>
+          <dd>{sceneStateLabel(pose.state)}</dd>
+        </div>
+        <div>
+          <dt>Current task</dt>
+          <dd>{status.label}</dd>
+        </div>
+        <div>
+          <dt>Current step</dt>
+          <dd>{currentStep ? residentTaskStepLabel(catalog, currentStep.work) : "None"}</dd>
+        </div>
+        <div>
+          <dt>Target</dt>
+          <dd>{sceneTargetLabel(pose.label)}</dd>
+        </div>
+      </dl>
+      {status.currentTask ? (
+        <div className="resident-task-progress">
+          <progress value={status.progress} max={1} aria-label={`${resident.display_name} task progress`} />
+          <span>{Math.round(status.progress * 100)}%</span>
+        </div>
+      ) : null}
+      <div className="resident-queue">
+        <strong>Task queue</strong>
+        {queue.length === 0 ? (
+          <p>Idle</p>
+        ) : (
+          <ol>
+            {queue.map((task, index) => (
+              <li key={task.id}>
+                <span>{taskLabel(catalog, task)}</span>
+                <small>
+                  {index === 0 ? "Current" : "Queued"} - {task.steps.length}{" "}
+                  {task.steps.length === 1 ? "step" : "steps"}
+                </small>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function sceneStateLabel(state: ReturnType<typeof currentResidentScenePose>["state"]) {
+  return state === "idle" ? "Idle" : state === "walking" ? "Walking" : "Working";
+}
+
+function sceneTargetLabel(label: string) {
+  if (label === "farmhouse") {
+    return "Farmhouse";
+  }
+  if (label === "silo") {
+    return "Silo";
+  }
+  if (label === "barn") {
+    return "Barn";
+  }
+  if (label === "tool_shed") {
+    return "Tool Shed";
+  }
+  if (label === "oven") {
+    return "Oven";
+  }
+  if (label.startsWith("field:")) {
+    return `Field Plot ${label.slice("field:".length)}`;
+  }
+  if (label.startsWith("machine:")) {
+    return "Machine";
+  }
+  if (label.startsWith("animal:")) {
+    return "Animal Shelter";
+  }
+  return "Work target";
 }
 
 function FarmhouseActions({

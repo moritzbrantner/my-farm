@@ -1,6 +1,6 @@
 import { Html, OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   decorationPlacementStatus,
   type DecorationDefinition,
@@ -31,8 +31,11 @@ type Props = {
   onPlaceDecoration: (roomId: string, decorationId: string, tile: RoomTile) => void;
   onMoveDecoration: (roomId: string, placementId: string, tile: RoomTile) => void;
   onRemoveDecoration: (roomId: string, placementId: string) => void;
+  onRenameResident: (residentId: string, displayName: string) => Promise<CommandResult>;
   onBackToFarm: () => void;
 };
+
+type CommandResult = { accepted: boolean; error: string | null };
 
 const decorationEditingUnlockLevel = 5;
 const tileSize = 0.64;
@@ -84,6 +87,7 @@ export function HouseInteriorScene({
   onPlaceDecoration,
   onMoveDecoration,
   onRemoveDecoration,
+  onRenameResident,
   onBackToFarm,
 }: Props) {
   const [hoverTile, setHoverTile] = useState<RoomTile | null>(null);
@@ -163,6 +167,9 @@ export function HouseInteriorScene({
           </button>
         ))}
       </nav>
+      {room.id === "bedroom" ? (
+        <FamilyTreePanel view={view} onRenameResident={onRenameResident} />
+      ) : null}
       <DecorationCatalogTray
         catalog={catalog}
         preview={preview}
@@ -178,6 +185,112 @@ export function HouseInteriorScene({
         }}
       />
     </section>
+  );
+}
+
+function FamilyTreePanel({
+  view,
+  onRenameResident,
+}: {
+  view: FarmView;
+  onRenameResident: (residentId: string, displayName: string) => Promise<CommandResult>;
+}) {
+  return (
+    <section className="family-tree-panel" aria-label="Family Tree">
+      <div className="family-tree-panel__header">
+        <span>Bedroom</span>
+        <strong>Family Tree</strong>
+      </div>
+      <div className="family-tree-panel__residents">
+        {view.residents.slice(0, 2).map((resident) => (
+          <FamilyTreeResidentEditor
+            key={resident.id}
+            resident={resident}
+            selected={resident.id === view.selected_resident_id}
+            onRenameResident={onRenameResident}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FamilyTreeResidentEditor({
+  resident,
+  selected,
+  onRenameResident,
+}: {
+  resident: FarmView["residents"][number];
+  selected: boolean;
+  onRenameResident: (residentId: string, displayName: string) => Promise<CommandResult>;
+}) {
+  const [draftName, setDraftName] = useState(resident.display_name);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraftName(resident.display_name);
+    setRenameError(null);
+  }, [resident.display_name]);
+
+  const submitRename = async () => {
+    const trimmed = draftName.trim();
+    if (trimmed === resident.display_name) {
+      setDraftName(resident.display_name);
+      setRenameError(null);
+      return;
+    }
+    const result = await onRenameResident(resident.id, trimmed);
+    if (!result.accepted) {
+      setDraftName(resident.display_name);
+      setRenameError(result.error ?? "Rename rejected");
+      return;
+    }
+    setRenameError(null);
+  };
+
+  return (
+    <article className={selected ? "family-tree-resident family-tree-resident--selected" : "family-tree-resident"}>
+      <div className="family-tree-resident__topline">
+        <strong>{resident.display_name}</strong>
+        <span>{selected ? "Selected for work" : "Farm Resident"}</span>
+      </div>
+      <label className="family-tree-resident__name">
+        <span>Display name</span>
+        <input
+          aria-label={`${resident.display_name} display name`}
+          value={draftName}
+          onChange={(event) => {
+            setDraftName(event.target.value);
+            setRenameError(null);
+          }}
+          onBlur={() => {
+            void submitRename();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+            if (event.key === "Escape") {
+              setDraftName(resident.display_name);
+              setRenameError(null);
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      </label>
+      <button
+        type="button"
+        className="family-tree-resident__rename"
+        disabled={draftName.trim() === resident.display_name}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          void submitRename();
+        }}
+      >
+        Rename
+      </button>
+      {renameError ? <small className="family-tree-resident__error">{renameError}</small> : null}
+    </article>
   );
 }
 

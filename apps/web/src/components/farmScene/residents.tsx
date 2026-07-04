@@ -1,5 +1,6 @@
 import { Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
+import type { ThreeEvent } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
@@ -10,11 +11,22 @@ export type FarmResidentPresentation = {
   position: [number, number, number];
   state: "idle" | "walking" | "working";
   targetLabel: string;
+  selected: boolean;
 };
 
-export function FarmResidentFigure({ resident }: { resident: FarmResidentPresentation }) {
+export function FarmResidentFigure({
+  resident,
+  onSelect,
+}: {
+  resident: FarmResidentPresentation;
+  onSelect: () => void;
+}) {
   const groupRef = useRef<THREE.Group | null>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const selectResident = (event: ThreeEvent<MouseEvent | PointerEvent>) => {
+    event.stopPropagation();
+    onSelect();
+  };
 
   useFrame(({ clock }) => {
     if (!groupRef.current || reducedMotion) {
@@ -30,20 +42,41 @@ export function FarmResidentFigure({ resident }: { resident: FarmResidentPresent
 
   return (
     <group position={resident.position}>
+      <mesh
+        position={[0, 0.55, 0]}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={selectResident}
+      >
+        <boxGeometry args={[0.72, 1.25, 0.72]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
       <group ref={groupRef}>
         <ResidentShadow />
+        {resident.selected ? <ResidentSelectionRing /> : null}
         <ResidentBody variant={resident.variant} />
       </group>
-      <Html position={[0, 0.96, 0]} center zIndexRange={[88, 0]} wrapperClass="farm-scene-marker-wrapper">
-        <div
+      <Html position={[0, 0.96, 0]} center zIndexRange={[88, 0]} wrapperClass="farm-scene-resident-marker-wrapper">
+        <button
+          type="button"
           className="farm-scene-marker farm-scene-resident-marker"
           data-testid={`farm-scene-resident-${resident.id}`}
           data-resident-state={resident.state}
           data-resident-target={resident.targetLabel}
           aria-label={`${resident.displayName} Farm Resident`}
+          aria-pressed={resident.selected}
+          onClick={onSelect}
         />
       </Html>
     </group>
+  );
+}
+
+function ResidentSelectionRing() {
+  return (
+    <mesh position={[0, 0.055, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[0.27, 0.36, 28]} />
+      <meshBasicMaterial color="#f0cb6b" transparent opacity={0.92} depthWrite={false} />
+    </mesh>
   );
 }
 

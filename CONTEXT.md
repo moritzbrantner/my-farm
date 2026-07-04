@@ -36,6 +36,10 @@ _Avoid_: Rendered prop, local layout
 Player intent to change saved Decoration Placements in the House Interior. Editing changes are authoritative Farm state rather than browser-only presentation.
 _Avoid_: Client-only decorating, unsaved layout
 
+**Family Tree**:
+A Bedroom surface inside the House Interior for viewing and editing Farm Resident identity.
+_Avoid_: Decoration, relationship graph, task queue panel
+
 **Farmhouse Upgrade**:
 A durable improvement bought for the Farmhouse rather than placed on the farm grid. Farmhouse Upgrades use catalog-driven level and coin requirements and are saved as owned Farm state.
 _Avoid_: Structure upgrade, house building

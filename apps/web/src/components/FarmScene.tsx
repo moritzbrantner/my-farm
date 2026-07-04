@@ -33,6 +33,7 @@ import {
   type StructureProductionStatus,
 } from "../game/structureStatus";
 import {
+  currentResidentScenePath,
   currentResidentScenePose,
   hasActiveResidentWalk,
 } from "../game/residentTasks";
@@ -56,6 +57,7 @@ type Props = {
   plantSweep: PlantSweepState;
   harvestSweep: HarvestSweepState;
   onSelect: (selection: Selection) => void;
+  onSelectResident: (residentId: string) => void;
   onOpenFieldMenu: (plotId: string, point: { x: number; y: number }) => void;
   onOpenStructureMenu: (target: StructureSelection, point: { x: number; y: number }) => void;
   onPlaceNewStructure: (tile: Tile) => void;
@@ -90,6 +92,7 @@ export function FarmScene({
   onEnterHarvestSweepPlot,
   onCancelFieldToolAction,
   onEnterHouseInterior,
+  onSelectResident,
 }: Props) {
   const [hoverTile, setHoverTile] = useState<Tile | null>(null);
 
@@ -288,7 +291,14 @@ export function FarmScene({
             }}
           />
         ) : null}
-        <FarmResidents view={view} nowMs={nowMs} visualClockPaused={visualClockPaused} />
+        <ResidentPathOverlay view={view} selection={selection} nowMs={nowMs} />
+        <FarmResidents
+          view={view}
+          nowMs={nowMs}
+          visualClockPaused={visualClockPaused}
+          selection={selection}
+          onSelectResident={onSelectResident}
+        />
         {movingStructure && hoverTile ? (
           <PlacementPreview
             tile={hoverTile}
@@ -319,10 +329,14 @@ function FarmResidents({
   view,
   nowMs,
   visualClockPaused,
+  selection,
+  onSelectResident,
 }: {
   view: FarmView;
   nowMs: number;
   visualClockPaused: boolean;
+  selection: Selection;
+  onSelectResident: (residentId: string) => void;
 }) {
   const residentNowMs = useResidentVisualNowMs(view, nowMs, visualClockPaused);
   const residents = view.residents.slice(0, 2).map((resident, index): FarmResidentPresentation => {
@@ -341,13 +355,71 @@ function FarmResidents({
       position,
       state: pose.state,
       targetLabel: pose.label,
+      selected: selection?.type === "resident" && selection.id === resident.id,
     };
   });
 
   return (
     <group>
       {residents.map((resident) => (
-        <FarmResidentFigure key={resident.id} resident={resident} />
+        <FarmResidentFigure
+          key={resident.id}
+          resident={resident}
+          onSelect={() => onSelectResident(resident.id)}
+        />
+      ))}
+    </group>
+  );
+}
+
+function ResidentPathOverlay({
+  view,
+  selection,
+  nowMs,
+}: {
+  view: FarmView;
+  selection: Selection;
+  nowMs: number;
+}) {
+  const path = selection?.type === "resident"
+    ? currentResidentScenePath(view, selection.id, nowMs)
+    : null;
+  const linePoints = useMemo(() => {
+    if (!path) {
+      return new Float32Array();
+    }
+    return new Float32Array(
+      path.tiles.flatMap((tile) => [tileToWorld(tile.x), 0.13, tileToWorld(tile.y)]),
+    );
+  }, [path]);
+
+  if (!path || path.tiles.length < 2) {
+    return null;
+  }
+
+  return (
+    <group>
+      <line>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" args={[linePoints, 3]} />
+        </bufferGeometry>
+        <lineBasicMaterial color="#20312b" transparent opacity={0.54} linewidth={5} />
+      </line>
+      <line>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" args={[linePoints, 3]} />
+        </bufferGeometry>
+        <lineBasicMaterial color={path.state === "walking" ? "#f0cb6b" : "#fff7d0"} transparent opacity={0.96} linewidth={2} />
+      </line>
+      {path.tiles.map((tile, index) => (
+        <mesh
+          key={`${tile.x},${tile.y},${index}`}
+          position={[tileToWorld(tile.x), 0.145, tileToWorld(tile.y)]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <circleGeometry args={[0.08, 16]} />
+          <meshBasicMaterial color="#20312b" transparent opacity={0.72} depthWrite={false} />
+        </mesh>
       ))}
     </group>
   );

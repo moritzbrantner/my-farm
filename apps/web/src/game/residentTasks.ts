@@ -28,6 +28,12 @@ export type ResidentScenePose = {
   state: ResidentSceneState;
 };
 
+export type ResidentScenePath = {
+  residentId: string;
+  tiles: Array<{ x: number; y: number }>;
+  state: Exclude<ResidentSceneState, "idle">;
+};
+
 export function residentTaskStatus(
   catalog: CatalogDocument,
   view: FarmView,
@@ -103,6 +109,25 @@ export function hasActiveResidentWalk(view: FarmView, nowMs: number): boolean {
     const walkEndsAtMs = currentTask.started_at_ms + currentStep.walk_duration_ms;
     return nowMs < walkEndsAtMs && nowMs < currentTask.ready_at_ms;
   });
+}
+
+export function currentResidentScenePath(
+  view: FarmView,
+  residentId: string,
+  nowMs = Date.now(),
+): ResidentScenePath | null {
+  const currentTile = view.resident_locations[residentId] ?? { x: 8, y: 10 };
+  const currentTask = view.resident_task_queues[residentId]?.[0] ?? null;
+  const currentStep = currentTask?.steps[0] ?? null;
+  if (!currentTask || !currentStep || currentStep.walk_path.length === 0) {
+    return null;
+  }
+  const walkEndsAtMs = currentTask.started_at_ms + currentStep.walk_duration_ms;
+  return {
+    residentId,
+    tiles: [currentTile, ...currentStep.walk_path],
+    state: nowMs < walkEndsAtMs ? "walking" : "working",
+  };
 }
 
 export function residentTaskProgress(task: ResidentTask, nowMs: number) {
@@ -240,26 +265,33 @@ function sameReservedTarget(left: ReservedWorkTarget, right: ReservedWorkTarget)
   );
 }
 
-function taskLabel(catalog: CatalogDocument, task: ResidentTask) {
+export function taskLabel(catalog: CatalogDocument, task: ResidentTask) {
   const firstWork = task.steps[0]?.work;
   if (!firstWork) {
     return task.kind.type === "field_work" ? "Field work" : "Production work";
   }
-  switch (firstWork.type) {
+  return residentTaskStepLabel(catalog, firstWork);
+}
+
+export function residentTaskStepLabel(
+  catalog: CatalogDocument,
+  work: ResidentTask["steps"][number]["work"],
+) {
+  switch (work.type) {
     case "plant_crop":
-      return `Plant ${itemName(catalog, firstWork.crop_id)}`;
+      return `Plant ${itemName(catalog, work.crop_id)}`;
     case "harvest_crop":
-      return `Harvest ${itemName(catalog, firstWork.crop_id)}`;
+      return `Harvest ${itemName(catalog, work.crop_id)}`;
     case "collect_machine_job":
-      return `Collect ${recipeName(catalog, firstWork.recipe_id)}`;
+      return `Collect ${recipeName(catalog, work.recipe_id)}`;
     case "collect_oven_job":
-      return `Collect ${recipeName(catalog, firstWork.recipe_id)}`;
+      return `Collect ${recipeName(catalog, work.recipe_id)}`;
     case "feed_animal":
       return "Feed animal";
     case "collect_animal_product":
-      return `Collect ${itemName(catalog, firstWork.item_id)}`;
+      return `Collect ${itemName(catalog, work.item_id)}`;
     case "deposit_inventory":
-      return `Store ${itemName(catalog, firstWork.item_id)}`;
+      return `Store ${itemName(catalog, work.item_id)}`;
     case "return_tools":
       return "Return tools";
   }

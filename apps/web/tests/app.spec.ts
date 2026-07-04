@@ -201,8 +201,10 @@ test("resident selector shows both residents and sends selected resident command
 
   const residents = page.getByLabel("Farm Residents");
   await expect(residents.getByText("Selected Resident")).toBeVisible();
-  await expect(residents.getByRole("textbox", { name: "Mara display name" })).toBeVisible();
-  await expect(residents.getByRole("textbox", { name: "Jon display name" })).toBeVisible();
+  await expect(residents.getByText("Mara")).toBeVisible();
+  await expect(residents.getByText("Jon")).toBeVisible();
+  await expect(residents.getByRole("textbox")).toHaveCount(0);
+  await expect(residents.getByRole("button", { name: "Rename" })).toHaveCount(0);
 
   await residents.locator(".resident-card").nth(1).getByRole("button", { name: "Select" }).click();
 
@@ -210,9 +212,14 @@ test("resident selector shows both residents and sends selected resident command
     type: "select_resident",
     resident_id: "man",
   });
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+  await expect(selection.getByText("Jon")).toBeVisible();
+  await expect(selection.getByText("Task queue")).toBeVisible();
 });
 
-test("resident selector trims successful renames and shows rejected rename errors", async ({ page }) => {
+test("Bedroom Family Tree trims successful resident renames and shows rejected rename errors", async ({ page }) => {
   const commands: CommandRequest[] = [];
   const renamedView: FarmView = {
     ...farmView,
@@ -241,20 +248,27 @@ test("resident selector trims successful renames and shows rejected rename error
 
   await openFarm(page);
 
-  const residents = page.getByLabel("Farm Residents");
-  await residents.getByLabel("Mara display name").fill("  Ada  ");
-  await residents.getByRole("button", { name: "Rename" }).first().click();
-  await expect(residents.getByRole("textbox", { name: "Ada display name" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "House Interior" })).toHaveCount(0);
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
+  await expect(page.getByLabel("Family Tree")).toHaveCount(0);
+  await page.getByRole("navigation", { name: "Rooms" }).getByRole("button", { name: "Bedroom" }).click();
+
+  const familyTree = page.getByLabel("Family Tree");
+  await expect(familyTree).toBeVisible();
+  await familyTree.getByLabel("Mara display name").fill("  Ada  ");
+  await familyTree.getByRole("button", { name: "Rename" }).first().click();
+  await expect(familyTree.getByRole("textbox", { name: "Ada display name" })).toBeVisible();
   expect(commands.at(-1)?.command).toEqual({
     type: "rename_resident",
     resident_id: "woman",
     display_name: "Ada",
   });
 
-  await residents.getByLabel("Ada display name").fill("   ");
-  await residents.getByRole("button", { name: "Rename" }).first().click();
-  await expect(residents.getByText("Display name cannot be blank")).toBeVisible();
-  await expect(residents.getByRole("textbox", { name: "Ada display name" })).toBeVisible();
+  await familyTree.getByLabel("Ada display name").fill("   ");
+  await familyTree.getByRole("button", { name: "Rename" }).first().click();
+  await expect(familyTree.getByText("Display name cannot be blank")).toBeVisible();
+  await expect(familyTree.getByRole("textbox", { name: "Ada display name" })).toBeVisible();
   expect(commands.at(-1)?.command).toEqual({
     type: "rename_resident",
     resident_id: "woman",
@@ -511,6 +525,87 @@ test("moves a resident toward the current task target over authoritative task ti
 
   await page.waitForTimeout(Math.max(0, startedAt + 8_200 - Date.now()));
   await expect(resident).toHaveAttribute("data-resident-state", "working");
+});
+
+test("clicking a farm resident selects them, sends assignment command, and shows only their path", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  const now = Date.now();
+  const view: FarmView = {
+    ...farmView,
+    resident_locations: {
+      woman: { x: 8, y: 10 },
+      man: { x: 0, y: 3 },
+    },
+    resident_task_queues: {
+      woman: [
+        {
+          id: "woman-task",
+          kind: { type: "field_work" },
+          started_at_ms: now,
+          ready_at_ms: now + 5_000,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
+              work: { type: "plant_crop", crop_id: "wheat" },
+              approach_tile: { x: 1, y: 0 },
+              walk_path: [
+                { x: 8, y: 9 },
+                { x: 7, y: 9 },
+                { x: 1, y: 0 },
+              ],
+              walk_duration_ms: 4_000,
+              work_duration_ms: 1_000,
+              duration_ms: 5_000,
+            }),
+          ],
+        },
+      ],
+      man: [
+        {
+          id: "man-task",
+          kind: { type: "field_work" },
+          started_at_ms: now,
+          ready_at_ms: now + 5_000,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "plant_crop", crop_id: "corn" },
+              approach_tile: { x: 0, y: 0 },
+              walk_path: [
+                { x: 0, y: 2 },
+                { x: 0, y: 1 },
+                { x: 0, y: 0 },
+              ],
+              walk_duration_ms: 4_000,
+              work_duration_ms: 1_000,
+              duration_ms: 5_000,
+            }),
+          ],
+        },
+      ],
+    },
+  };
+  await mockFarmApi(page, view, catalog, (request) => commands.push(request));
+  await openFarm(page);
+
+  await expect(page.getByTestId("resident-path-man")).toHaveCount(0);
+  await expect(page.getByTestId("resident-path-woman")).toHaveCount(0);
+
+  await page.getByTestId("farm-scene-resident-man").click({ force: true });
+
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "select_resident",
+    resident_id: "man",
+  });
+  await expect(page.getByTestId("resident-path-man")).toBeVisible();
+  await expect(page.getByTestId("resident-path-man")).toHaveAttribute("data-path-tile-count", "4");
+  await expect(page.getByTestId("resident-path-woman")).toHaveCount(0);
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+  await expect(selection.getByText("Jon")).toBeVisible();
+  await expect(selection.getByText("Task queue")).toBeVisible();
+  await expect(selection.getByRole("listitem").filter({ hasText: "Plant Corn" })).toBeVisible();
 });
 
 test("renders resident as working after walking to the approach tile", async ({ page }) => {

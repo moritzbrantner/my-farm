@@ -1,6 +1,7 @@
 import type {
   AnimalShelterState,
   CatalogDocument,
+  FarmResident,
   FarmView,
   FieldPlot,
   MachineState,
@@ -18,6 +19,7 @@ export type Selection =
   | { type: "shelter"; id: string }
   | { type: "delivery_board" }
   | { type: "tool_shed"; id: string }
+  | { type: "resident"; id: string }
   | null;
 
 export type StructureSelection =
@@ -65,6 +67,12 @@ export function selectedMachine(view: FarmView, selection: Selection): MachineSt
 export function selectedShelter(view: FarmView, selection: Selection): AnimalShelterState | null {
   return selection?.type === "shelter"
     ? view.shelters.find((shelter) => shelter.id === selection.id) ?? null
+    : null;
+}
+
+export function selectedResident(view: FarmView, selection: Selection): FarmResident | null {
+  return selection?.type === "resident"
+    ? view.residents.find((resident) => resident.id === selection.id) ?? null
     : null;
 }
 
