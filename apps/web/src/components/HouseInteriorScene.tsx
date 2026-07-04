@@ -10,7 +10,7 @@ import {
 import { buildStructureMenuModel, type StructureMenuItem } from "../game/structureMenu";
 import { ovenProductionStatus, productionStatusLabel } from "../game/structureStatus";
 import { recipeName } from "../game/selectors";
-import { residentVisualCue } from "../game/residentTasks";
+import { isResidentInsideHouse, residentVisualCue } from "../game/residentTasks";
 import type { CatalogDocument, FarmCommand, FarmView } from "../types";
 import { ResidentModel } from "./farmScene/residents";
 
@@ -616,10 +616,9 @@ function OvenWorkstationObject({
 }
 
 function InteriorOvenResidents({ view, nowMs, room }: { view: FarmView; nowMs: number; room: HouseInteriorRoom }) {
-  const residentsAtOven = view.residents.filter((resident) => {
-    const step = view.resident_task_queues[resident.id]?.[0]?.steps[0];
-    return step?.reserved_work_target.type === "oven";
-  });
+  const residentsAtOven = view.residents.filter((resident) =>
+    isResidentInsideHouse(view, resident.id, nowMs),
+  );
   if (residentsAtOven.length === 0) {
     return null;
   }

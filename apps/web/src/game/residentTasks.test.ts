@@ -8,6 +8,7 @@ import {
   currentResidentScenePose,
   hasActiveResidentWalk,
   interpolatePath,
+  isResidentInsideHouse,
   residentVisualCue,
 } from "./residentTasks";
 
@@ -169,6 +170,54 @@ test("does not report active resident walking for legacy steps without paths", (
 
 test("does not report active resident walking while residents are idle", () => {
   expect(hasActiveResidentWalk(farmViewWithTask(null), 1_500)).toBe(false);
+});
+
+test("keeps oven resident outside while walking to the Farmhouse", () => {
+  const view = farmViewWithTask({
+    id: "task-oven",
+    kind: { type: "production_work" },
+    started_at_ms: 1_000,
+    ready_at_ms: 4_000,
+    steps: [
+      {
+        reserved_work_target: { type: "oven" },
+        work: { type: "start_oven_recipe", job_id: "job-1", recipe_id: "bread" },
+        approach_tile: { x: 8, y: 9 },
+        walk_path: [{ x: 8, y: 9 }],
+        walk_duration_ms: 1_000,
+        work_duration_ms: 2_000,
+        duration_ms: 3_000,
+      },
+    ],
+  });
+
+  expect(isResidentInsideHouse(view, "woman", 1_500)).toBe(false);
+});
+
+test("treats oven resident as inside the Farmhouse after entry", () => {
+  const view = farmViewWithTask({
+    id: "task-oven",
+    kind: { type: "production_work" },
+    started_at_ms: 1_000,
+    ready_at_ms: 4_000,
+    steps: [
+      {
+        reserved_work_target: { type: "oven" },
+        work: { type: "start_oven_recipe", job_id: "job-1", recipe_id: "bread" },
+        approach_tile: { x: 8, y: 9 },
+        walk_path: [{ x: 8, y: 9 }],
+        walk_duration_ms: 1_000,
+        work_duration_ms: 2_000,
+        duration_ms: 3_000,
+      },
+    ],
+  });
+
+  expect(isResidentInsideHouse(view, "woman", 2_000)).toBe(true);
+  expect(residentVisualCue(view, "woman", 2_000)).toEqual({
+    activity: "starting_oven",
+    prop: "oven_tray",
+  });
 });
 
 test("selected resident lookup returns selected resident", () => {

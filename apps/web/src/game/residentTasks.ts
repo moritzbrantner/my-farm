@@ -144,6 +144,14 @@ export function currentResidentScenePose(
   };
 }
 
+export function isResidentInsideHouse(view: FarmView, residentId: string, nowMs: number): boolean {
+  const currentStep = view.resident_task_queues[residentId]?.[0]?.steps[0] ?? null;
+  return (
+    currentStep?.reserved_work_target.type === "oven" &&
+    currentResidentScenePose(view, residentId, nowMs).state === "working"
+  );
+}
+
 export function hasActiveResidentWalk(view: FarmView, nowMs: number): boolean {
   return view.residents.slice(0, 2).some((resident) => {
     const currentTask = view.resident_task_queues[resident.id]?.[0] ?? null;
