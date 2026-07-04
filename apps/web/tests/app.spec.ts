@@ -3219,6 +3219,7 @@ const farmView: FarmView = {
     field_plots: {},
     machines: {},
     animals: [],
+    farm_shop_stock: {},
     path_tiles: [],
   },
   house_interior: {
@@ -3362,7 +3363,12 @@ function stepQuantityAndKind(step: ResidentTask["steps"][number]) {
   if (work.type === "harvest_crop") return { quantity: work.quantity, kind: "crop" as const };
   if (work.type === "collect_animal_product") return { quantity: work.quantity, kind: "animal_product" as const };
   if (work.type === "feed_animal") return { quantity: 1, kind: "feed" as const };
-  if (work.type === "pickup_items" || work.type === "deposit_items") {
+  if (
+    work.type === "pickup_items" ||
+    work.type === "deposit_items" ||
+    work.type === "pickup_shop_stock" ||
+    work.type === "deposit_shop_stock"
+  ) {
     return {
       quantity: work.items.reduce((total, item) => total + item.quantity, 0),
       kind: "product" as const,
@@ -3393,6 +3399,9 @@ function targetViewForStep(view: FarmView, step: ResidentTask["steps"][number]) 
   if (target.type === "animal") {
     return { kind: "animal" as const, id: `${target.shelter_id}:${target.animal_slot}`, label: "Animal", tile };
   }
+  if (target.type === "farm_shop") {
+    return { kind: "farm_shop" as const, id: target.shop_id, label: "Farm Shop", tile };
+  }
   if (target.type === "silo") {
     return { kind: "silo" as const, label: "Silo", tile };
   }
@@ -3407,6 +3416,7 @@ function reservationsForQueues(view: FarmView, queues: Record<string, ResidentTa
     field_plots: {},
     machines: {},
     animals: [],
+    farm_shop_stock: {},
     path_tiles: [],
   };
   for (const resident of view.residents) {
@@ -3427,6 +3437,11 @@ function reservationsForQueues(view: FarmView, queues: Record<string, ResidentTa
           reservations.oven = reason;
         } else if (target.type === "animal") {
           reservations.animals.push([{ shelter_id: target.shelter_id, animal_slot: target.animal_slot }, reason]);
+        } else if (target.type === "farm_shop" && step.work.type === "pickup_shop_stock") {
+          for (const item of step.work.items) {
+            reservations.farm_shop_stock[item.item_id] =
+              (reservations.farm_shop_stock[item.item_id] ?? 0) + item.quantity;
+          }
         }
         for (const tile of step.walk_path) {
           reservations.path_tiles.push({ tile, resident_id: resident.id, task_id: task.id });
@@ -3450,7 +3465,9 @@ function taskLabelForStep(step: ResidentTask["steps"][number] | undefined): stri
   if (work.type === "collect_animal_product") return `Collect ${itemLabel(work.item_id)}`;
   if (work.type === "feed_animal") return "Feed animal";
   if (work.type === "pickup_items") return "Pick up items";
+  if (work.type === "pickup_shop_stock") return "Return shop stock";
   if (work.type === "pickup_tools") return "Pick up tools";
+  if (work.type === "deposit_shop_stock") return "Stock Farm Shop";
   if (work.type === "deposit_items" || work.type === "deposit_inventory") return "Store items";
   return "Return tools";
 }
@@ -3477,14 +3494,25 @@ function visualCueForStep(step: ResidentTask["steps"][number]) {
       return { activity: "picking_up_tools" as const, prop: "tool_bundle" as const };
     case "deposit_inventory":
     case "deposit_items":
+    case "deposit_shop_stock":
       return { activity: "depositing_inventory" as const, prop: "crate" as const };
+    case "pickup_shop_stock":
+      return { activity: "picking_up_items" as const, prop: "crate" as const };
     case "return_tools":
       return { activity: "returning_tools" as const, prop: "tool_bundle" as const };
   }
 }
 
 function isResourceStep(step: ResidentTask["steps"][number]) {
-  return ["pickup_items", "pickup_tools", "deposit_inventory", "deposit_items", "return_tools"].includes(step.work.type);
+  return [
+    "pickup_items",
+    "pickup_tools",
+    "pickup_shop_stock",
+    "deposit_inventory",
+    "deposit_items",
+    "deposit_shop_stock",
+    "return_tools",
+  ].includes(step.work.type);
 }
 
 function itemLabel(itemId: string) {

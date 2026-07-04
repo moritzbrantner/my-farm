@@ -125,6 +125,7 @@ pub enum StructureKind {
     CowPasture,
     DeliveryBoard,
     ToolShed,
+    FarmShop,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]

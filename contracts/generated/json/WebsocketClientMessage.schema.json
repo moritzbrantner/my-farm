@@ -514,6 +514,54 @@
         {
           "type": "object",
           "required": [
+            "item_id",
+            "quantity",
+            "type"
+          ],
+          "properties": {
+            "item_id": {
+              "type": "string"
+            },
+            "quantity": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "stock_farm_shop"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "item_id",
+            "quantity",
+            "type"
+          ],
+          "properties": {
+            "item_id": {
+              "type": "string"
+            },
+            "quantity": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "unstock_farm_shop"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "decoration_id",
             "room_id",
             "tile",
@@ -628,7 +676,8 @@
         "chicken_coop",
         "cow_pasture",
         "delivery_board",
-        "tool_shed"
+        "tool_shed",
+        "farm_shop"
       ]
     },
     "StructureTarget": {
@@ -725,6 +774,24 @@
               "type": "string",
               "enum": [
                 "tool_shed"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "farm_shop"
               ]
             }
           }

@@ -81,6 +81,7 @@ const buildKinds: BuildableKind[] = [
   "feed_mill",
   "chicken_coop",
   "delivery_board",
+  "farm_shop",
   "cow_pasture",
   "tool_shed",
 ];
@@ -132,6 +133,11 @@ const structureBuildCardMetas: Record<BuildableKind, StructureBuildCardMeta> = {
     kind: "delivery_board",
     role: "Unlocks delivery orders for coins and XP.",
     accentClass: "delivery-board",
+  },
+  farm_shop: {
+    kind: "farm_shop",
+    role: "Stocks roadside goods for passing customers.",
+    accentClass: "farm-shop",
   },
   cow_pasture: {
     kind: "cow_pasture",
@@ -2366,6 +2372,15 @@ function relevantItemIdsForSelection(
     );
   }
 
+  if (selection?.type === "farm_shop") {
+    return new Set([
+      ...(view.farm_shop?.stock.map((stock) => stock.item_id) ?? []),
+      ...catalog.market_items
+        .filter((marketItem) => marketItem.sell_price !== null && marketItem.unlock_level <= view.level)
+        .map((marketItem) => marketItem.item_id),
+    ]);
+  }
+
   return null;
 }
 
@@ -2394,6 +2409,7 @@ function SelectionPanel({
   const isSilo = selection?.type === "silo";
   const isBarn = selection?.type === "barn";
   const isToolShed = selection?.type === "tool_shed";
+  const isFarmShop = selection?.type === "farm_shop";
   return (
     <section className={resident ? "panel-section resident-details-panel" : "panel-section"}>
       <div className="selection-panel__header">
@@ -2450,6 +2466,7 @@ function SelectionPanel({
         <ResidentActions catalog={catalog} view={view} resident={resident} nowMs={nowMs} />
       ) : null}
       {!demoMode && selection?.type === "delivery_board" ? <p>Use delivery orders below.</p> : null}
+      {!demoMode && isFarmShop ? <FarmShopActions catalog={catalog} view={view} send={send} /> : null}
       {isToolShed ? <p>Tool Shed</p> : null}
       {!plot &&
       !machine &&
@@ -2459,6 +2476,7 @@ function SelectionPanel({
       !isSilo &&
       !isBarn &&
       !isToolShed &&
+      !isFarmShop &&
       selection?.type !== "delivery_board" ? (
         <p>
           {demoMode
@@ -3099,6 +3117,144 @@ function Orders({
   );
 }
 
+function FarmShopActions({
+  catalog,
+  view,
+  send,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  send: SendCommand;
+}) {
+  const shop = view.farm_shop;
+  const [itemId, setItemId] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const inventory = useMemo(
+    () => new Map(view.inventory.map((item) => [item.item_id, item])),
+    [view.inventory],
+  );
+  const sellableItems = catalog.market_items.filter(
+    (marketItem) => marketItem.sell_price !== null && marketItem.unlock_level <= view.level,
+  );
+  const selectedMarketItem = sellableItems.find((marketItem) => marketItem.item_id === itemId) ?? sellableItems[0];
+  const selectedItemId = selectedMarketItem?.item_id ?? "";
+  const stockUsed = shop?.stock.reduce((sum, stock) => sum + stock.quantity, 0) ?? 0;
+  const stockCapacity = shop?.stock_capacity ?? 0;
+  const stockRoom = Math.max(0, stockCapacity - stockUsed);
+  const selectedInventory = selectedItemId ? inventory.get(selectedItemId) : null;
+  const availableInventory = selectedInventory?.available_quantity ?? selectedInventory?.quantity ?? 0;
+  const selectedStock = shop?.stock.find((stock) => stock.item_id === selectedItemId)?.quantity ?? 0;
+  const reservedStock = selectedItemId ? view.reservations.farm_shop_stock[selectedItemId] ?? 0 : 0;
+  const availableStock = Math.max(0, selectedStock - reservedStock);
+  const commandQuantity = Math.max(1, Math.floor(quantity));
+  const stockReason = !shop
+    ? "Farm Shop not built"
+    : !selectedMarketItem
+      ? "No sellable item"
+      : commandQuantity > availableInventory
+        ? `Need ${commandQuantity - availableInventory} more`
+        : commandQuantity > stockRoom
+          ? "Shop stock is full"
+          : undefined;
+  const returnReason = !shop
+    ? "Farm Shop not built"
+    : !selectedMarketItem
+      ? "No stocked item"
+      : commandQuantity > availableStock
+        ? "Not enough available stock"
+        : !storageHasRoomForReturn(catalog, view, selectedItemId, commandQuantity)
+          ? "Storage is full"
+          : undefined;
+
+  useEffect(() => {
+    if (!selectedItemId || selectedItemId === itemId) {
+      return;
+    }
+    setItemId(selectedItemId);
+  }, [itemId, selectedItemId]);
+
+  if (!shop) {
+    return <p>Build the Farm Shop by the road.</p>;
+  }
+
+  return (
+    <section className="farm-shop-panel" aria-label="Farm Shop stock">
+      <StorageStatus label="Shop Stock" used={stockUsed} capacity={stockCapacity} unit="items" />
+      {shop.current_sale && shop.current_sale.visible_until_ms > view.last_update_ms ? (
+        <p className="farm-shop-panel__sale">
+          Sold {itemName(catalog, shop.current_sale.item_id)} for {shop.current_sale.coins_gained} coins
+        </p>
+      ) : null}
+      <div className="farm-shop-panel__stock-list">
+        {shop.stock.length === 0 ? <p>No Shop Stock</p> : null}
+        {shop.stock.map((stock) => {
+          const reserved = view.reservations.farm_shop_stock[stock.item_id] ?? 0;
+          const available = Math.max(0, stock.quantity - reserved);
+          return (
+            <div className="farm-shop-stock-row" key={stock.item_id}>
+              <ResourceAmount item={resourceItem(catalog, stock.item_id, stock.quantity)} amount={`x${stock.quantity}`} />
+              <small>{available} available{reserved > 0 ? `, ${reserved} reserved` : ""}</small>
+            </div>
+          );
+        })}
+      </div>
+      <label className="farm-shop-panel__field">
+        <span>Item</span>
+        <select value={selectedItemId} onChange={(event) => setItemId(event.target.value)}>
+          {sellableItems.map((marketItem) => (
+            <option key={marketItem.item_id} value={marketItem.item_id}>
+              {itemName(catalog, marketItem.item_id)} - {marketItem.sell_price} coins
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="farm-shop-panel__field">
+        <span>Quantity</span>
+        <input
+          type="number"
+          min={1}
+          max={99}
+          value={quantity}
+          onChange={(event) => setQuantity(Number(event.target.value))}
+        />
+      </label>
+      <div className="farm-shop-panel__actions">
+        <button
+          type="button"
+          disabled={Boolean(stockReason)}
+          onClick={() => send({ type: "stock_farm_shop", item_id: selectedItemId, quantity: commandQuantity })}
+        >
+          Stock
+        </button>
+        <button
+          type="button"
+          disabled={Boolean(returnReason)}
+          onClick={() => send({ type: "unstock_farm_shop", item_id: selectedItemId, quantity: commandQuantity })}
+        >
+          Return
+        </button>
+      </div>
+      <small className="farm-shop-panel__status">{stockReason ?? returnReason ?? "Ready"}</small>
+    </section>
+  );
+}
+
+function storageHasRoomForReturn(
+  catalog: CatalogDocument,
+  view: FarmView,
+  itemId: string,
+  quantity: number,
+): boolean {
+  const item = catalog.items.find((entry) => entry.id === itemId);
+  if (!item) {
+    return false;
+  }
+  if (item.kind === "crop") {
+    return view.silo_used + quantity <= view.silo_capacity;
+  }
+  return view.barn_used + quantity <= view.barn_capacity;
+}
+
 function BuildTray({
   catalog,
   view,
@@ -3259,6 +3415,9 @@ function unlockLevelForBuildKind(catalog: CatalogDocument, kind: BuildableKind):
   if (kind === "delivery_board") {
     return 4;
   }
+  if (kind === "farm_shop") {
+    return 2;
+  }
   if (kind === "tool_shed") {
     return 3;
   }
@@ -3275,6 +3434,9 @@ function buildCostForBuildKind(catalog: CatalogDocument, kind: BuildableKind): n
   }
   if (kind === "delivery_board") {
     return 20;
+  }
+  if (kind === "farm_shop") {
+    return 25;
   }
   if (kind === "tool_shed") {
     return 45;

@@ -71,6 +71,29 @@ fn work_step(task: &my_farm_core::ResidentTask, index: usize) -> &my_farm_core::
         .unwrap()
 }
 
+fn unlock_level(farm: &mut FarmState, catalog: &CatalogDocument, level: u32) {
+    farm.xp = catalog
+        .level_xp
+        .get(level as usize)
+        .copied()
+        .unwrap_or_default();
+    update_level(farm, catalog);
+}
+
+fn build_farm_shop(farm: &mut FarmState, catalog: &CatalogDocument, now_ms: i64) {
+    unlock_level(farm, catalog, 2);
+    let built = apply_command(
+        farm,
+        catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::FarmShop,
+            tile: Tile::new(3, 17),
+        },
+        now_ms,
+    );
+    assert!(built.accepted, "{:?}", built.error);
+}
+
 #[test]
 fn planting_fetches_crop_from_silo_before_fetching_tool() {
     let catalog = CatalogDocument::default_catalog();
@@ -106,6 +129,156 @@ fn planting_fetches_crop_from_silo_before_fetching_tool() {
         task.steps[2].work,
         my_farm_core::ResidentTaskStepWork::PlantCrop { .. }
     ));
+}
+
+#[test]
+fn farm_shop_must_be_built_by_the_road_after_unlock() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let locked = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::FarmShop,
+            tile: Tile::new(3, 17),
+        },
+        0,
+    );
+    assert!(!locked.accepted);
+
+    unlock_level(&mut farm, &catalog, 2);
+    let inland = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::FarmShop,
+            tile: Tile::new(3, 16),
+        },
+        0,
+    );
+    assert!(!inland.accepted);
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::FarmShop,
+            tile: Tile::new(3, 17),
+        },
+        0,
+    );
+    assert!(built.accepted, "{:?}", built.error);
+    assert_eq!(farm.farm_shop.as_ref().unwrap().stock_capacity, 8);
+}
+
+#[test]
+fn farm_shop_stocking_and_unstocking_are_resident_tasks() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+
+    let stocked = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::StockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 2,
+        },
+        0,
+    );
+    assert!(stocked.accepted, "{:?}", stocked.error);
+    let task = &farm.resident_task_queues["woman"][0];
+    assert_eq!(task.kind, my_farm_core::ResidentTaskKind::ShopWork);
+    assert!(matches!(
+        &task.steps[0].work,
+        my_farm_core::ResidentTaskStepWork::PickupItems {
+            source: my_farm_core::StorageSourceRef::Silo,
+            items
+        } if items == &[ItemStack::new("wheat", 2)]
+    ));
+    assert!(matches!(
+        &task.steps[1].work,
+        my_farm_core::ResidentTaskStepWork::DepositShopStock { items }
+            if items == &[ItemStack::new("wheat", 2)]
+    ));
+
+    let ready_at = resident_task_tail_ready_at(&farm, "woman", 0);
+    let events = apply_elapsed(&mut farm, &catalog, ready_at);
+    assert!(events.iter().any(|event| matches!(
+        event,
+        FarmEvent::FarmShopStocked { item_id, quantity }
+            if item_id == "wheat" && *quantity == 2
+    )));
+    assert_eq!(
+        farm.farm_shop.as_ref().unwrap().stock[0],
+        ItemStack::new("wheat", 2)
+    );
+
+    let returned = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::UnstockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 1,
+        },
+        ready_at,
+    );
+    assert!(returned.accepted, "{:?}", returned.error);
+    let task = &farm.resident_task_queues["woman"][0];
+    assert!(matches!(
+        &task.steps[0].work,
+        my_farm_core::ResidentTaskStepWork::PickupShopStock { items }
+            if items == &[ItemStack::new("wheat", 1)]
+    ));
+}
+
+#[test]
+fn farm_shop_customer_sale_uses_market_sell_price_without_xp() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    farm.farm_shop.as_mut().unwrap().stock = vec![ItemStack::new("wheat", 2)];
+    let visit_at = farm.farm_shop.as_ref().unwrap().next_customer_visit_at_ms;
+    let starting_coins = farm.coins;
+    let starting_xp = farm.xp;
+
+    let events = apply_elapsed(&mut farm, &catalog, visit_at);
+
+    assert!(events.iter().any(|event| matches!(
+        event,
+        FarmEvent::FarmShopSaleCompleted { item_id, quantity, coins_gained }
+            if item_id == "wheat" && *quantity == 1 && *coins_gained == 2
+    )));
+    assert_eq!(farm.coins, starting_coins + 2);
+    assert_eq!(farm.xp, starting_xp);
+    assert_eq!(
+        farm.farm_shop.as_ref().unwrap().stock[0],
+        ItemStack::new("wheat", 1)
+    );
+    let view = farm_view(&farm, &catalog);
+    let sale = view.farm_shop.unwrap().current_sale.unwrap();
+
+    apply_elapsed(&mut farm, &catalog, sale.visible_until_ms);
+    assert!(
+        farm_view(&farm, &catalog)
+            .farm_shop
+            .unwrap()
+            .current_sale
+            .is_none()
+    );
+}
+
+#[test]
+fn old_save_without_farm_shop_loads_with_none() {
+    let catalog = CatalogDocument::default_catalog();
+    let farm = new_farm(0, &catalog);
+    let mut value = serde_json::to_value(&farm).unwrap();
+    value.as_object_mut().unwrap().remove("farm_shop");
+
+    let loaded: FarmState = serde_json::from_value(value).unwrap();
+
+    assert!(loaded.farm_shop.is_none());
 }
 
 #[test]
@@ -1383,7 +1556,7 @@ fn catalog_and_new_farm_expose_unowned_farmhouse_oven_upgrade() {
     assert_eq!(oven.queue_limit, 2);
     assert!(farm.owned_farmhouse_upgrades.is_empty());
     assert!(view.owned_farmhouse_upgrades.is_empty());
-    assert_eq!(view.unlocks[1].label, "Oven, bread, and corn");
+    assert_eq!(view.unlocks[1].label, "Oven, bread, corn, and Farm Shop");
 }
 
 #[test]

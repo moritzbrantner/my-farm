@@ -46,6 +46,7 @@ const MOVE_TILE_BLOCKED_COLOR = "#a9333f";
 const BOARD_ORIGIN = -(FARM_GRID_SIZE - 1) / 2;
 const CAMERA_PADDING_PX = 32;
 const RAYCAST_MATERIAL_OPACITY = 0.001;
+const FARM_ROAD_WORLD_Z = 9.52;
 const PAN_SCREEN_RIGHT = new THREE.Vector3(Math.SQRT1_2, 0, -Math.SQRT1_2);
 const PAN_SCREEN_UP = new THREE.Vector3(-0.4082482904638631, 0.8164965809277261, -0.4082482904638631);
 
@@ -295,6 +296,29 @@ export function FarmScene({
             }}
           />
         ) : null}
+        {view.farm_shop ? (
+          <StructureSprite
+            target={{ type: "farm_shop", id: view.farm_shop.id }}
+            label="Shop"
+            hitLabel="Farm Shop"
+            tile={view.farm_shop.tile}
+            color="#e7c16d"
+            footprint={structureFootprint("farm_shop")}
+            selected={selection?.type === "farm_shop" && selection.id === view.farm_shop.id}
+            buildPlacement={buildPlacement}
+            movingStructure={movingStructure}
+            onHoverTile={setHoverTile}
+            onOpenStructureMenu={onOpenStructureMenu}
+            onPlaceNewStructure={onPlaceNewStructure}
+            onPlaceStructure={onPlaceStructure}
+            onSelect={() => {
+              onSelect({ type: "farm_shop", id: view.farm_shop?.id ?? "" });
+            }}
+          />
+        ) : null}
+        {view.farm_shop?.current_sale && view.farm_shop.current_sale.visible_until_ms > nowMs ? (
+          <FarmShopSaleCar shopTile={view.farm_shop.tile} />
+        ) : null}
         <ResidentPathOverlay view={view} selection={selection} nowMs={nowMs} />
         <FarmResidents
           catalog={catalog}
@@ -327,6 +351,37 @@ export function FarmScene({
         ) : null}
       </group>
     </Canvas>
+  );
+}
+
+function FarmShopSaleCar({ shopTile }: { shopTile: Tile }) {
+  const x = tileToWorld(shopTile.x + 0.5);
+  return (
+    <group position={[x, 0.12, FARM_ROAD_WORLD_Z - 0.22]} rotation={[0, 0, 0]}>
+      <mesh castShadow receiveShadow position={[0, 0.13, 0]}>
+        <boxGeometry args={[0.66, 0.22, 0.36]} />
+        <meshStandardMaterial color="#cf5d4f" roughness={0.72} metalness={0.04} />
+      </mesh>
+      <mesh castShadow position={[0.04, 0.31, 0]}>
+        <boxGeometry args={[0.34, 0.18, 0.28]} />
+        <meshStandardMaterial color="#f1d2a4" roughness={0.52} metalness={0.02} />
+      </mesh>
+      <mesh castShadow position={[0.34, 0.16, 0]}>
+        <boxGeometry args={[0.04, 0.08, 0.23]} />
+        <meshStandardMaterial color="#f7e8a8" roughness={0.42} metalness={0.05} />
+      </mesh>
+      {[-0.24, 0.24].map((wheelX) =>
+        [-0.21, 0.21].map((wheelZ) => (
+          <mesh key={`${wheelX}-${wheelZ}`} castShadow position={[wheelX, 0.05, wheelZ]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.07, 0.07, 0.06, 10]} />
+            <meshStandardMaterial color="#20312b" roughness={0.75} metalness={0} />
+          </mesh>
+        )),
+      )}
+      <Html position={[0, 0.54, 0]} center zIndexRange={[25, 0]} wrapperClass="farm-scene-marker-wrapper">
+        <div className="farm-scene-marker" data-testid="farm-shop-sale-car" aria-label="Customer car at Farm Shop" />
+      </Html>
+    </group>
   );
 }
 
@@ -1790,6 +1845,8 @@ function assetKindForTarget(target: StructureSelection, label: string): Exclude<
       return "delivery_board";
     case "tool_shed":
       return "tool_shed";
+    case "farm_shop":
+      return "farm_shop";
     case "machine":
       return "feed_mill";
     case "shelter":
@@ -1812,6 +1869,8 @@ function isSameStructure(left: StructureSelection | null, right: StructureSelect
       return true;
     case "tool_shed":
       return right.type === "tool_shed" && left.id === right.id;
+    case "farm_shop":
+      return right.type === "farm_shop" && left.id === right.id;
     case "machine":
       return right.type === "machine" && left.id === right.id;
     case "shelter":

@@ -82,6 +82,15 @@ export function buildStructureMenuModel(
         }
       : null;
   }
+  if (target.type === "farm_shop") {
+    return view.farm_shop?.id === target.id
+      ? {
+          title: "Farm Shop",
+          subtitle: `${view.farm_shop.stock.reduce((sum, stock) => sum + stock.quantity, 0)}/${view.farm_shop.stock_capacity} items`,
+          items: [{ id: "move-structure", label: "Move", action: "move_structure" }],
+        }
+      : null;
+  }
   return view.delivery_board_built
     ? {
         title: "Delivery Board",
@@ -173,6 +182,9 @@ export function isStructureTargetPresent(view: FarmView, target: StructureSelect
   }
   if (target.type === "tool_shed") {
     return view.tool_shed?.id === target.id;
+  }
+  if (target.type === "farm_shop") {
+    return view.farm_shop?.id === target.id;
   }
   return view.delivery_board_built;
 }

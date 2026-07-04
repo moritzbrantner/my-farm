@@ -190,7 +190,8 @@ fn unsupported_demo_command<'a>(_farm: &FarmState, command: &'a FarmCommand) -> 
             StructureTarget::Machine { .. } => Some("feature is not available in the demo"),
             StructureTarget::Shelter { .. }
             | StructureTarget::DeliveryBoard
-            | StructureTarget::ToolShed { .. } => Some("feature is not available in the demo"),
+            | StructureTarget::ToolShed { .. }
+            | StructureTarget::FarmShop { .. } => Some("feature is not available in the demo"),
         },
         FarmCommand::QueueRecipe { recipe_id, .. } => {
             let _ = recipe_id;
@@ -203,7 +204,9 @@ fn unsupported_demo_command<'a>(_farm: &FarmState, command: &'a FarmCommand) -> 
         | FarmCommand::DiscardDeliveryOrder { .. }
         | FarmCommand::DiscardInventory { .. }
         | FarmCommand::BuyMarketItem { .. }
-        | FarmCommand::SellMarketItem { .. } => Some("feature is not available in the demo"),
+        | FarmCommand::SellMarketItem { .. }
+        | FarmCommand::StockFarmShop { .. }
+        | FarmCommand::UnstockFarmShop { .. } => Some("feature is not available in the demo"),
     }
 }
 
@@ -216,6 +219,7 @@ fn demo_save_is_compatible(save: &DemoSave, catalog: &CatalogDocument) -> bool {
         && save.farm.shelters.is_empty()
         && !save.farm.delivery_board_built
         && save.farm.tool_shed.is_none()
+        && save.farm.farm_shop.is_none()
 }
 
 fn now_ms_to_i64(now_ms: f64) -> i64 {

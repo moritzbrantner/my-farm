@@ -875,6 +875,84 @@
         {
           "type": "object",
           "required": [
+            "item_id",
+            "quantity",
+            "type"
+          ],
+          "properties": {
+            "item_id": {
+              "type": "string"
+            },
+            "quantity": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "farm_shop_stocked"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "item_id",
+            "quantity",
+            "type"
+          ],
+          "properties": {
+            "item_id": {
+              "type": "string"
+            },
+            "quantity": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "farm_shop_unstocked"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "coins_gained",
+            "item_id",
+            "quantity",
+            "type"
+          ],
+          "properties": {
+            "coins_gained": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "item_id": {
+              "type": "string"
+            },
+            "quantity": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "farm_shop_sale_completed"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "decoration_id",
             "placement_id",
             "room_id",
@@ -1008,6 +1086,93 @@
         }
       }
     },
+    "FarmShopSaleWindow": {
+      "type": "object",
+      "required": [
+        "coins_gained",
+        "id",
+        "item_id",
+        "quantity",
+        "sold_at_ms",
+        "visible_until_ms"
+      ],
+      "properties": {
+        "coins_gained": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "id": {
+          "type": "string"
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "sold_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "visible_until_ms": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "FarmShopState": {
+      "type": "object",
+      "required": [
+        "id",
+        "next_customer_visit_at_ms",
+        "stock",
+        "stock_capacity",
+        "tile",
+        "visit_count"
+      ],
+      "properties": {
+        "current_sale": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FarmShopSaleWindow"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "next_customer_visit_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "stock": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ItemStack"
+          }
+        },
+        "stock_capacity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "tile": {
+          "$ref": "#/definitions/Tile"
+        },
+        "visit_count": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
     "FarmView": {
       "type": "object",
       "required": [
@@ -1075,6 +1240,17 @@
           "items": {
             "$ref": "#/definitions/DeliveryOrder"
           }
+        },
+        "farm_shop": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FarmShopState"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "field_plots": {
           "type": "array",
@@ -1706,6 +1882,15 @@
             "minItems": 2
           }
         },
+        "farm_shop_stock": {
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
         "field_plots": {
           "type": "object",
           "additionalProperties": {
@@ -1968,6 +2153,7 @@
         "machine",
         "oven",
         "animal",
+        "farm_shop",
         "work"
       ]
     },
@@ -2023,6 +2209,20 @@
               "type": "string",
               "enum": [
                 "production_work"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "shop_work"
               ]
             }
           }
@@ -2411,7 +2611,8 @@
         "chicken_coop",
         "cow_pasture",
         "delivery_board",
-        "tool_shed"
+        "tool_shed",
+        "farm_shop"
       ]
     },
     "StructureTarget": {
@@ -2508,6 +2709,24 @@
               "type": "string",
               "enum": [
                 "tool_shed"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "farm_shop"
               ]
             }
           }

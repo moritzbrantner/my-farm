@@ -487,6 +487,7 @@ function farmViewWithTask(task: ResidentTask | null): FarmView {
       field_plots: {},
       machines: {},
       animals: [],
+      farm_shop_stock: {},
       path_tiles: [],
     },
     house_interior: { rooms: [] },
@@ -502,6 +503,9 @@ function targetViewForStep(step: ResidentTask["steps"][number]) {
   }
   if (target.type === "oven") {
     return { kind: "oven" as const, id: "oven", label: "Oven", tile };
+  }
+  if (target.type === "farm_shop") {
+    return { kind: "farm_shop" as const, id: target.shop_id, label: "Farm Shop", tile };
   }
   return { kind: "work" as const, label: "Work target", tile };
 }
@@ -524,6 +528,9 @@ function stepQuantityAndKind(step: ResidentTask["steps"][number]) {
   if (work.type === "harvest_crop") return { quantity: work.quantity, kind: "crop" as const };
   if (work.type === "start_oven_recipe" || work.type === "collect_oven_job") {
     return { quantity: 1, kind: "product" as const };
+  }
+  if (work.type === "deposit_shop_stock" || work.type === "pickup_shop_stock") {
+    return { quantity: work.items.reduce((sum, item) => sum + item.quantity, 0), kind: "product" as const };
   }
   return { quantity: 0, kind: "product" as const };
 }
@@ -559,7 +566,10 @@ function visualCueForStep(step: ResidentTask["steps"][number]) {
       return { activity: "collecting_animal_product" as const, prop: "basket" as const };
     case "deposit_inventory":
     case "deposit_items":
+    case "deposit_shop_stock":
       return { activity: "depositing_inventory" as const, prop: "crate" as const };
+    case "pickup_shop_stock":
+      return { activity: "picking_up_items" as const, prop: "crate" as const };
     case "return_tools":
       return { activity: "returning_tools" as const, prop: "tool_bundle" as const };
   }

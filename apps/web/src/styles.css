@@ -1981,6 +1981,71 @@ h2 {
   gap: 8px;
 }
 
+.farm-shop-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.farm-shop-panel__sale {
+  margin: 0;
+  padding: 6px 7px;
+  border-radius: 6px;
+  background: #e5edd4;
+  color: #20312b;
+  font-weight: 800;
+}
+
+.farm-shop-panel__stock-list {
+  display: grid;
+  gap: 6px;
+}
+
+.farm-shop-stock-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(32, 49, 43, 0.14);
+}
+
+.farm-shop-stock-row small,
+.farm-shop-panel__status {
+  color: #536a5e;
+  font-weight: 800;
+}
+
+.farm-shop-panel__field {
+  display: grid;
+  gap: 4px;
+}
+
+.farm-shop-panel__field span {
+  color: #536a5e;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.farm-shop-panel__field select,
+.farm-shop-panel__field input {
+  min-width: 0;
+  border: 1px solid #486355;
+  border-radius: 6px;
+  background: #fffaf0;
+  color: #20312b;
+  font: inherit;
+  font-weight: 800;
+  padding: 7px 8px;
+}
+
+.farm-shop-panel__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .build-dock {
   position: absolute;
   left: 12px;
@@ -2027,6 +2092,10 @@ h2 {
 
 .build-detail-strip--delivery-board {
   border-left: 8px solid #8c7e55;
+}
+
+.build-detail-strip--farm-shop {
+  border-left: 8px solid #3f6f64;
 }
 
 .build-detail-strip--cow-pasture {

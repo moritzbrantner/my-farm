@@ -16,7 +16,8 @@ export type FarmAssetKind =
   | "chicken_coop"
   | "cow_pasture"
   | "delivery_board"
-  | "tool_shed";
+  | "tool_shed"
+  | "farm_shop";
 
 export type FarmAssetState = {
   selected: boolean;
@@ -390,6 +391,8 @@ function renderStructure(kind: Exclude<FarmAssetKind, "ground_tile" | "field_plo
       return <DeliveryBoard />;
     case "tool_shed":
       return <ToolShed />;
+    case "farm_shop":
+      return <FarmShop />;
   }
 }
 
@@ -575,6 +578,37 @@ function ToolShed() {
       <mesh castShadow position={[0.34, 0.18, -0.29]}>
         <boxGeometry args={[0.18, 0.08, 0.06]} />
         <meshStandardMaterial color={outlineColor} roughness={0.72} metalness={0} />
+      </mesh>
+    </group>
+  );
+}
+
+function FarmShop() {
+  return (
+    <group position={[0, 0.08, 0]}>
+      <mesh castShadow receiveShadow position={[0, 0.24, 0]}>
+        <boxGeometry args={[1.34, 0.32, 0.5]} />
+        <meshStandardMaterial color="#e7c16d" roughness={0.82} metalness={0} />
+      </mesh>
+      <mesh castShadow receiveShadow position={[0, 0.5, -0.02]} rotation={[0, 0, 0]}>
+        <boxGeometry args={[1.48, 0.16, 0.62]} />
+        <meshStandardMaterial color="#3f6f64" roughness={0.78} metalness={0} />
+      </mesh>
+      {[-0.52, 0.52].map((x) => (
+        <mesh key={x} castShadow position={[x, 0.42, -0.28]}>
+          <boxGeometry args={[0.08, 0.54, 0.08]} />
+          <meshStandardMaterial color="#624a35" roughness={0.82} metalness={0} />
+        </mesh>
+      ))}
+      {[-0.36, 0, 0.36].map((x) => (
+        <mesh key={x} castShadow receiveShadow position={[x, 0.48, -0.34]}>
+          <boxGeometry args={[0.24, 0.16, 0.08]} />
+          <meshStandardMaterial color="#f4ead2" roughness={0.78} metalness={0} />
+        </mesh>
+      ))}
+      <mesh castShadow position={[0, 0.18, -0.28]}>
+        <boxGeometry args={[0.44, 0.18, 0.08]} />
+        <meshStandardMaterial color="#b95346" roughness={0.78} metalness={0} />
       </mesh>
     </group>
   );

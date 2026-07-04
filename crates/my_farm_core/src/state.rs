@@ -59,6 +59,9 @@ pub struct FarmState {
     #[serde(default)]
     #[ts(optional)]
     pub tool_shed: Option<ToolShedState>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub farm_shop: Option<FarmShopState>,
     pub delivery_orders: Vec<DeliveryOrder>,
     #[serde(default = "default_residents")]
     pub residents: Vec<FarmResident>,
@@ -123,6 +126,8 @@ struct FarmStateSerde {
     delivery_board_tile: Tile,
     #[serde(default)]
     tool_shed: Option<ToolShedState>,
+    #[serde(default)]
+    farm_shop: Option<FarmShopState>,
     delivery_orders: Vec<DeliveryOrder>,
     #[serde(default = "default_residents")]
     residents: Vec<FarmResident>,
@@ -183,6 +188,7 @@ impl FarmStateSerde {
             delivery_board_built: self.delivery_board_built,
             delivery_board_tile: self.delivery_board_tile,
             tool_shed: self.tool_shed,
+            farm_shop: self.farm_shop,
             delivery_orders: self.delivery_orders,
             residents: self.residents,
             selected_resident_id: self.selected_resident_id,
@@ -265,6 +271,33 @@ pub struct ToolShedState {
     pub tile: Tile,
     #[serde(default = "default_tool_stock")]
     pub tool_stock: BTreeMap<ToolKind, u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct FarmShopState {
+    pub id: String,
+    pub tile: Tile,
+    pub stock: Vec<ItemStack>,
+    pub stock_capacity: u32,
+    #[ts(type = "number")]
+    pub next_customer_visit_at_ms: i64,
+    #[ts(type = "number")]
+    pub visit_count: u64,
+    #[serde(default)]
+    #[ts(optional)]
+    pub current_sale: Option<FarmShopSaleWindow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct FarmShopSaleWindow {
+    pub id: String,
+    pub item_id: String,
+    pub quantity: u32,
+    pub coins_gained: u32,
+    #[ts(type = "number")]
+    pub sold_at_ms: i64,
+    #[ts(type = "number")]
+    pub visible_until_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -425,6 +458,7 @@ pub struct DecorationPlacement {
 pub enum ResidentTaskKind {
     FieldWork,
     ProductionWork,
+    ShopWork,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema, TS, PartialEq, Eq)]
@@ -533,6 +567,12 @@ pub enum ResidentTaskStepWork {
         destination: StorageSourceRef,
         items: Vec<ItemStack>,
     },
+    DepositShopStock {
+        items: Vec<ItemStack>,
+    },
+    PickupShopStock {
+        items: Vec<ItemStack>,
+    },
     ReturnTools {
         #[serde(default = "default_tool_source_ref")]
         source: ToolSourceRef,
@@ -572,6 +612,9 @@ pub enum ReservedWorkTarget {
         machine_id: String,
     },
     Oven,
+    FarmShop {
+        shop_id: String,
+    },
     Animal {
         shelter_id: String,
         animal_slot: String,
@@ -605,6 +648,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         delivery_board_built: false,
         delivery_board_tile: default_delivery_board_tile(),
         tool_shed: None,
+        farm_shop: None,
         delivery_orders: Vec::new(),
         residents: default_residents(),
         selected_resident_id: default_selected_resident_id(),

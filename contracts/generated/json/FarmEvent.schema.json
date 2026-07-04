@@ -385,6 +385,84 @@
     {
       "type": "object",
       "required": [
+        "item_id",
+        "quantity",
+        "type"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "farm_shop_stocked"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "item_id",
+        "quantity",
+        "type"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "farm_shop_unstocked"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "coins_gained",
+        "item_id",
+        "quantity",
+        "type"
+      ],
+      "properties": {
+        "coins_gained": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "farm_shop_sale_completed"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "decoration_id",
         "placement_id",
         "room_id",
@@ -523,7 +601,8 @@
         "chicken_coop",
         "cow_pasture",
         "delivery_board",
-        "tool_shed"
+        "tool_shed",
+        "farm_shop"
       ]
     },
     "StructureTarget": {
@@ -620,6 +699,24 @@
               "type": "string",
               "enum": [
                 "tool_shed"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "farm_shop"
               ]
             }
           }

@@ -33,6 +33,9 @@ pub struct FarmView {
     #[serde(default)]
     #[ts(optional)]
     pub tool_shed: Option<crate::ToolShedState>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub farm_shop: Option<crate::FarmShopState>,
     pub delivery_orders: Vec<crate::DeliveryOrder>,
     pub residents: Vec<crate::FarmResident>,
     pub selected_resident_id: String,
@@ -146,6 +149,7 @@ pub enum ResidentTargetKind {
     Machine,
     Oven,
     Animal,
+    FarmShop,
     Work,
 }
 
@@ -290,6 +294,8 @@ pub struct ReservationView {
     #[ts(optional)]
     pub oven: Option<ReservationReasonView>,
     pub animals: Vec<(AnimalReservationKey, ReservationReasonView)>,
+    #[serde(default)]
+    pub farm_shop_stock: std::collections::BTreeMap<String, u32>,
     pub path_tiles: Vec<ReservedPathTileView>,
 }
 
@@ -333,6 +339,7 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
         delivery_board_built: farm.delivery_board_built,
         delivery_board_tile: farm.delivery_board_tile.clone(),
         tool_shed: farm.tool_shed.clone(),
+        farm_shop: farm.farm_shop.clone(),
         delivery_orders: farm.delivery_orders.clone(),
         residents: farm.residents.clone(),
         selected_resident_id: farm.selected_resident_id.clone(),
@@ -343,7 +350,7 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
         house_interior: farm.house_interior.clone(),
         unlocks: vec![
             unlock(1, "Fields and wheat", farm.level),
-            unlock(2, "Oven, bread, and corn", farm.level),
+            unlock(2, "Oven, bread, corn, and Farm Shop", farm.level),
             unlock(3, "Feed mill, chickens, eggs, and soybeans", farm.level),
             unlock(4, "Delivery orders and corn bread", farm.level),
             unlock(5, "Cow pasture, milk, carrots, and cow feed", farm.level),
@@ -401,7 +408,8 @@ fn resident_work(
                     },
                 )
             });
-            let current_step_view = current_step.map(|step| resident_step_view(farm, catalog, step));
+            let current_step_view =
+                current_step.map(|step| resident_step_view(farm, catalog, step));
             let block_view = block.map(|block| BlockedResidentTaskView {
                 task_id: block.task_id.clone(),
                 resident_id: resident.id.clone(),
@@ -605,7 +613,11 @@ fn step_quantity_and_kind(
 ) -> (u32, ItemKind) {
     match work {
         ResidentTaskStepWork::PickupItems { items, .. }
-        | ResidentTaskStepWork::DepositItems { items, .. } => quantity_and_kind_for_stacks(catalog, items),
+        | ResidentTaskStepWork::DepositItems { items, .. }
+        | ResidentTaskStepWork::DepositShopStock { items }
+        | ResidentTaskStepWork::PickupShopStock { items } => {
+            quantity_and_kind_for_stacks(catalog, items)
+        }
         ResidentTaskStepWork::PlantCrop { crop_id } => (
             1,
             catalog
@@ -677,6 +689,7 @@ fn task_label(catalog: &CatalogDocument, task: &ResidentTask) -> String {
         None => match task.kind {
             ResidentTaskKind::FieldWork => "Field work".to_owned(),
             ResidentTaskKind::ProductionWork => "Production work".to_owned(),
+            ResidentTaskKind::ShopWork => "Shop work".to_owned(),
         },
     }
 }
@@ -713,6 +726,12 @@ fn resident_task_step_label(catalog: &CatalogDocument, work: &ResidentTaskStepWo
         }
         ResidentTaskStepWork::DepositItems { items, .. } => {
             format!("Store {}", stack_list_label(catalog, items))
+        }
+        ResidentTaskStepWork::DepositShopStock { items } => {
+            format!("Stock {}", stack_list_label(catalog, items))
+        }
+        ResidentTaskStepWork::PickupShopStock { items } => {
+            format!("Return {}", stack_list_label(catalog, items))
         }
         ResidentTaskStepWork::ReturnTools { .. } => "Return tools".to_owned(),
     }
@@ -759,8 +778,13 @@ fn visual_cue_for_work(
             ResidentVisualProp::Basket,
         ),
         ResidentTaskStepWork::DepositInventory { .. }
-        | ResidentTaskStepWork::DepositItems { .. } => (
+        | ResidentTaskStepWork::DepositItems { .. }
+        | ResidentTaskStepWork::DepositShopStock { .. } => (
             ResidentVisualActivity::DepositingInventory,
+            ResidentVisualProp::Crate,
+        ),
+        ResidentTaskStepWork::PickupShopStock { .. } => (
+            ResidentVisualActivity::PickingUpItems,
             ResidentVisualProp::Crate,
         ),
         ResidentTaskStepWork::ReturnTools { .. } => (
@@ -828,6 +852,18 @@ fn resident_target_view(farm: &FarmState, step: &ResidentTaskStep) -> Option<Res
                 .map(ResidentScenePoint::from_tile)
                 .unwrap_or(ResidentScenePoint { x: 8.5, y: 8.5 }),
         },
+        ReservedWorkTarget::FarmShop { shop_id } => {
+            let shop = farm.farm_shop.as_ref().filter(|shop| shop.id == *shop_id)?;
+            ResidentTargetView {
+                kind: ResidentTargetKind::FarmShop,
+                id: Some(shop.id.clone()),
+                label: "Farm Shop".to_owned(),
+                tile: approach_tile
+                    .as_ref()
+                    .map(ResidentScenePoint::from_tile)
+                    .unwrap_or_else(|| ResidentScenePoint::from_tile(&shop.tile)),
+            }
+        }
         ReservedWorkTarget::Animal {
             shelter_id,
             animal_slot,
@@ -932,6 +968,7 @@ fn reservations(farm: &FarmState) -> ReservationView {
     let mut machines = std::collections::BTreeMap::new();
     let mut oven = None;
     let mut animals = Vec::new();
+    let mut farm_shop_stock = std::collections::BTreeMap::new();
     let mut path_tiles = Vec::new();
 
     for resident in &farm.residents {
@@ -966,6 +1003,14 @@ fn reservations(farm: &FarmState) -> ReservationView {
                         },
                         reason.clone(),
                     )),
+                    ReservedWorkTarget::FarmShop { .. } => {
+                        if let ResidentTaskStepWork::PickupShopStock { items } = &step.work {
+                            for item in items {
+                                *farm_shop_stock.entry(item.item_id.clone()).or_insert(0) +=
+                                    item.quantity;
+                            }
+                        }
+                    }
                     ReservedWorkTarget::Silo
                     | ReservedWorkTarget::Barn
                     | ReservedWorkTarget::ToolSource => {}
@@ -986,6 +1031,7 @@ fn reservations(farm: &FarmState) -> ReservationView {
         machines,
         oven,
         animals,
+        farm_shop_stock,
         path_tiles,
     }
 }
@@ -997,6 +1043,8 @@ fn is_resource_step_work(work: &ResidentTaskStepWork) -> bool {
             | ResidentTaskStepWork::PickupTools { .. }
             | ResidentTaskStepWork::DepositInventory { .. }
             | ResidentTaskStepWork::DepositItems { .. }
+            | ResidentTaskStepWork::DepositShopStock { .. }
+            | ResidentTaskStepWork::PickupShopStock { .. }
             | ResidentTaskStepWork::ReturnTools { .. }
     )
 }

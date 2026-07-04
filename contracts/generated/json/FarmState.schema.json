@@ -83,6 +83,17 @@
         "$ref": "#/definitions/DeliveryOrder"
       }
     },
+    "farm_shop": {
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/definitions/FarmShopState"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "farmhouse_tool_stock": {
       "default": {
         "collection_pail": 1,
@@ -1141,6 +1152,93 @@
         }
       }
     },
+    "FarmShopSaleWindow": {
+      "type": "object",
+      "required": [
+        "coins_gained",
+        "id",
+        "item_id",
+        "quantity",
+        "sold_at_ms",
+        "visible_until_ms"
+      ],
+      "properties": {
+        "coins_gained": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "id": {
+          "type": "string"
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "sold_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "visible_until_ms": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "FarmShopState": {
+      "type": "object",
+      "required": [
+        "id",
+        "next_customer_visit_at_ms",
+        "stock",
+        "stock_capacity",
+        "tile",
+        "visit_count"
+      ],
+      "properties": {
+        "current_sale": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FarmShopSaleWindow"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "next_customer_visit_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "stock": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ItemStack"
+          }
+        },
+        "stock_capacity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "tile": {
+          "$ref": "#/definitions/Tile"
+        },
+        "visit_count": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
     "FarmhouseUpgradeKind": {
       "type": "string",
       "enum": [
@@ -1436,6 +1534,24 @@
         {
           "type": "object",
           "required": [
+            "shop_id",
+            "type"
+          ],
+          "properties": {
+            "shop_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "farm_shop"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "animal_slot",
             "shelter_id",
             "type"
@@ -1553,6 +1669,20 @@
               "type": "string",
               "enum": [
                 "production_work"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "shop_work"
               ]
             }
           }
@@ -1850,6 +1980,48 @@
               "type": "string",
               "enum": [
                 "deposit_items"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "items",
+            "type"
+          ],
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ItemStack"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "deposit_shop_stock"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "items",
+            "type"
+          ],
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ItemStack"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "pickup_shop_stock"
               ]
             }
           }

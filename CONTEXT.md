@@ -148,6 +148,22 @@ _Avoid_: Building, placed object
 A small player-built support Structure that stores tools for Farm Resident work. It is not a Machine, Animal Shelter, storage, or Farmhouse Upgrade.
 _Avoid_: Tool machine, storage shed, second Farmhouse
 
+**Farm Shop**:
+A player-built roadside Structure that holds Shop Stock and enables Customer Visits. It must be placed on the road-facing edge of the Farm.
+_Avoid_: Market, delivery board, roadside decoration
+
+**Shop Stock**:
+Saved sellable Item stacks held by the Farm Shop, separate from Silo and Barn inventory. Shop Stock is moved in and out by Resident Tasks and can be bought by Customer Visits unless reserved.
+_Avoid_: Market listing, storage inventory, offer
+
+**Customer Visit**:
+A scheduled elapsed-time opportunity for a roadside car to stop at the Farm Shop and buy one available unit from Shop Stock.
+_Avoid_: Delivery order, market trade, visual-only car
+
+**Shop Sale**:
+A successful Customer Visit that removes one unreserved Shop Stock unit, pays coins at the catalog market sell price, and exposes a short-lived sale window for the client.
+_Avoid_: Delivery fulfillment, manual sale
+
 **Tool Source**:
 An available place where Farm Residents can source tools before performing Resident Tasks. The Farmhouse is always a Tool Source, and a built Tool Shed can become another Tool Source for future resident travel timing.
 _Avoid_: Tool inventory, resource source

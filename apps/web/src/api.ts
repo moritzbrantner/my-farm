@@ -439,6 +439,7 @@ function defaultReservations(): ReservationView {
     field_plots: {},
     machines: {},
     animals: [],
+    farm_shop_stock: {},
     path_tiles: [],
   };
 }
@@ -453,6 +454,9 @@ function normalizeReservations(reservations: FarmView["reservations"] | null | u
     machines: isRecord(partial.machines) ? (partial.machines as ReservationView["machines"]) : {},
     oven: partial.oven,
     animals: Array.isArray(partial.animals) ? partial.animals : [],
+    farm_shop_stock: isRecord(partial.farm_shop_stock)
+      ? (partial.farm_shop_stock as ReservationView["farm_shop_stock"])
+      : {},
     path_tiles: Array.isArray(partial.path_tiles) ? partial.path_tiles : [],
   };
 }
