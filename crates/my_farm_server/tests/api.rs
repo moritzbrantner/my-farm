@@ -427,7 +427,10 @@ async fn websocket_elapsed_time_persists_and_broadcasts_resident_task_completion
     assert_eq!(second_elapsed.version, 2);
     assert_eq!(second_elapsed.view, first_elapsed.view);
     assert!(first_elapsed.view.field_plots[0].crop.is_some());
-    assert!(first_elapsed.view.resident_task_queues["woman"].is_empty());
+    assert!(matches!(
+        first_elapsed.view.resident_task_queues["woman"][0].steps[0].work,
+        my_farm_core::ResidentTaskStepWork::ReturnTools
+    ));
 
     let saved_version: i64 =
         sqlx::query_scalar("SELECT version FROM farm_save WHERE id = 'local-farm'")
@@ -437,7 +440,10 @@ async fn websocket_elapsed_time_persists_and_broadcasts_resident_task_completion
     assert_eq!(saved_version, 2);
     let saved = load_saved_farm(&pool).await;
     assert!(saved.field_plots[0].crop.is_some());
-    assert!(saved.resident_task_queues["woman"].is_empty());
+    assert!(matches!(
+        saved.resident_task_queues["woman"][0].steps[0].work,
+        my_farm_core::ResidentTaskStepWork::ReturnTools
+    ));
 }
 
 #[tokio::test]

@@ -417,11 +417,16 @@ pub enum ResidentTaskStepWork {
     CollectOvenJob { job_id: String, recipe_id: String },
     FeedAnimal,
     CollectAnimalProduct { item_id: String, quantity: u32 },
+    DepositInventory { item_id: String, quantity: u32 },
+    ReturnTools,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ReservedWorkTarget {
+    Silo,
+    Barn,
+    ToolSource,
     FieldPlot {
         plot_id: String,
     },

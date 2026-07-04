@@ -72,6 +72,14 @@ _Avoid_: Client-only route, visual interpolation path
 The reachable Farm Tile where a Farm Resident stands to perform a Resident Task step. Field work uses the Field Plot Tile; Structure work uses an adjacent Tile outside the Structure footprint.
 _Avoid_: Structure center, work target center
 
+**Deposit Step**:
+A Resident Task step that walks collected inventory to its storage destination. Crop items deposit at the Silo; non-crop outputs deposit at the Barn.
+_Avoid_: Instant payout, work-tile storage
+
+**Return Tools Step**:
+The final cleanup step appended to Resident Tasks so the Farm Resident walks back to a Tool Source after completing assigned work and deposits.
+_Avoid_: Teleport home, idle reset
+
 **Reserved Work Target**:
 The Farm object reserved by a Resident Task while that task is pending or producing, such as a Field Plot, Machine, or animal slot.
 _Avoid_: Client lock, UI reservation

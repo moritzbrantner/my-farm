@@ -152,6 +152,30 @@ function sceneTargetForReservedWorkTarget(
     const plot = view.field_plots.find((entry) => entry.id === target.plot_id);
     return plot ? { tile: plot.tile, label: `field:${plot.id}` } : null;
   }
+  if (target.type === "silo") {
+    return {
+      tile: footprintCenter(view.silo_tile, structureFootprint("silo")),
+      label: "silo",
+    };
+  }
+  if (target.type === "barn") {
+    return {
+      tile: footprintCenter(view.barn_tile, structureFootprint("barn")),
+      label: "barn",
+    };
+  }
+  if (target.type === "tool_source") {
+    if (view.tool_shed) {
+      return {
+        tile: view.tool_shed.tile,
+        label: "tool_shed",
+      };
+    }
+    return {
+      tile: { x: 8.5, y: 8.5 },
+      label: "farmhouse",
+    };
+  }
   if (target.type === "machine") {
     const machine = view.machines.find((entry) => entry.id === target.machine_id);
     if (!machine) {
@@ -201,6 +225,13 @@ function sameReservedTarget(left: ReservedWorkTarget, right: ReservedWorkTarget)
   if (left.type === "oven" && right.type === "oven") {
     return true;
   }
+  if (
+    (left.type === "silo" && right.type === "silo") ||
+    (left.type === "barn" && right.type === "barn") ||
+    (left.type === "tool_source" && right.type === "tool_source")
+  ) {
+    return true;
+  }
   return (
     left.type === "animal" &&
     right.type === "animal" &&
@@ -227,6 +258,10 @@ function taskLabel(catalog: CatalogDocument, task: ResidentTask) {
       return "Feed animal";
     case "collect_animal_product":
       return `Collect ${itemName(catalog, firstWork.item_id)}`;
+    case "deposit_inventory":
+      return `Store ${itemName(catalog, firstWork.item_id)}`;
+    case "return_tools":
+      return "Return tools";
   }
 }
 
