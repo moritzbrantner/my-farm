@@ -8,6 +8,7 @@ import {
   currentResidentScenePose,
   hasActiveResidentWalk,
   interpolatePath,
+  residentVisualCue,
 } from "./residentTasks";
 
 test("interpolates resident walking along stored path", () => {
@@ -260,6 +261,79 @@ test("does not return scene path for idle residents or empty walk paths", () => 
       1_500,
     ),
   ).toBeNull();
+});
+
+test("maps resident current task work to a visual activity and prop", () => {
+  const cases: Array<{
+    work: ResidentTask["steps"][number]["work"];
+    activity: ReturnType<typeof residentVisualCue>["activity"];
+    prop: ReturnType<typeof residentVisualCue>["prop"];
+  }> = [
+    { work: { type: "pickup_items", source: { type: "silo" }, items: [{ item_id: "wheat", quantity: 1 }] }, activity: "picking_up_items", prop: "crate" },
+    { work: { type: "pickup_tools", source: { type: "farmhouse" }, tools: [{ tool_kind: "hoe", quantity: 1 }] }, activity: "picking_up_tools", prop: "tool_bundle" },
+    { work: { type: "plant_crop", crop_id: "wheat" }, activity: "planting", prop: "seed_pouch" },
+    { work: { type: "harvest_crop", crop_id: "wheat", quantity: 2 }, activity: "harvesting", prop: "basket" },
+    { work: { type: "collect_machine_job", job_id: "job-1", recipe_id: "chicken_feed" }, activity: "collecting_machine", prop: "crate" },
+    { work: { type: "start_oven_recipe", job_id: "job-1", recipe_id: "bread" }, activity: "starting_oven", prop: "oven_tray" },
+    { work: { type: "collect_oven_job", job_id: "job-1", recipe_id: "bread" }, activity: "collecting_oven", prop: "oven_tray" },
+    { work: { type: "feed_animal" }, activity: "feeding_animal", prop: "bucket" },
+    { work: { type: "collect_animal_product", item_id: "egg", quantity: 1 }, activity: "collecting_animal_product", prop: "basket" },
+    { work: { type: "deposit_inventory", item_id: "wheat", quantity: 1 }, activity: "depositing_inventory", prop: "crate" },
+    { work: { type: "deposit_items", destination: { type: "silo" }, items: [{ item_id: "wheat", quantity: 1 }] }, activity: "depositing_inventory", prop: "crate" },
+    { work: { type: "return_tools", source: { type: "farmhouse" }, tools: [{ tool_kind: "hoe", quantity: 1 }] }, activity: "returning_tools", prop: "tool_bundle" },
+  ];
+
+  for (const { work, activity, prop } of cases) {
+    const view = farmViewWithTask({
+      id: `task-${work.type}`,
+      kind: { type: "production_work" },
+      started_at_ms: 1_000,
+      ready_at_ms: 3_000,
+      steps: [
+        {
+          reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+          work,
+          approach_tile: { x: 10, y: 10 },
+          walk_path: [],
+          walk_duration_ms: 0,
+          work_duration_ms: 2_000,
+          duration_ms: 2_000,
+        },
+      ],
+    });
+
+    expect(residentVisualCue(view, "woman", 1_500)).toEqual({ activity, prop });
+  }
+});
+
+test("uses idle and walking visual cues from authoritative scene state", () => {
+  expect(residentVisualCue(farmViewWithTask(null), "woman", 1_500)).toEqual({
+    activity: "idle",
+    prop: "none",
+  });
+
+  const walkingView = farmViewWithTask({
+    id: "task-1",
+    kind: { type: "field_work" },
+    started_at_ms: 1_000,
+    ready_at_ms: 4_000,
+    steps: [
+      {
+        reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+        work: { type: "plant_crop", crop_id: "wheat" },
+        approach_tile: { x: 10, y: 10 },
+        walk_path: [{ x: 10, y: 10 }],
+        walk_duration_ms: 1_000,
+        work_duration_ms: 2_000,
+        duration_ms: 3_000,
+      },
+    ],
+  });
+
+  expect(residentVisualCue(walkingView, "woman", 1_500)).toEqual({
+    activity: "walking",
+    prop: "none",
+  });
 });
 
 function farmViewWithTask(task: ResidentTask | null): FarmView {

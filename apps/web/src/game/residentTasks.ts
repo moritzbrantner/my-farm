@@ -34,6 +34,35 @@ export type ResidentScenePath = {
   state: Exclude<ResidentSceneState, "idle">;
 };
 
+export type ResidentVisualActivity =
+  | "idle"
+  | "walking"
+  | "picking_up_items"
+  | "picking_up_tools"
+  | "planting"
+  | "harvesting"
+  | "collecting_machine"
+  | "starting_oven"
+  | "collecting_oven"
+  | "feeding_animal"
+  | "collecting_animal_product"
+  | "depositing_inventory"
+  | "returning_tools";
+
+export type ResidentVisualProp =
+  | "none"
+  | "seed_pouch"
+  | "basket"
+  | "bucket"
+  | "crate"
+  | "oven_tray"
+  | "tool_bundle";
+
+export type ResidentVisualCue = {
+  activity: ResidentVisualActivity;
+  prop: ResidentVisualProp;
+};
+
 export function residentTaskStatus(
   catalog: CatalogDocument,
   view: FarmView,
@@ -48,6 +77,22 @@ export function residentTaskStatus(
     progress: currentTask ? residentTaskProgress(currentTask, nowMs) : 0,
     label: currentTask ? taskLabel(catalog, currentTask) : "Idle",
   };
+}
+
+export function residentVisualCue(
+  view: FarmView,
+  residentId: string,
+  nowMs: number,
+): ResidentVisualCue {
+  const pose = currentResidentScenePose(view, residentId, nowMs);
+  if (pose.state === "idle") {
+    return { activity: "idle", prop: "none" };
+  }
+  if (pose.state === "walking") {
+    return { activity: "walking", prop: "none" };
+  }
+  const currentWork = view.resident_task_queues[residentId]?.[0]?.steps[0]?.work;
+  return currentWork ? visualCueForResidentWork(currentWork) : { activity: "idle", prop: "none" };
 }
 
 export function currentResidentSceneTarget(view: FarmView, residentId: string): ResidentSceneTarget | null {
@@ -302,6 +347,34 @@ export function residentTaskStepLabel(
       return `Store ${stackListLabel(catalog, work.items)}`;
     case "return_tools":
       return "Return tools";
+  }
+}
+
+function visualCueForResidentWork(work: ResidentTask["steps"][number]["work"]): ResidentVisualCue {
+  switch (work.type) {
+    case "pickup_items":
+      return { activity: "picking_up_items", prop: "crate" };
+    case "pickup_tools":
+      return { activity: "picking_up_tools", prop: "tool_bundle" };
+    case "plant_crop":
+      return { activity: "planting", prop: "seed_pouch" };
+    case "harvest_crop":
+      return { activity: "harvesting", prop: "basket" };
+    case "collect_machine_job":
+      return { activity: "collecting_machine", prop: "crate" };
+    case "start_oven_recipe":
+      return { activity: "starting_oven", prop: "oven_tray" };
+    case "collect_oven_job":
+      return { activity: "collecting_oven", prop: "oven_tray" };
+    case "feed_animal":
+      return { activity: "feeding_animal", prop: "bucket" };
+    case "collect_animal_product":
+      return { activity: "collecting_animal_product", prop: "basket" };
+    case "deposit_inventory":
+    case "deposit_items":
+      return { activity: "depositing_inventory", prop: "crate" };
+    case "return_tools":
+      return { activity: "returning_tools", prop: "tool_bundle" };
   }
 }
 

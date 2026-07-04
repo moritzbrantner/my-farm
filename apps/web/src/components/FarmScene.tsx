@@ -36,6 +36,7 @@ import {
   currentResidentScenePath,
   currentResidentScenePose,
   hasActiveResidentWalk,
+  residentVisualCue,
 } from "../game/residentTasks";
 
 const MOVE_TILE_BLOCKED_COLOR = "#a9333f";
@@ -341,6 +342,7 @@ function FarmResidents({
   const residentNowMs = useResidentVisualNowMs(view, nowMs, visualClockPaused);
   const residents = view.residents.slice(0, 2).map((resident, index): FarmResidentPresentation => {
     const pose = currentResidentScenePose(view, resident.id, residentNowMs);
+    const visualCue = residentVisualCue(view, resident.id, residentNowMs);
     const offset = residentVisualOffset(index, pose.state);
     const position: [number, number, number] = [
       tileToWorld(pose.tile.x) + offset[0],
@@ -354,8 +356,11 @@ function FarmResidents({
       variant: resident.id === "man" ? "man" : "woman",
       position,
       state: pose.state,
+      activity: visualCue.activity,
+      prop: visualCue.prop,
       targetLabel: pose.label,
       selected: selection?.type === "resident" && selection.id === resident.id,
+      animationPaused: visualClockPaused,
     };
   });
 

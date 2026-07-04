@@ -10,7 +10,9 @@ import {
 import { buildStructureMenuModel, type StructureMenuItem } from "../game/structureMenu";
 import { ovenProductionStatus, productionStatusLabel } from "../game/structureStatus";
 import { recipeName } from "../game/selectors";
+import { residentVisualCue } from "../game/residentTasks";
 import type { CatalogDocument, FarmCommand, FarmView } from "../types";
+import { ResidentModel } from "./farmScene/residents";
 
 export type HouseRoomId = "living_room" | "kitchen" | "bedroom";
 export type HouseInteriorMode = "overview" | "room";
@@ -158,6 +160,7 @@ export function HouseInteriorScene({
           <RoomSet
             catalog={catalog}
             view={view}
+            nowMs={nowMs}
             room={room}
             roomStyle={roomStyle}
             preview={preview}
@@ -462,6 +465,7 @@ function HouseOverviewControls({
 function RoomSet({
   catalog,
   view,
+  nowMs,
   room,
   roomStyle,
   preview,
@@ -469,6 +473,7 @@ function RoomSet({
 }: {
   catalog: CatalogDocument;
   view: FarmView;
+  nowMs: number;
   room: HouseInteriorRoom;
   roomStyle: HouseRoomStyle;
   preview: { tile: RoomTile; decoration: DecorationDefinition; status: ReturnType<typeof decorationPlacementStatus> } | null;
@@ -482,7 +487,7 @@ function RoomSet({
       </mesh>
       <RoomShell room={room} roomStyle={roomStyle} gridEnabled={gridEnabled} />
       {room.id === "kitchen" ? <OvenWorkstationObject room={room} owned={view.owned_farmhouse_upgrades.includes("oven")} /> : null}
-      {room.id === "kitchen" ? <InteriorOvenResidents view={view} room={room} /> : null}
+      {room.id === "kitchen" ? <InteriorOvenResidents view={view} nowMs={nowMs} room={room} /> : null}
       {room.decoration_placements.map((placement) => {
         const decoration = catalog.decorations.find((entry) => entry.id === placement.decoration_id);
         return decoration ? (
@@ -610,7 +615,7 @@ function OvenWorkstationObject({
   );
 }
 
-function InteriorOvenResidents({ view, room }: { view: FarmView; room: HouseInteriorRoom }) {
+function InteriorOvenResidents({ view, nowMs, room }: { view: FarmView; nowMs: number; room: HouseInteriorRoom }) {
   const residentsAtOven = view.residents.filter((resident) => {
     const step = view.resident_task_queues[resident.id]?.[0]?.steps[0];
     return step?.reserved_work_target.type === "oven";
@@ -622,21 +627,31 @@ function InteriorOvenResidents({ view, room }: { view: FarmView; room: HouseInte
   const baseZ = (kitchenOvenTile.y + kitchenOvenFootprint.height + 0.4 - room.height / 2) * tileSize;
   return (
     <group>
-      {residentsAtOven.map((resident, index) => (
-        <group key={resident.id} position={[baseX + (index - (residentsAtOven.length - 1) / 2) * 0.34, 0.16, baseZ]}>
-          <mesh castShadow>
-            <capsuleGeometry args={[0.1, 0.38, 4, 8]} />
-            <meshStandardMaterial color={resident.id === "woman" ? "#8f5f7d" : "#4f6f8f"} roughness={0.72} />
-          </mesh>
-          <Html position={[0, 0.52, 0]} center wrapperClass="farm-scene-marker-wrapper">
-            <div
-              className="farm-scene-marker"
-              data-testid={`house-resident-${resident.id}`}
-              aria-label={`${resident.display_name} at Kitchen Oven`}
+      {residentsAtOven.map((resident, index) => {
+        const visualCue = residentVisualCue(view, resident.id, nowMs);
+        return (
+          <group
+            key={resident.id}
+            position={[baseX + (index - (residentsAtOven.length - 1) / 2) * 0.34, 0.1, baseZ]}
+          >
+            <ResidentModel
+              variant={resident.id === "man" ? "man" : "woman"}
+              activity={visualCue.activity}
+              prop={visualCue.prop}
+              compact
             />
-          </Html>
-        </group>
-      ))}
+            <Html position={[0, 0.52, 0]} center wrapperClass="farm-scene-marker-wrapper">
+              <div
+                className="farm-scene-marker"
+                data-testid={`house-resident-${resident.id}`}
+                data-resident-activity={visualCue.activity}
+                data-resident-prop={visualCue.prop}
+                aria-label={`${resident.display_name} at Kitchen Oven`}
+              />
+            </Html>
+          </group>
+        );
+      })}
     </group>
   );
 }

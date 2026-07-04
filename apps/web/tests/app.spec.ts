@@ -639,6 +639,41 @@ test("renders resident as working after walking to the approach tile", async ({ 
   const resident = page.getByTestId("farm-scene-resident-woman");
   await expect(resident).toHaveAttribute("data-resident-state", "working");
   await expect(resident).toHaveAttribute("data-resident-target", "field:plot-1");
+  await expect(resident).toHaveAttribute("data-resident-activity", "planting");
+  await expect(resident).toHaveAttribute("data-resident-prop", "seed_pouch");
+});
+
+test("renders task-specific resident harvest visual cue", async ({ page }) => {
+  const now = Date.now();
+  const view: FarmView = {
+    ...farmView,
+    resident_task_queues: {
+      woman: [
+        {
+          id: "task-harvest",
+          kind: { type: "field_work" },
+          started_at_ms: now - 500,
+          ready_at_ms: now + 500,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "harvest_crop", crop_id: "wheat", quantity: 2 },
+              approach_tile: { x: 0, y: 0 },
+              duration_ms: 1_000,
+            }),
+          ],
+        },
+      ],
+      man: [],
+    },
+  };
+  await mockFarmApi(page, view);
+  await openFarm(page);
+
+  const resident = page.getByTestId("farm-scene-resident-woman");
+  await expect(resident).toHaveAttribute("data-resident-state", "working");
+  await expect(resident).toHaveAttribute("data-resident-activity", "harvesting");
+  await expect(resident).toHaveAttribute("data-resident-prop", "basket");
 });
 
 test("uses the first remaining batch task step as the scene movement target", async ({ page }) => {
@@ -1576,6 +1611,8 @@ test("Kitchen Oven Workstation sends oven commands and shows pending resident wo
   await expect(page.getByTestId("house-kitchen-oven")).toBeVisible();
   await expect(page.getByTestId("kitchen-oven-status")).toContainText("Starting Bread");
   await expect(page.getByTestId("house-resident-woman")).toBeVisible();
+  await expect(page.getByTestId("house-resident-woman")).toHaveAttribute("data-resident-activity", "starting_oven");
+  await expect(page.getByTestId("house-resident-woman")).toHaveAttribute("data-resident-prop", "oven_tray");
   await expect(page.getByTestId("house-resident-man")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Bread", exact: true }).click();

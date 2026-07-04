@@ -429,7 +429,7 @@ async fn websocket_elapsed_time_persists_and_broadcasts_resident_task_completion
     assert!(first_elapsed.view.field_plots[0].crop.is_some());
     assert!(matches!(
         first_elapsed.view.resident_task_queues["woman"][0].steps[0].work,
-        my_farm_core::ResidentTaskStepWork::ReturnTools
+        my_farm_core::ResidentTaskStepWork::ReturnTools { .. }
     ));
 
     let saved_version: i64 =
@@ -442,7 +442,7 @@ async fn websocket_elapsed_time_persists_and_broadcasts_resident_task_completion
     assert!(saved.field_plots[0].crop.is_some());
     assert!(matches!(
         saved.resident_task_queues["woman"][0].steps[0].work,
-        my_farm_core::ResidentTaskStepWork::ReturnTools
+        my_farm_core::ResidentTaskStepWork::ReturnTools { .. }
     ));
 }
 
