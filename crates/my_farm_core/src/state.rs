@@ -1,6 +1,6 @@
 use crate::{
     CatalogDocument, FarmhouseUpgradeKind, ItemKind, ItemStack, MachineKind, ShelterDef,
-    ShelterKind,
+    ShelterKind, ToolKind, ToolStack, default_tool_stock,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use ts_rs::TS;
 
 pub const DEFAULT_RESIDENT_TASK_STEP_DURATION_MS: i64 = 2_000;
+pub const DEFAULT_RESIDENT_ITEM_CAPACITY: u32 = 30;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct Tile {
@@ -39,6 +40,8 @@ pub struct FarmState {
     #[serde(default = "default_barn_tile")]
     pub barn_tile: Tile,
     pub inventory: BTreeMap<String, u32>,
+    #[serde(default = "default_tool_stock")]
+    pub farmhouse_tool_stock: BTreeMap<ToolKind, u32>,
     #[serde(default = "default_claimed_crop_unlocks")]
     pub claimed_crop_unlocks: Vec<String>,
     pub field_plots: Vec<FieldPlot>,
@@ -63,6 +66,8 @@ pub struct FarmState {
     pub resident_locations: BTreeMap<String, Tile>,
     #[serde(default = "default_resident_task_queues")]
     pub resident_task_queues: BTreeMap<String, Vec<ResidentTask>>,
+    #[serde(default = "default_resident_inventories")]
+    pub resident_inventories: BTreeMap<String, ResidentInventory>,
     #[serde(default = "default_house_interior")]
     pub house_interior: HouseInterior,
     #[ts(type = "number")]
@@ -96,6 +101,8 @@ struct FarmStateSerde {
     #[serde(default = "default_barn_tile")]
     barn_tile: Tile,
     inventory: BTreeMap<String, u32>,
+    #[serde(default = "default_tool_stock")]
+    farmhouse_tool_stock: BTreeMap<ToolKind, u32>,
     #[serde(default = "default_claimed_crop_unlocks")]
     claimed_crop_unlocks: Vec<String>,
     field_plots: Vec<FieldPlot>,
@@ -120,6 +127,8 @@ struct FarmStateSerde {
     resident_locations: BTreeMap<String, Tile>,
     #[serde(default = "default_resident_task_queues")]
     resident_task_queues: BTreeMap<String, Vec<ResidentTask>>,
+    #[serde(default = "default_resident_inventories")]
+    resident_inventories: BTreeMap<String, ResidentInventory>,
     #[serde(default = "default_house_interior")]
     house_interior: HouseInterior,
     next_id: u64,
@@ -145,6 +154,7 @@ impl FarmStateSerde {
             barn_upgrade_tier: self.barn_upgrade_tier,
             barn_tile: self.barn_tile,
             inventory: self.inventory,
+            farmhouse_tool_stock: self.farmhouse_tool_stock,
             claimed_crop_unlocks: self.claimed_crop_unlocks,
             field_plots: self.field_plots,
             machines: self
@@ -163,11 +173,14 @@ impl FarmStateSerde {
             selected_resident_id: self.selected_resident_id,
             resident_locations: self.resident_locations,
             resident_task_queues: self.resident_task_queues,
+            resident_inventories: self.resident_inventories,
             house_interior: self.house_interior,
             next_id: self.next_id,
         };
 
         ensure_resident_locations(&mut farm);
+        ensure_resident_inventories(&mut farm);
+        ensure_tool_stocks(&mut farm);
 
         if let Some(legacy_bakery) = legacy_bakery {
             migrate_legacy_bakery(&mut farm, legacy_bakery, forward_oven_present);
@@ -234,6 +247,8 @@ pub struct MachineState {
 pub struct ToolShedState {
     pub id: String,
     pub tile: Tile,
+    #[serde(default = "default_tool_stock")]
+    pub tool_stock: BTreeMap<ToolKind, u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -326,6 +341,13 @@ pub struct DeliveryOrder {
 pub struct FarmResident {
     pub id: String,
     pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct ResidentInventory {
+    pub items: BTreeMap<String, u32>,
+    pub tools: BTreeMap<ToolKind, u32>,
+    pub item_capacity: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -446,15 +468,70 @@ impl<'de> Deserialize<'de> for ResidentTaskStep {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResidentTaskStepWork {
-    PlantCrop { crop_id: String },
-    HarvestCrop { crop_id: String, quantity: u32 },
-    CollectMachineJob { job_id: String, recipe_id: String },
-    StartOvenRecipe { job_id: String, recipe_id: String },
-    CollectOvenJob { job_id: String, recipe_id: String },
+    PickupItems {
+        source: StorageSourceRef,
+        items: Vec<ItemStack>,
+    },
+    PickupTools {
+        source: ToolSourceRef,
+        tools: Vec<ToolStack>,
+    },
+    PlantCrop {
+        crop_id: String,
+    },
+    HarvestCrop {
+        crop_id: String,
+        quantity: u32,
+    },
+    CollectMachineJob {
+        job_id: String,
+        recipe_id: String,
+    },
+    StartOvenRecipe {
+        job_id: String,
+        recipe_id: String,
+    },
+    CollectOvenJob {
+        job_id: String,
+        recipe_id: String,
+    },
     FeedAnimal,
-    CollectAnimalProduct { item_id: String, quantity: u32 },
-    DepositInventory { item_id: String, quantity: u32 },
-    ReturnTools,
+    CollectAnimalProduct {
+        item_id: String,
+        quantity: u32,
+    },
+    DepositInventory {
+        item_id: String,
+        quantity: u32,
+    },
+    DepositItems {
+        destination: StorageSourceRef,
+        items: Vec<ItemStack>,
+    },
+    ReturnTools {
+        #[serde(default = "default_tool_source_ref")]
+        source: ToolSourceRef,
+        #[serde(default)]
+        tools: Vec<ToolStack>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StorageSourceRef {
+    Silo,
+    Barn,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolSourceRef {
+    Farmhouse,
+    ToolShed { id: String },
+}
+
+pub fn default_tool_source_ref() -> ToolSourceRef {
+    ToolSourceRef::Farmhouse
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -492,6 +569,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         barn_upgrade_tier: default_storage_upgrade_tier(),
         barn_tile: default_barn_tile(),
         inventory,
+        farmhouse_tool_stock: default_tool_stock(),
         claimed_crop_unlocks: default_claimed_crop_unlocks(),
         field_plots: starting_plots(),
         machines: Vec::new(),
@@ -506,6 +584,7 @@ pub fn new_farm(now_ms: i64, catalog: &CatalogDocument) -> FarmState {
         selected_resident_id: default_selected_resident_id(),
         resident_locations: default_resident_locations(),
         resident_task_queues: default_resident_task_queues(),
+        resident_inventories: default_resident_inventories(),
         house_interior: default_house_interior(),
         next_id: 1,
     };
@@ -672,6 +751,21 @@ pub fn default_resident_task_queues() -> BTreeMap<String, Vec<ResidentTask>> {
     ])
 }
 
+pub fn default_resident_inventory() -> ResidentInventory {
+    ResidentInventory {
+        items: BTreeMap::new(),
+        tools: BTreeMap::new(),
+        item_capacity: DEFAULT_RESIDENT_ITEM_CAPACITY,
+    }
+}
+
+pub fn default_resident_inventories() -> BTreeMap<String, ResidentInventory> {
+    BTreeMap::from([
+        ("woman".to_owned(), default_resident_inventory()),
+        ("man".to_owned(), default_resident_inventory()),
+    ])
+}
+
 pub fn default_resident_locations() -> BTreeMap<String, Tile> {
     BTreeMap::from([
         ("woman".to_owned(), Tile::new(8, 10)),
@@ -692,6 +786,27 @@ fn ensure_resident_locations(farm: &mut FarmState) {
                 .cloned()
                 .unwrap_or_else(|| Tile::new(8, 10));
             farm.resident_locations.insert(resident.id.clone(), default);
+        }
+    }
+}
+
+fn ensure_resident_inventories(farm: &mut FarmState) {
+    for resident in &farm.residents {
+        farm.resident_inventories
+            .entry(resident.id.clone())
+            .or_insert_with(default_resident_inventory);
+    }
+}
+
+fn ensure_tool_stocks(farm: &mut FarmState) {
+    for (tool_kind, quantity) in default_tool_stock() {
+        farm.farmhouse_tool_stock
+            .entry(tool_kind)
+            .or_insert(quantity);
+    }
+    if let Some(tool_shed) = &mut farm.tool_shed {
+        for (tool_kind, quantity) in default_tool_stock() {
+            tool_shed.tool_stock.entry(tool_kind).or_insert(quantity);
         }
     }
 }

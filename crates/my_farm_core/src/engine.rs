@@ -3,10 +3,10 @@ use crate::{
     DeliveryOrder, FarmState, FarmhouseUpgradeKind, FieldPlot, ItemKind, ItemStack, MachineJob,
     MachineKind, MachineState, OvenJob, OvenJobStatus, RecipeTarget, ReservedWorkTarget,
     ResidentTask, ResidentTaskKind, ResidentTaskStep, ResidentTaskStepWork, Room, RoomTile,
-    ShelterKind, StorageKind, StructureKind, Tile, ToolShedState, add_inventory,
-    add_shelter_animals, barn_storage_used, crop_storage_used,
-    default_resident_task_step_duration_ms, gain_xp, next_id, remove_inventory, scaled_duration_ms,
-    update_level,
+    ShelterKind, StorageKind, StorageSourceRef, StructureKind, Tile, ToolKind, ToolShedState,
+    ToolSourceRef, ToolStack, add_inventory, add_shelter_animals, barn_storage_used,
+    crop_storage_used, default_resident_task_step_duration_ms, default_tool_stock, gain_xp,
+    inventory_quantity, next_id, remove_inventory, scaled_duration_ms, update_level,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -447,7 +447,6 @@ fn plant_crop(
             },
         )],
     )?;
-    remove_inventory(farm, &[ItemStack::new(crop_id, 1)])?;
     push_planned_resident_work(farm, planned);
     Ok(Vec::new())
 }
@@ -497,9 +496,7 @@ fn sweep_plant(
         }));
     }
 
-    let seed_count = steps.len() as u32;
     let planned = plan_resident_work(farm, catalog, now_ms, ResidentTaskKind::FieldWork, steps)?;
-    remove_inventory(farm, &[ItemStack::new(crop_id, seed_count)])?;
     push_planned_resident_work(farm, planned);
     Ok(Vec::new())
 }
@@ -672,7 +669,7 @@ struct PlannedResidentWork {
 }
 
 fn plan_resident_work(
-    farm: &FarmState,
+    farm: &mut FarmState,
     catalog: &CatalogDocument,
     now_ms: i64,
     kind: ResidentTaskKind,
@@ -680,6 +677,7 @@ fn plan_resident_work(
 ) -> Result<PlannedResidentWork, CommandError> {
     find_resident_index(farm, &farm.selected_resident_id)?;
     let selected_resident_id = farm.selected_resident_id.clone();
+    strip_trailing_cleanup_steps(farm, &selected_resident_id);
     let started_at_ms = farm
         .resident_task_queues
         .get(&selected_resident_id)
@@ -687,7 +685,7 @@ fn plan_resident_work(
         .map(resident_task_tail_ready_at)
         .unwrap_or(now_ms)
         .max(now_ms);
-    let steps = append_resident_return_steps(catalog, steps);
+    let steps = plan_resource_steps(farm, catalog, &selected_resident_id, steps)?;
     let steps = plan_resident_task_steps(farm, &selected_resident_id, steps)?;
     let ready_at_ms = started_at_ms
         + steps
@@ -704,43 +702,406 @@ fn plan_resident_work(
     })
 }
 
-fn append_resident_return_steps(
-    catalog: &CatalogDocument,
-    steps: Vec<ResidentTaskStep>,
-) -> Vec<ResidentTaskStep> {
-    if steps.is_empty() {
-        return steps;
-    }
-
-    let mut expanded = Vec::new();
-    for step in steps {
-        let deposit_steps = deposit_steps_for_work(catalog, &step.work);
-        expanded.push(step);
-        expanded.extend(deposit_steps);
-    }
-    expanded.push(resident_task_step(
-        ReservedWorkTarget::ToolSource,
-        ResidentTaskStepWork::ReturnTools,
-    ));
-    expanded
+#[derive(Clone)]
+struct ProjectedInventory {
+    items: BTreeMap<String, u32>,
+    tools: BTreeMap<ToolKind, u32>,
+    item_capacity: u32,
 }
 
-fn deposit_steps_for_work(
+fn plan_resource_steps(
+    farm: &FarmState,
     catalog: &CatalogDocument,
+    resident_id: &str,
+    work_steps: Vec<ResidentTaskStep>,
+) -> Result<Vec<ResidentTaskStep>, CommandError> {
+    let mut projected = projected_resident_inventory(farm, catalog, resident_id);
+    let mut planned = Vec::new();
+
+    for work_step in work_steps {
+        let inputs = step_inventory_inputs(farm, catalog, &work_step)?;
+        if carried_item_quantity(&projected.items) + stack_quantity(&inputs)
+            > projected.item_capacity
+            && !projected.items.is_empty()
+        {
+            planned.extend(deposit_all_carried_items(catalog, &mut projected));
+        }
+        let pickups = missing_projected_items(farm, &projected, &inputs)?;
+        if !pickups.is_empty() {
+            for pickup in pickups {
+                add_projected_items(&mut projected.items, std::slice::from_ref(&pickup));
+                planned.push(resident_task_step(
+                    reserved_target_for_storage_source(&storage_source_for_item(
+                        catalog,
+                        &pickup.item_id,
+                    )),
+                    ResidentTaskStepWork::PickupItems {
+                        source: storage_source_for_item(catalog, &pickup.item_id),
+                        items: vec![pickup],
+                    },
+                ));
+            }
+        }
+
+        if let Some(tool_kind) = tool_for_work(&work_step.work) {
+            if projected.tools.get(&tool_kind).copied().unwrap_or(0) == 0 {
+                let source = available_tool_source(farm, tool_kind)
+                    .ok_or_else(|| CommandError::new("required tool unavailable"))?;
+                add_projected_tools(&mut projected.tools, &[ToolStack::new(tool_kind, 1)]);
+                planned.push(resident_task_step(
+                    ReservedWorkTarget::ToolSource,
+                    ResidentTaskStepWork::PickupTools {
+                        source,
+                        tools: vec![ToolStack::new(tool_kind, 1)],
+                    },
+                ));
+            }
+        }
+
+        let outputs = step_inventory_outputs(catalog, &work_step.work);
+        if carried_item_quantity(&projected.items) + stack_quantity(&outputs)
+            > projected.item_capacity
+            && !projected.items.is_empty()
+        {
+            planned.extend(deposit_all_carried_items(catalog, &mut projected));
+        }
+        remove_projected_items(&mut projected.items, &inputs)?;
+        add_projected_items(&mut projected.items, &outputs);
+        planned.push(work_step);
+    }
+
+    planned.extend(deposit_all_carried_items(catalog, &mut projected));
+    if !projected.tools.is_empty() {
+        let tools = projected
+            .tools
+            .iter()
+            .map(|(tool_kind, quantity)| ToolStack::new(*tool_kind, *quantity))
+            .collect::<Vec<_>>();
+        planned.push(resident_task_step(
+            ReservedWorkTarget::ToolSource,
+            ResidentTaskStepWork::ReturnTools {
+                source: ToolSourceRef::Farmhouse,
+                tools,
+            },
+        ));
+    }
+
+    Ok(planned)
+}
+
+fn strip_trailing_cleanup_steps(farm: &mut FarmState, resident_id: &str) {
+    let Some(task) = farm
+        .resident_task_queues
+        .get_mut(resident_id)
+        .and_then(|queue| queue.last_mut())
+    else {
+        return;
+    };
+
+    while task.steps.last().is_some_and(|step| {
+        matches!(
+            step.work,
+            ResidentTaskStepWork::DepositInventory { .. }
+                | ResidentTaskStepWork::DepositItems { .. }
+                | ResidentTaskStepWork::ReturnTools { .. }
+        )
+    }) {
+        task.steps.pop();
+    }
+}
+
+fn projected_resident_inventory(
+    farm: &FarmState,
+    catalog: &CatalogDocument,
+    resident_id: &str,
+) -> ProjectedInventory {
+    let base = farm
+        .resident_inventories
+        .get(resident_id)
+        .cloned()
+        .unwrap_or_else(crate::default_resident_inventory);
+    let mut projected = ProjectedInventory {
+        items: base.items,
+        tools: base.tools,
+        item_capacity: base.item_capacity,
+    };
+
+    if let Some(queue) = farm.resident_task_queues.get(resident_id) {
+        for task in queue {
+            for step in &task.steps {
+                let _ = apply_projected_work(catalog, &mut projected, &step.work);
+            }
+        }
+    }
+
+    projected
+}
+
+fn apply_projected_work(
+    catalog: &CatalogDocument,
+    projected: &mut ProjectedInventory,
     work: &ResidentTaskStepWork,
+) -> Result<(), CommandError> {
+    match work {
+        ResidentTaskStepWork::PickupItems { items, .. } => {
+            add_projected_items(&mut projected.items, items);
+        }
+        ResidentTaskStepWork::PickupTools { tools, .. } => {
+            add_projected_tools(&mut projected.tools, tools);
+        }
+        ResidentTaskStepWork::DepositInventory { item_id, quantity } => {
+            remove_projected_items(&mut projected.items, &[ItemStack::new(item_id, *quantity)])?;
+        }
+        ResidentTaskStepWork::DepositItems { items, .. } => {
+            remove_projected_items(&mut projected.items, items)?;
+        }
+        ResidentTaskStepWork::ReturnTools { tools, .. } => {
+            if tools.is_empty() {
+                projected.tools.clear();
+            } else {
+                remove_projected_tools(&mut projected.tools, tools)?;
+            }
+        }
+        other => {
+            let inputs = projected_step_inputs(catalog, other);
+            remove_projected_items(&mut projected.items, &inputs)?;
+            let outputs = step_inventory_outputs(catalog, other);
+            add_projected_items(&mut projected.items, &outputs);
+        }
+    }
+    Ok(())
+}
+
+fn step_inventory_inputs(
+    farm: &FarmState,
+    catalog: &CatalogDocument,
+    step: &ResidentTaskStep,
+) -> Result<Vec<ItemStack>, CommandError> {
+    let inputs = match &step.work {
+        ResidentTaskStepWork::FeedAnimal => {
+            let ReservedWorkTarget::Animal { shelter_id, .. } = &step.reserved_work_target else {
+                return Ok(Vec::new());
+            };
+            let Some(shelter) = farm
+                .shelters
+                .iter()
+                .find(|shelter| shelter.id == *shelter_id)
+            else {
+                return Ok(Vec::new());
+            };
+            let Some(def) = catalog.shelter(&shelter.kind) else {
+                return Ok(Vec::new());
+            };
+            vec![ItemStack::new(&def.feed_item_id, 1)]
+        }
+        _ => projected_step_inputs(catalog, &step.work),
+    };
+    Ok(inputs)
+}
+
+fn projected_step_inputs(catalog: &CatalogDocument, work: &ResidentTaskStepWork) -> Vec<ItemStack> {
+    match work {
+        ResidentTaskStepWork::PlantCrop { crop_id } => vec![ItemStack::new(crop_id, 1)],
+        ResidentTaskStepWork::StartOvenRecipe { recipe_id, .. } => catalog
+            .recipe(recipe_id)
+            .map(|recipe| recipe.inputs.clone())
+            .unwrap_or_default(),
+        ResidentTaskStepWork::FeedAnimal => Vec::new(),
+        _ => Vec::new(),
+    }
+}
+
+fn missing_projected_items(
+    farm: &FarmState,
+    projected: &ProjectedInventory,
+    inputs: &[ItemStack],
+) -> Result<Vec<ItemStack>, CommandError> {
+    let mut pickups = Vec::new();
+    for input in inputs {
+        let carried = projected.items.get(&input.item_id).copied().unwrap_or(0);
+        if carried >= input.quantity {
+            continue;
+        }
+        let needed = input.quantity - carried;
+        if available_stored_quantity(farm, &input.item_id) < needed {
+            return Err(CommandError::new(format!(
+                "not enough available {}",
+                input.item_id
+            )));
+        }
+        pickups.push(ItemStack::new(&input.item_id, needed));
+    }
+    Ok(pickups)
+}
+
+fn available_stored_quantity(farm: &FarmState, item_id: &str) -> u32 {
+    inventory_quantity(farm, item_id).saturating_sub(reserved_item_pickups(farm, item_id))
+}
+
+fn reserved_item_pickups(farm: &FarmState, item_id: &str) -> u32 {
+    farm.resident_task_queues
+        .values()
+        .flat_map(|queue| queue.iter())
+        .flat_map(|task| task.steps.iter())
+        .flat_map(|step| match &step.work {
+            ResidentTaskStepWork::PickupItems { items, .. } => items.as_slice(),
+            _ => &[][..],
+        })
+        .filter(|stack| stack.item_id == item_id)
+        .map(|stack| stack.quantity)
+        .sum()
+}
+
+fn add_projected_items(items: &mut BTreeMap<String, u32>, stacks: &[ItemStack]) {
+    for stack in stacks {
+        *items.entry(stack.item_id.clone()).or_insert(0) += stack.quantity;
+    }
+}
+
+fn remove_projected_items(
+    items: &mut BTreeMap<String, u32>,
+    stacks: &[ItemStack],
+) -> Result<(), CommandError> {
+    for stack in stacks {
+        if items.get(&stack.item_id).copied().unwrap_or(0) < stack.quantity {
+            return Err(CommandError::new(format!(
+                "not enough carried {}",
+                stack.item_id
+            )));
+        }
+    }
+    for stack in stacks {
+        let entry = items.entry(stack.item_id.clone()).or_insert(0);
+        *entry -= stack.quantity;
+        if *entry == 0 {
+            items.remove(&stack.item_id);
+        }
+    }
+    Ok(())
+}
+
+fn add_projected_tools(tools: &mut BTreeMap<ToolKind, u32>, stacks: &[ToolStack]) {
+    for stack in stacks {
+        *tools.entry(stack.tool_kind).or_insert(0) += stack.quantity;
+    }
+}
+
+fn remove_projected_tools(
+    tools: &mut BTreeMap<ToolKind, u32>,
+    stacks: &[ToolStack],
+) -> Result<(), CommandError> {
+    for stack in stacks {
+        if tools.get(&stack.tool_kind).copied().unwrap_or(0) < stack.quantity {
+            return Err(CommandError::new("required tool unavailable"));
+        }
+    }
+    for stack in stacks {
+        let entry = tools.entry(stack.tool_kind).or_insert(0);
+        *entry -= stack.quantity;
+        if *entry == 0 {
+            tools.remove(&stack.tool_kind);
+        }
+    }
+    Ok(())
+}
+
+fn carried_item_quantity(items: &BTreeMap<String, u32>) -> u32 {
+    items.values().sum()
+}
+
+fn stack_quantity(stacks: &[ItemStack]) -> u32 {
+    stacks.iter().map(|stack| stack.quantity).sum()
+}
+
+fn deposit_all_carried_items(
+    catalog: &CatalogDocument,
+    projected: &mut ProjectedInventory,
 ) -> Vec<ResidentTaskStep> {
-    step_inventory_outputs(catalog, work)
+    let items = projected
+        .items
+        .iter()
+        .map(|(item_id, quantity)| ItemStack::new(item_id, *quantity))
+        .collect::<Vec<_>>();
+    projected.items.clear();
+    items
         .into_iter()
-        .map(|output| {
+        .map(|item| {
+            let destination = storage_source_for_item(catalog, &item.item_id);
             resident_task_step(
-                storage_target_for_item(catalog, &output.item_id),
-                ResidentTaskStepWork::DepositInventory {
-                    item_id: output.item_id,
-                    quantity: output.quantity,
+                reserved_target_for_storage_source(&destination),
+                ResidentTaskStepWork::DepositItems {
+                    destination,
+                    items: vec![item],
                 },
             )
         })
         .collect()
+}
+
+fn tool_for_work(work: &ResidentTaskStepWork) -> Option<ToolKind> {
+    match work {
+        ResidentTaskStepWork::PlantCrop { .. } => Some(ToolKind::Hoe),
+        ResidentTaskStepWork::HarvestCrop { .. } => Some(ToolKind::Sickle),
+        ResidentTaskStepWork::StartOvenRecipe { .. } => Some(ToolKind::MixingBowl),
+        ResidentTaskStepWork::CollectOvenJob { .. } => Some(ToolKind::OvenMitt),
+        ResidentTaskStepWork::FeedAnimal => Some(ToolKind::FeedBucket),
+        ResidentTaskStepWork::CollectAnimalProduct { .. } => Some(ToolKind::CollectionPail),
+        ResidentTaskStepWork::CollectMachineJob { .. } => Some(ToolKind::Wrench),
+        _ => None,
+    }
+}
+
+fn available_tool_source(farm: &FarmState, tool_kind: ToolKind) -> Option<ToolSourceRef> {
+    let reserved = reserved_tool_pickups(farm, tool_kind);
+    if farm
+        .farmhouse_tool_stock
+        .get(&tool_kind)
+        .copied()
+        .unwrap_or(0)
+        .saturating_sub(reserved)
+        > 0
+    {
+        return Some(ToolSourceRef::Farmhouse);
+    }
+    let tool_shed = farm.tool_shed.as_ref()?;
+    if tool_shed.tool_stock.get(&tool_kind).copied().unwrap_or(0) > 0 {
+        return Some(ToolSourceRef::ToolShed {
+            id: tool_shed.id.clone(),
+        });
+    }
+    None
+}
+
+fn reserved_tool_pickups(farm: &FarmState, tool_kind: ToolKind) -> u32 {
+    farm.resident_task_queues
+        .values()
+        .flat_map(|queue| queue.iter())
+        .flat_map(|task| task.steps.iter())
+        .flat_map(|step| match &step.work {
+            ResidentTaskStepWork::PickupTools { tools, .. } => tools.as_slice(),
+            _ => &[][..],
+        })
+        .filter(|stack| stack.tool_kind == tool_kind)
+        .map(|stack| stack.quantity)
+        .sum()
+}
+
+fn storage_source_for_item(catalog: &CatalogDocument, item_id: &str) -> StorageSourceRef {
+    if catalog
+        .item_kind(item_id)
+        .is_some_and(|kind| *kind == ItemKind::Crop)
+    {
+        StorageSourceRef::Silo
+    } else {
+        StorageSourceRef::Barn
+    }
+}
+
+fn reserved_target_for_storage_source(source: &StorageSourceRef) -> ReservedWorkTarget {
+    match source {
+        StorageSourceRef::Silo => ReservedWorkTarget::Silo,
+        StorageSourceRef::Barn => ReservedWorkTarget::Barn,
+    }
 }
 
 fn push_planned_resident_work(farm: &mut FarmState, planned: PlannedResidentWork) {
@@ -809,7 +1170,11 @@ fn apply_route_to_step(step: &mut ResidentTaskStep, route: PlannedRoute) {
 
 fn resident_task_step_work_duration_ms(work: &ResidentTaskStepWork) -> i64 {
     match work {
-        ResidentTaskStepWork::DepositInventory { .. } | ResidentTaskStepWork::ReturnTools => 0,
+        ResidentTaskStepWork::PickupItems { .. }
+        | ResidentTaskStepWork::PickupTools { .. }
+        | ResidentTaskStepWork::DepositInventory { .. }
+        | ResidentTaskStepWork::DepositItems { .. }
+        | ResidentTaskStepWork::ReturnTools { .. } => 0,
         ResidentTaskStepWork::PlantCrop { .. }
         | ResidentTaskStepWork::HarvestCrop { .. }
         | ResidentTaskStepWork::CollectMachineJob { .. }
@@ -1113,15 +1478,13 @@ fn complete_resident_tasks(
             while let Some((step, completed_at_ms)) =
                 pop_ready_resident_task_step(farm, &resident_id, now_ms)
             {
-                let defer_inventory =
-                    should_defer_inventory_to_deposit(farm, catalog, &resident_id, &step);
                 completed_any = true;
                 events.extend(complete_resident_task_step(
                     farm,
                     catalog,
+                    &resident_id,
                     step,
                     completed_at_ms,
-                    defer_inventory,
                 ));
             }
         }
@@ -1165,11 +1528,23 @@ fn pop_ready_resident_task_step(
 fn complete_resident_task_step(
     farm: &mut FarmState,
     catalog: &CatalogDocument,
+    resident_id: &str,
     step: ResidentTaskStep,
     completed_at_ms: i64,
-    defer_inventory: bool,
 ) -> Vec<FarmEvent> {
     match step.work {
+        ResidentTaskStepWork::PickupItems { items, .. } => {
+            if remove_inventory(farm, &items).is_ok() {
+                add_resident_items(farm, resident_id, &items);
+            }
+            Vec::new()
+        }
+        ResidentTaskStepWork::PickupTools { source, tools } => {
+            if remove_tool_source_tools(farm, &source, &tools).is_ok() {
+                add_resident_tools(farm, resident_id, &tools);
+            }
+            Vec::new()
+        }
         ResidentTaskStepWork::PlantCrop { crop_id } => {
             let ReservedWorkTarget::FieldPlot { plot_id } = step.reserved_work_target else {
                 return Vec::new();
@@ -1183,6 +1558,9 @@ fn complete_resident_task_step(
             let Some(crop) = catalog.crop(&crop_id) else {
                 return Vec::new();
             };
+            if remove_resident_items(farm, resident_id, &[ItemStack::new(&crop_id, 1)]).is_err() {
+                return Vec::new();
+            }
             farm.field_plots[plot_index].crop = Some(crate::PlantedCrop {
                 item_id: crop_id.clone(),
                 planted_at_ms: completed_at_ms,
@@ -1199,9 +1577,7 @@ fn complete_resident_task_step(
                 return Vec::new();
             };
             farm.field_plots[plot_index].crop = None;
-            if !defer_inventory {
-                add_inventory(farm, &crop_id, quantity);
-            }
+            add_resident_items(farm, resident_id, &[ItemStack::new(&crop_id, quantity)]);
             if let Some(crop) = catalog.crop(&crop_id) {
                 gain_xp(farm, catalog, crop.xp);
             }
@@ -1229,11 +1605,7 @@ fn complete_resident_task_step(
             let Some(recipe) = catalog.recipe(&recipe_id) else {
                 return Vec::new();
             };
-            for output in &recipe.outputs {
-                if !defer_inventory {
-                    add_inventory(farm, &output.item_id, output.quantity);
-                }
-            }
+            add_resident_items(farm, resident_id, &recipe.outputs);
             gain_xp(farm, catalog, recipe.xp);
             vec![FarmEvent::MachineJobCollected {
                 recipe_id: recipe.id.clone(),
@@ -1252,6 +1624,9 @@ fn complete_resident_task_step(
             let Some(recipe) = catalog.recipe(&recipe_id) else {
                 return Vec::new();
             };
+            if remove_resident_items(farm, resident_id, &recipe.inputs).is_err() {
+                return Vec::new();
+            }
             farm.oven.queue[job_index].status = OvenJobStatus::Producing;
             farm.oven.queue[job_index].started_at_ms = completed_at_ms;
             farm.oven.queue[job_index].ready_at_ms = completed_at_ms
@@ -1269,11 +1644,7 @@ fn complete_resident_task_step(
             let Some(recipe) = catalog.recipe(&recipe_id) else {
                 return Vec::new();
             };
-            for output in &recipe.outputs {
-                if !defer_inventory {
-                    add_inventory(farm, &output.item_id, output.quantity);
-                }
-            }
+            add_resident_items(farm, resident_id, &recipe.outputs);
             gain_xp(farm, catalog, recipe.xp);
             vec![FarmEvent::MachineJobCollected {
                 recipe_id: recipe.id.clone(),
@@ -1293,6 +1664,11 @@ fn complete_resident_task_step(
             let Some(def) = catalog.shelter(&farm.shelters[shelter_index].kind) else {
                 return Vec::new();
             };
+            if remove_resident_items(farm, resident_id, &[ItemStack::new(&def.feed_item_id, 1)])
+                .is_err()
+            {
+                return Vec::new();
+            }
             let Some(animal) = farm.shelters[shelter_index]
                 .animals
                 .iter_mut()
@@ -1332,9 +1708,7 @@ fn complete_resident_task_step(
                 return Vec::new();
             }
             animal.state = AnimalState::Idle;
-            if !defer_inventory {
-                add_inventory(farm, &item_id, quantity);
-            }
+            add_resident_items(farm, resident_id, &[ItemStack::new(&item_id, quantity)]);
             if let Some(def) = catalog.shelter(&farm.shelters[shelter_index].kind) {
                 gain_xp(farm, catalog, def.xp);
             }
@@ -1344,47 +1718,130 @@ fn complete_resident_task_step(
             add_inventory(farm, &item_id, quantity);
             Vec::new()
         }
-        ResidentTaskStepWork::ReturnTools => Vec::new(),
+        ResidentTaskStepWork::DepositItems { items, .. } => {
+            if remove_resident_items(farm, resident_id, &items).is_ok() {
+                for item in items {
+                    add_inventory(farm, &item.item_id, item.quantity);
+                }
+            }
+            Vec::new()
+        }
+        ResidentTaskStepWork::ReturnTools { source, tools } => {
+            let tools = if tools.is_empty() {
+                farm.resident_inventories
+                    .get(resident_id)
+                    .map(|inventory| {
+                        inventory
+                            .tools
+                            .iter()
+                            .map(|(tool_kind, quantity)| ToolStack::new(*tool_kind, *quantity))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            } else {
+                tools
+            };
+            if remove_resident_tools(farm, resident_id, &tools).is_ok() {
+                add_tool_source_tools(farm, &source, &tools);
+            }
+            Vec::new()
+        }
     }
 }
 
-fn should_defer_inventory_to_deposit(
-    farm: &FarmState,
+fn add_resident_items(farm: &mut FarmState, resident_id: &str, stacks: &[ItemStack]) {
+    let inventory = farm
+        .resident_inventories
+        .entry(resident_id.to_owned())
+        .or_insert_with(crate::default_resident_inventory);
+    for stack in stacks {
+        *inventory.items.entry(stack.item_id.clone()).or_insert(0) += stack.quantity;
+    }
+}
+
+fn remove_resident_items(
+    farm: &mut FarmState,
+    resident_id: &str,
+    stacks: &[ItemStack],
+) -> Result<(), CommandError> {
+    let inventory = farm
+        .resident_inventories
+        .entry(resident_id.to_owned())
+        .or_insert_with(crate::default_resident_inventory);
+    for stack in stacks {
+        if inventory.items.get(&stack.item_id).copied().unwrap_or(0) < stack.quantity {
+            return Err(CommandError::new(format!(
+                "not enough carried {}",
+                stack.item_id
+            )));
+        }
+    }
+    for stack in stacks {
+        let entry = inventory.items.entry(stack.item_id.clone()).or_insert(0);
+        *entry -= stack.quantity;
+        if *entry == 0 {
+            inventory.items.remove(&stack.item_id);
+        }
+    }
+    Ok(())
+}
+
+fn add_resident_tools(farm: &mut FarmState, resident_id: &str, stacks: &[ToolStack]) {
+    let inventory = farm
+        .resident_inventories
+        .entry(resident_id.to_owned())
+        .or_insert_with(crate::default_resident_inventory);
+    for stack in stacks {
+        *inventory.tools.entry(stack.tool_kind).or_insert(0) += stack.quantity;
+    }
+}
+
+fn remove_resident_tools(
+    farm: &mut FarmState,
+    resident_id: &str,
+    stacks: &[ToolStack],
+) -> Result<(), CommandError> {
+    let inventory = farm
+        .resident_inventories
+        .entry(resident_id.to_owned())
+        .or_insert_with(crate::default_resident_inventory);
+    remove_projected_tools(&mut inventory.tools, stacks)
+}
+
+fn remove_tool_source_tools(
+    farm: &mut FarmState,
+    source: &ToolSourceRef,
+    stacks: &[ToolStack],
+) -> Result<(), CommandError> {
+    let stock = tool_source_stock_mut(farm, source)?;
+    remove_projected_tools(stock, stacks)
+}
+
+fn add_tool_source_tools(farm: &mut FarmState, source: &ToolSourceRef, stacks: &[ToolStack]) {
+    if let Ok(stock) = tool_source_stock_mut(farm, source) {
+        add_projected_tools(stock, stacks);
+    }
+}
+
+fn tool_source_stock_mut<'a>(
+    farm: &'a mut FarmState,
+    source: &ToolSourceRef,
+) -> Result<&'a mut BTreeMap<ToolKind, u32>, CommandError> {
+    match source {
+        ToolSourceRef::Farmhouse => Ok(&mut farm.farmhouse_tool_stock),
+        ToolSourceRef::ToolShed { id } => farm
+            .tool_shed
+            .as_mut()
+            .filter(|tool_shed| tool_shed.id == *id)
+            .map(|tool_shed| &mut tool_shed.tool_stock)
+            .ok_or_else(|| CommandError::new("tool shed not found")),
+    }
+}
+
+fn step_inventory_outputs(
     catalog: &CatalogDocument,
-    resident_id: &str,
-    step: &ResidentTaskStep,
-) -> bool {
-    let outputs = step_inventory_outputs(catalog, &step.work);
-    !outputs.is_empty()
-        && outputs.iter().all(|output| {
-            resident_has_pending_deposit(farm, resident_id, &output.item_id, output.quantity)
-        })
-}
-
-fn resident_has_pending_deposit(
-    farm: &FarmState,
-    resident_id: &str,
-    item_id: &str,
-    quantity: u32,
-) -> bool {
-    farm.resident_task_queues
-        .get(resident_id)
-        .and_then(|queue| queue.first())
-        .into_iter()
-        .flat_map(|task| task.steps.iter())
-        .take_while(|step| matches!(step.work, ResidentTaskStepWork::DepositInventory { .. }))
-        .any(|step| {
-            matches!(
-                &step.work,
-                ResidentTaskStepWork::DepositInventory {
-                    item_id: deposit_item_id,
-                    quantity: deposit_quantity,
-                } if deposit_item_id == item_id && *deposit_quantity == quantity
-            )
-        })
-}
-
-fn step_inventory_outputs(catalog: &CatalogDocument, work: &ResidentTaskStepWork) -> Vec<ItemStack> {
+    work: &ResidentTaskStepWork,
+) -> Vec<ItemStack> {
     match work {
         ResidentTaskStepWork::HarvestCrop { crop_id, quantity } => {
             vec![ItemStack::new(crop_id, *quantity)]
@@ -1398,21 +1855,13 @@ fn step_inventory_outputs(catalog: &CatalogDocument, work: &ResidentTaskStepWork
             vec![ItemStack::new(item_id, *quantity)]
         }
         ResidentTaskStepWork::PlantCrop { .. }
+        | ResidentTaskStepWork::PickupItems { .. }
+        | ResidentTaskStepWork::PickupTools { .. }
         | ResidentTaskStepWork::FeedAnimal
         | ResidentTaskStepWork::StartOvenRecipe { .. }
         | ResidentTaskStepWork::DepositInventory { .. }
-        | ResidentTaskStepWork::ReturnTools => Vec::new(),
-    }
-}
-
-fn storage_target_for_item(catalog: &CatalogDocument, item_id: &str) -> ReservedWorkTarget {
-    if catalog
-        .item_kind(item_id)
-        .is_some_and(|kind| *kind == ItemKind::Crop)
-    {
-        ReservedWorkTarget::Silo
-    } else {
-        ReservedWorkTarget::Barn
+        | ResidentTaskStepWork::DepositItems { .. }
+        | ResidentTaskStepWork::ReturnTools { .. } => Vec::new(),
     }
 }
 
@@ -1524,6 +1973,7 @@ fn reserved_storage(farm: &FarmState, catalog: &CatalogDocument) -> (u32, u32) {
                     ResidentTaskStepWork::DepositInventory { item_id, quantity } => {
                         vec![ItemStack::new(item_id, *quantity)]
                     }
+                    ResidentTaskStepWork::DepositItems { items, .. } => items.clone(),
                     _ => {
                         let outputs = step_inventory_outputs(catalog, &step.work);
                         if outputs.is_empty()
@@ -1552,7 +2002,13 @@ fn step_outputs_have_following_deposits(
     outputs: &[ItemStack],
 ) -> bool {
     outputs.iter().all(|output| {
-        queue_has_following_deposit(queue, task_index, step_index, &output.item_id, output.quantity)
+        queue_has_following_deposit(
+            queue,
+            task_index,
+            step_index,
+            &output.item_id,
+            output.quantity,
+        )
     })
 }
 
@@ -1576,6 +2032,14 @@ fn queue_has_following_deposit(
                     quantity: deposit_quantity,
                 } => {
                     if deposit_item_id == item_id && *deposit_quantity == quantity {
+                        return true;
+                    }
+                }
+                ResidentTaskStepWork::DepositItems { items, .. } => {
+                    if items
+                        .iter()
+                        .any(|item| item.item_id == item_id && item.quantity == quantity)
+                    {
                         return true;
                     }
                 }
@@ -1706,7 +2170,11 @@ fn buy_structure(
             )?;
             spend_coins(farm, TOOL_SHED_COST)?;
             let id = next_id(farm, "tool-shed");
-            farm.tool_shed = Some(ToolShedState { id, tile });
+            farm.tool_shed = Some(ToolShedState {
+                id,
+                tile,
+                tool_stock: default_tool_stock(),
+            });
         }
     }
     Ok(vec![FarmEvent::StructureBuilt { structure_kind }])
@@ -1951,7 +2419,6 @@ fn queue_oven_recipe(
             },
         )],
     )?;
-    remove_inventory(farm, &recipe.inputs)?;
     let job = OvenJob {
         id: next_id(farm, "job"),
         recipe_id: recipe_id.to_owned(),
@@ -1960,7 +2427,11 @@ fn queue_oven_recipe(
         ready_at_ms: 0,
     };
     let job_id = job.id.clone();
-    if let Some(step) = planned.steps.first_mut() {
+    if let Some(step) = planned
+        .steps
+        .iter_mut()
+        .find(|step| matches!(step.work, ResidentTaskStepWork::StartOvenRecipe { .. }))
+    {
         step.work = ResidentTaskStepWork::StartOvenRecipe {
             job_id,
             recipe_id: recipe.id.clone(),
@@ -2067,7 +2538,6 @@ fn feed_animal(
     animal_slot: &str,
 ) -> Result<Vec<FarmEvent>, CommandError> {
     let shelter_index = find_shelter_index(farm, shelter_id)?;
-    let def = catalog.shelter(&farm.shelters[shelter_index].kind).unwrap();
     let animal = farm.shelters[shelter_index]
         .animals
         .iter()
@@ -2092,7 +2562,6 @@ fn feed_animal(
             ResidentTaskStepWork::FeedAnimal,
         )],
     )?;
-    remove_inventory(farm, &[ItemStack::new(&def.feed_item_id, 1)])?;
     push_planned_resident_work(farm, planned);
     Ok(Vec::new())
 }

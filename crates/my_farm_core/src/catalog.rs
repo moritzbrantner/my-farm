@@ -17,6 +17,49 @@ impl ItemStack {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolKind {
+    Hoe,
+    Sickle,
+    MixingBowl,
+    OvenMitt,
+    FeedBucket,
+    CollectionPail,
+    Wrench,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct ToolStack {
+    pub tool_kind: ToolKind,
+    pub quantity: u32,
+}
+
+impl ToolStack {
+    pub fn new(tool_kind: ToolKind, quantity: u32) -> Self {
+        Self {
+            tool_kind,
+            quantity,
+        }
+    }
+}
+
+pub fn default_tool_stock() -> std::collections::BTreeMap<ToolKind, u32> {
+    use ToolKind::*;
+
+    std::collections::BTreeMap::from([
+        (Hoe, 1),
+        (Sickle, 1),
+        (MixingBowl, 1),
+        (OvenMitt, 1),
+        (FeedBucket, 1),
+        (CollectionPail, 1),
+        (Wrench, 1),
+    ])
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ItemKind {

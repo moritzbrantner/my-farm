@@ -485,7 +485,7 @@ function storageUpgradeItem(
 }
 
 function inventoryMap(view: FarmView): Map<string, number> {
-  return new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  return new Map(view.inventory.map((item) => [item.item_id, (item.available_quantity ?? item.quantity)]));
 }
 
 function itemKind(catalog: CatalogDocument, itemId: string) {

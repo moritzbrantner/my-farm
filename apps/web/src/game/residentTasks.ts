@@ -266,7 +266,7 @@ function sameReservedTarget(left: ReservedWorkTarget, right: ReservedWorkTarget)
 }
 
 export function taskLabel(catalog: CatalogDocument, task: ResidentTask) {
-  const firstWork = task.steps[0]?.work;
+  const firstWork = task.steps.find((step) => !isResourceStepWork(step.work))?.work ?? task.steps[0]?.work;
   if (!firstWork) {
     return task.kind.type === "field_work" ? "Field work" : "Production work";
   }
@@ -278,6 +278,10 @@ export function residentTaskStepLabel(
   work: ResidentTask["steps"][number]["work"],
 ) {
   switch (work.type) {
+    case "pickup_items":
+      return `Pick up ${stackListLabel(catalog, work.items)}`;
+    case "pickup_tools":
+      return `Pick up ${toolListLabel(work.tools)}`;
     case "plant_crop":
       return `Plant ${itemName(catalog, work.crop_id)}`;
     case "harvest_crop":
@@ -294,9 +298,29 @@ export function residentTaskStepLabel(
       return `Collect ${itemName(catalog, work.item_id)}`;
     case "deposit_inventory":
       return `Store ${itemName(catalog, work.item_id)}`;
+    case "deposit_items":
+      return `Store ${stackListLabel(catalog, work.items)}`;
     case "return_tools":
       return "Return tools";
   }
+}
+
+function isResourceStepWork(work: ResidentTask["steps"][number]["work"]) {
+  return (
+    work.type === "pickup_items" ||
+    work.type === "pickup_tools" ||
+    work.type === "deposit_inventory" ||
+    work.type === "deposit_items" ||
+    work.type === "return_tools"
+  );
+}
+
+function stackListLabel(catalog: CatalogDocument, items: Array<{ item_id: string; quantity: number }>) {
+  return items.map((item) => `${item.quantity} ${itemName(catalog, item.item_id)}`).join(", ");
+}
+
+function toolListLabel(tools: Array<{ tool_kind: string; quantity: number }>) {
+  return tools.map((tool) => `${tool.quantity} ${tool.tool_kind.replaceAll("_", " ")}`).join(", ");
 }
 
 function progressBetween(startMs: number, readyAtMs: number, nowMs: number) {

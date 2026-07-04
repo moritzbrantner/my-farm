@@ -1,4 +1,7 @@
-use crate::{CatalogDocument, FarmState, ItemKind, barn_storage_used, crop_storage_used};
+use crate::{
+    CatalogDocument, FarmState, ItemKind, ResidentTaskStepWork, barn_storage_used,
+    crop_storage_used,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -19,6 +22,9 @@ pub struct FarmView {
     pub barn_upgrade_tier: u32,
     pub barn_tile: crate::Tile,
     pub inventory: Vec<InventoryItemView>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub resident_inventories: Option<std::collections::BTreeMap<String, crate::ResidentInventory>>,
     pub field_plots: Vec<crate::FieldPlot>,
     pub machines: Vec<crate::MachineState>,
     pub owned_farmhouse_upgrades: Vec<crate::FarmhouseUpgradeKind>,
@@ -43,6 +49,12 @@ pub struct InventoryItemView {
     pub item_id: String,
     pub name: String,
     pub quantity: u32,
+    #[serde(default)]
+    #[ts(optional)]
+    pub reserved_quantity: Option<u32>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub available_quantity: Option<u32>,
     pub kind: ItemKind,
 }
 
@@ -58,10 +70,13 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
         .inventory
         .iter()
         .filter_map(|(item_id, quantity)| {
+            let reserved_quantity = reserved_item_pickups(farm, item_id);
             catalog.item(item_id).map(|item| InventoryItemView {
                 item_id: item_id.clone(),
                 name: item.name.clone(),
                 quantity: *quantity,
+                reserved_quantity: Some(reserved_quantity),
+                available_quantity: Some(quantity.saturating_sub(reserved_quantity)),
                 kind: item.kind.clone(),
             })
         })
@@ -82,6 +97,7 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
         barn_upgrade_tier: farm.barn_upgrade_tier,
         barn_tile: farm.barn_tile.clone(),
         inventory,
+        resident_inventories: Some(farm.resident_inventories.clone()),
         field_plots: farm.field_plots.clone(),
         machines: farm.machines.clone(),
         owned_farmhouse_upgrades: farm.owned_farmhouse_upgrades.clone(),
@@ -106,6 +122,20 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
             unlock(7, "Tomatoes and tomato tart", farm.level),
         ],
     }
+}
+
+fn reserved_item_pickups(farm: &FarmState, item_id: &str) -> u32 {
+    farm.resident_task_queues
+        .values()
+        .flat_map(|queue| queue.iter())
+        .flat_map(|task| task.steps.iter())
+        .flat_map(|step| match &step.work {
+            ResidentTaskStepWork::PickupItems { items, .. } => items.as_slice(),
+            _ => &[][..],
+        })
+        .filter(|stack| stack.item_id == item_id)
+        .map(|stack| stack.quantity)
+        .sum()
 }
 
 fn unlock(level: u32, label: &str, current_level: u32) -> UnlockView {

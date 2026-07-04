@@ -80,6 +80,14 @@ _Avoid_: Instant oven queueing, make cake
 The per-resident FIFO list of Resident Tasks saved on the Farm. Later work may enqueue physical production tasks here; empty queues still exist for each Farm Resident.
 _Avoid_: Local queue, animation queue
 
+**Resident Inventory**:
+The authoritative per-Farm Resident carried inventory used while that resident has queued work. It contains carried item stacks and durable Tools, and should be empty when the Resident Task Queue becomes empty.
+_Avoid_: Backpack, global inventory, storage
+
+**Projected Resident Inventory**:
+The planner's deterministic view of what a Farm Resident will carry after already queued Resident Tasks complete their future pickup, work, deposit, and return steps.
+_Avoid_: Guess, client preview, optimistic inventory
+
 **Resident Location**:
 The saved Farm Tile where a Farm Resident currently stands or last finished work. New Resident Tasks start walking from this Tile unless the resident already has queued work.
 _Avoid_: Browser avatar position, animation origin
@@ -136,6 +144,14 @@ _Avoid_: Tool machine, storage shed, second Farmhouse
 An available place where Farm Residents can source tools before performing Resident Tasks. The Farmhouse is always a Tool Source, and a built Tool Shed can become another Tool Source for future resident travel timing.
 _Avoid_: Tool inventory, resource source
 
+**Tool**:
+A durable named piece of equipment carried by a Farm Resident while performing work, such as a hoe, sickle, mixing bowl, oven mitt, feed bucket, collection pail, or wrench. Tools are not consumable catalog Items.
+_Avoid_: Consumable item, ingredient
+
+**Tool Source Inventory**:
+The limited stock of durable Tools held by a Tool Source. Farm Residents check Tools out into Resident Inventory and return them before becoming idle.
+_Avoid_: Item storage, barn inventory
+
 **Animal Product**:
 A good collected from a fed animal and stored in the barn.
 _Avoid_: Animal output
@@ -163,6 +179,18 @@ _Avoid_: Truck order, shipment
 **Storage Upgrade**:
 An earned increase to Silo or Barn capacity purchased with coins after reaching its unlock level.
 _Avoid_: Storage expansion, capacity boost
+
+**Storage Source**:
+A compatible place where Farm Residents can pick up or deposit item stacks. Today the Farm has one Silo for Crops and one Barn for non-Crop items, but Resident Task planning resolves sources through this concept.
+_Avoid_: Tool Source, generic warehouse
+
+**Item Reservation**:
+An accepted Resident Task claim on stored item quantities that have not yet been physically picked up. Reserved quantities reduce available storage inventory for later Commands.
+_Avoid_: Spent item, hidden inventory
+
+**Tool Reservation**:
+An accepted Resident Task claim on Tool Source Inventory that has not yet been physically picked up. Reserved Tools are unavailable to other Resident Tasks.
+_Avoid_: Client lock, tool cooldown
 
 **Silo**:
 Crop storage.

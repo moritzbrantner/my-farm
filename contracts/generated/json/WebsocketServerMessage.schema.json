@@ -1033,6 +1033,16 @@
             "$ref": "#/definitions/FarmhouseUpgradeKind"
           }
         },
+        "resident_inventories": {
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "$ref": "#/definitions/ResidentInventory"
+          }
+        },
         "resident_locations": {
           "type": "object",
           "additionalProperties": {
@@ -1192,6 +1202,15 @@
         "quantity"
       ],
       "properties": {
+        "available_quantity": {
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
         "item_id": {
           "type": "string"
         },
@@ -1203,6 +1222,15 @@
         },
         "quantity": {
           "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reserved_quantity": {
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
           "format": "uint32",
           "minimum": 0.0
         }
@@ -1666,6 +1694,37 @@
         }
       ]
     },
+    "ResidentInventory": {
+      "type": "object",
+      "required": [
+        "item_capacity",
+        "items",
+        "tools"
+      ],
+      "properties": {
+        "item_capacity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "items": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        }
+      }
+    },
     "ResidentTask": {
       "type": "object",
       "required": [
@@ -1780,6 +1839,56 @@
     },
     "ResidentTaskStepWork": {
       "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "items",
+            "source",
+            "type"
+          ],
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ItemStack"
+              }
+            },
+            "source": {
+              "$ref": "#/definitions/StorageSourceRef"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "pickup_items"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "source",
+            "tools",
+            "type"
+          ],
+          "properties": {
+            "source": {
+              "$ref": "#/definitions/ToolSourceRef"
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ToolStack"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "pickup_tools"
+              ]
+            }
+          }
+        },
         {
           "type": "object",
           "required": [
@@ -1953,9 +2062,51 @@
         {
           "type": "object",
           "required": [
+            "destination",
+            "items",
             "type"
           ],
           "properties": {
+            "destination": {
+              "$ref": "#/definitions/StorageSourceRef"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ItemStack"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "deposit_items"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "source": {
+              "default": {
+                "type": "farmhouse"
+              },
+              "allOf": [
+                {
+                  "$ref": "#/definitions/ToolSourceRef"
+                }
+              ]
+            },
+            "tools": {
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ToolStack"
+              }
+            },
             "type": {
               "type": "string",
               "enum": [
@@ -2095,6 +2246,38 @@
       "enum": [
         "silo",
         "barn"
+      ]
+    },
+    "StorageSourceRef": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "silo"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "barn"
+              ]
+            }
+          }
+        }
       ]
     },
     "StorageUpgradeDef": {
@@ -2261,6 +2444,18 @@
         }
       }
     },
+    "ToolKind": {
+      "type": "string",
+      "enum": [
+        "hoe",
+        "sickle",
+        "mixing_bowl",
+        "oven_mitt",
+        "feed_bucket",
+        "collection_pail",
+        "wrench"
+      ]
+    },
     "ToolShedState": {
       "type": "object",
       "required": [
@@ -2273,6 +2468,76 @@
         },
         "tile": {
           "$ref": "#/definitions/Tile"
+        },
+        "tool_stock": {
+          "default": {
+            "collection_pail": 1,
+            "feed_bucket": 1,
+            "hoe": 1,
+            "mixing_bowl": 1,
+            "oven_mitt": 1,
+            "sickle": 1,
+            "wrench": 1
+          },
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        }
+      }
+    },
+    "ToolSourceRef": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "farmhouse"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "tool_shed"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ToolStack": {
+      "type": "object",
+      "required": [
+        "quantity",
+        "tool_kind"
+      ],
+      "properties": {
+        "quantity": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "tool_kind": {
+          "$ref": "#/definitions/ToolKind"
         }
       }
     },

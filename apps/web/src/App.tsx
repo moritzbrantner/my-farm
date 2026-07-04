@@ -886,7 +886,7 @@ export function App() {
         return;
       }
       const plot = view.field_plots.find((entry) => entry.id === plotId);
-      const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+      const inventory = new Map(view.inventory.map((item) => [item.item_id, (item.available_quantity ?? item.quantity)]));
       const reservedReason = reservedFieldReason(view, plotId);
       if (reservedReason) {
         setMessage(reservedReason);
@@ -1700,6 +1700,7 @@ function ResidentCard({
           <span>{Math.round(status.progress * 100)}%</span>
         </div>
       ) : null}
+      <ResidentCarrySummary catalog={catalog} view={view} residentId={resident.id} compact />
     </article>
   );
 }
@@ -1718,7 +1719,7 @@ function FarmersMarket({
   const [selectedItemId, setSelectedItemId] = useState(catalog.market_items[0]?.item_id ?? "");
   const [tradeMode, setTradeMode] = useState<MarketTradeMode>("buy");
   const [quantityInput, setQuantityInput] = useState("1");
-  const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  const inventory = new Map(view.inventory.map((item) => [item.item_id, (item.available_quantity ?? item.quantity)]));
   const itemKinds = new Map(catalog.items.map((item) => [item.id, item.kind]));
   const selectedMarketItem =
     catalog.market_items.find((marketItem) => marketItem.item_id === selectedItemId) ??
@@ -2049,13 +2050,17 @@ function StorageInventoryItem({
   send: SendCommand;
   demoMode: boolean;
 }) {
-  const hasAny = item.quantity > 0;
+  const hasAny = (item.available_quantity ?? item.quantity) > 0;
   return (
     <div className="storage-inventory-item">
       <ResourceIcon type="item" itemId={item.item_id} itemKind={item.kind} />
       <div className="storage-inventory-item__body">
         <span className="storage-inventory-item__name">{item.name}</span>
-        <span className="storage-inventory-item__meta">{item.quantity} stored</span>
+        <span className="storage-inventory-item__meta">
+          {item.quantity} stored
+          {(item.reserved_quantity ?? 0) > 0 ? ` - ${item.reserved_quantity} reserved` : ""}
+          {(item.reserved_quantity ?? 0) > 0 ? ` - ${item.available_quantity ?? item.quantity} available` : ""}
+        </span>
       </div>
       {!demoMode ? (
         <button
@@ -2101,7 +2106,7 @@ function FieldTools({
 }) {
   const [seedMenuOpen, setSeedMenuOpen] = useState(false);
   const [harvestMenuOpen, setHarvestMenuOpen] = useState(false);
-  const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  const inventory = new Map(view.inventory.map((item) => [item.item_id, (item.available_quantity ?? item.quantity)]));
   const unlockedCrops = catalog.crops.filter((crop) => crop.unlock_level <= view.level);
   const hasPlantableSeed = unlockedCrops.some((crop) => (inventory.get(crop.item_id) ?? 0) > 0);
   const selectedSeedFieldCount = plantSweep?.plotIds.length ?? 0;
@@ -2279,6 +2284,8 @@ function resourceItem(catalog: CatalogDocument, itemId: string, quantity: number
     item_id: itemId,
     name: item?.name ?? itemId,
     quantity,
+    reserved_quantity: 0,
+    available_quantity: quantity,
     kind: item?.kind ?? "product",
   };
 }
@@ -2289,7 +2296,7 @@ function relevantInventoryItems(catalog: CatalogDocument, view: FarmView, select
     return view.inventory;
   }
 
-  const quantities = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  const quantities = new Map(view.inventory.map((item) => [item.item_id, (item.available_quantity ?? item.quantity)]));
   return catalog.items
     .filter((item) => relevantItemIds.has(item.id))
     .map((item) => ({
@@ -2488,6 +2495,7 @@ function ResidentActions({
           <span>{Math.round(status.progress * 100)}%</span>
         </div>
       ) : null}
+      <ResidentCarrySummary catalog={catalog} view={view} residentId={resident.id} />
       <div className="resident-queue">
         <strong>Task queue</strong>
         {queue.length === 0 ? (
@@ -2508,6 +2516,64 @@ function ResidentActions({
       </div>
     </div>
   );
+}
+
+function ResidentCarrySummary({
+  catalog,
+  view,
+  residentId,
+  compact = false,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  residentId: string;
+  compact?: boolean;
+}) {
+  const inventory = view.resident_inventories?.[residentId];
+  const itemEntries = Object.entries(inventory?.items ?? {})
+    .map(([itemId, quantity]) => [itemId, Number(quantity ?? 0)] as const)
+    .filter(([, quantity]) => quantity > 0);
+  const toolEntries = Object.entries(inventory?.tools ?? {})
+    .map(([toolKind, quantity]) => [toolKind, Number(quantity ?? 0)] as const)
+    .filter(([, quantity]) => quantity > 0);
+
+  if (itemEntries.length === 0 && toolEntries.length === 0) {
+    return compact ? null : (
+      <div className="resident-carry">
+        <strong>Carrying</strong>
+        <p>Empty</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={compact ? "resident-carry resident-carry--compact" : "resident-carry"}>
+      {!compact ? <strong>Carrying</strong> : null}
+      <div className="resident-carry__chips">
+        {itemEntries.map(([itemId, quantity]) => {
+          const item = catalog.items.find((entry) => entry.id === itemId);
+          return (
+            <span className="resident-carry-chip" key={`item-${itemId}`}>
+              <ResourceIcon type="item" itemId={itemId} itemKind={item?.kind} />
+              {quantity} {item?.name ?? itemId}
+            </span>
+          );
+        })}
+        {toolEntries.map(([toolKind, quantity]) => (
+          <span className="resident-carry-chip" key={`tool-${toolKind}`}>
+            {quantity} {toolLabel(toolKind)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function toolLabel(toolKind: string) {
+  return toolKind
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function sceneStateLabel(state: ReturnType<typeof currentResidentScenePose>["state"]) {
@@ -2560,7 +2626,7 @@ function FarmhouseActions({
   const remaining = first ? secondsRemaining(first.ready_at_ms, nowMs) : 0;
   const queueLimit = oven?.queue_limit ?? 2;
   const queueFull = view.oven.queue.length >= queueLimit;
-  const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  const inventory = new Map(view.inventory.map((item) => [item.item_id, (item.available_quantity ?? item.quantity)]));
   const reservedReason = reservedOvenReason(view);
   return (
     <div className="action-stack">
@@ -2741,7 +2807,7 @@ function PlotActions({
       </div>
     );
   }
-  const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  const inventory = new Map(view.inventory.map((item) => [item.item_id, (item.available_quantity ?? item.quantity)]));
   return (
     <div className="action-grid">
       {catalog.crops
@@ -2780,7 +2846,7 @@ function MachineActions({
   const queueLimit =
     catalog.machines.find((entry) => entry.kind === machine.kind)?.queue_limit ?? 2;
   const queueFull = machine.queue.length >= queueLimit;
-  const inventory = new Map(view.inventory.map((item) => [item.item_id, item.quantity]));
+  const inventory = new Map(view.inventory.map((item) => [item.item_id, (item.available_quantity ?? item.quantity)]));
   const reservedReason = reservedMachineReason(view, machine.id);
   return (
     <div className="action-stack">

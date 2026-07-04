@@ -1124,6 +1124,46 @@ button[aria-disabled="true"] {
   accent-color: #446d38;
 }
 
+.resident-carry {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.resident-carry p {
+  margin: 0;
+  color: #536a5e;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.resident-carry__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.resident-carry-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 2px 6px;
+  border: 1px solid rgba(32, 49, 43, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 253, 245, 0.78);
+  color: #20312b;
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.resident-carry--compact .resident-carry-chip {
+  font-size: 11px;
+}
+
 .resident-details {
   gap: 9px;
 }
