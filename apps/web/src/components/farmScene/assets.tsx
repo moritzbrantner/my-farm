@@ -640,7 +640,9 @@ function ProductionStatusVisual({
   const y = kind === "barn" || kind === "farm_house" ? 1.05 : 0.92;
   return (
     <group>
-      {status.type === "producing" ? (
+      {status.type === "pending" ? (
+        <ProductionSteam productColor={productColor} />
+      ) : status.type === "producing" ? (
         <>
           {isMachineAsset(kind) ? <ProductionSteam productColor={productColor} /> : <ShelterProducingMarker productColor={productColor} />}
           <StatusProgressBar progress={status.progress} productColor={productColor} footprint={footprint} />

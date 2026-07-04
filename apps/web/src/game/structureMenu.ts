@@ -327,10 +327,13 @@ function ovenMenuItems(catalog: CatalogDocument, view: FarmView, nowMs: number):
 
   if (first) {
     const recipe = catalog.recipes.find((entry) => entry.id === first.recipe_id);
-    const remaining = secondsRemaining(first.ready_at_ms, nowMs);
     const outputs = recipe?.outputs ?? [];
-    const storageFull = remaining === 0 && !hasStorageRoom(catalog, view, outputs);
-    const reason = reservedReason ?? (remaining > 0 ? `${remaining}s` : storageFull ? "Storage full" : undefined);
+    const remaining = first.status === "pending_start" ? 0 : secondsRemaining(first.ready_at_ms, nowMs);
+    const storageFull = first.status !== "pending_start" && remaining === 0 && !hasStorageRoom(catalog, view, outputs);
+    const reason =
+      first.status === "pending_start"
+        ? "Starting"
+        : reservedReason ?? (remaining > 0 ? `${remaining}s` : storageFull ? "Storage full" : undefined);
     items.push({
       id: `collect-oven-${first.id}`,
       label: `Collect ${recipeName(catalog, first.recipe_id)}`,
@@ -349,9 +352,7 @@ function ovenMenuItems(catalog: CatalogDocument, view: FarmView, nowMs: number):
     const locked = recipe.unlock_level > view.level;
     const reason = locked
       ? `Unlocks at level ${recipe.unlock_level}`
-      : reservedReason
-        ? reservedReason
-        : queueFull
+      : queueFull
         ? "Queue full"
         : missing.length > 0
           ? `Need ${missing.join(", ")}`

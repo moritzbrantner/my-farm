@@ -10,7 +10,7 @@ import {
 } from "react";
 import { createFarmClient, type FarmConnectionStatus } from "./api";
 import { FarmScene } from "./components/FarmScene";
-import { HouseInteriorScene, type HouseRoomId } from "./components/HouseInteriorScene";
+import { HouseInteriorScene, type HouseInteriorMode, type HouseRoomId } from "./components/HouseInteriorScene";
 import { ResourceIcon } from "./components/ResourceIcon";
 import {
   availableRecipes,
@@ -182,6 +182,8 @@ export function App() {
   const [harvestMode, setHarvestMode] = useState<SweepHarvestMode>("matching_crop");
   const [screen, setScreen] = useState<GameScreen>("main_menu");
   const [playScene, setPlayScene] = useState<PlayScene>("farm");
+  const [houseInteriorMode, setHouseInteriorMode] = useState<HouseInteriorMode>("overview");
+  const [houseGridEnabled, setHouseGridEnabled] = useState(true);
   const [selectedHouseRoom, setSelectedHouseRoom] = useState<HouseRoomId>("living_room");
   const [selectedDecorationId, setSelectedDecorationId] = useState<string | null>(null);
   const [selectedDecorationPlacementId, setSelectedDecorationPlacementId] = useState<string | null>(null);
@@ -648,6 +650,7 @@ export function App() {
     setSelection({ type: "farmhouse" });
     setFieldMenu(null);
     setStructureMenu(null);
+    setHouseInteriorMode("overview");
     setPlayScene("house_interior");
     setMessage("Entered House Interior");
   }, []);
@@ -669,7 +672,23 @@ export function App() {
 
   const selectHouseRoom = useCallback((roomId: HouseRoomId) => {
     setSelectedHouseRoom(roomId);
+    setHouseInteriorMode("room");
     setSelectedDecorationPlacementId(null);
+  }, []);
+
+  const exitHouseRoomToOverview = useCallback(() => {
+    setHouseInteriorMode("overview");
+    setSelectedDecorationId(null);
+    setSelectedDecorationPlacementId(null);
+    setMessage("House Overview");
+  }, []);
+
+  const setHouseGridMode = useCallback((enabled: boolean) => {
+    setHouseGridEnabled(enabled);
+    if (!enabled) {
+      setSelectedDecorationId(null);
+      setSelectedDecorationPlacementId(null);
+    }
   }, []);
 
   const selectDecorationPlacement = useCallback(
@@ -1129,16 +1148,22 @@ export function App() {
           <HouseInteriorScene
             catalog={catalog}
             view={view}
+            nowMs={nowMs}
+            mode={houseInteriorMode}
             selectedRoom={selectedHouseRoom}
+            gridEnabled={houseGridEnabled}
             selectedDecorationId={selectedDecorationId}
             selectedPlacementId={selectedDecorationPlacementId}
             onSelectRoom={selectHouseRoom}
+            onExitRoomToOverview={exitHouseRoomToOverview}
+            onSetGridEnabled={setHouseGridMode}
             onSelectDecoration={selectDecoration}
             onSelectPlacement={selectDecorationPlacement}
             onPlaceDecoration={placeDecoration}
             onMoveDecoration={moveDecoration}
             onRemoveDecoration={removeDecoration}
             onRenameResident={renameResident}
+            onRunCommand={send}
             onBackToFarm={returnToFarmScene}
           />
         ) : (

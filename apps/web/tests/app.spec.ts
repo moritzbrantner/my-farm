@@ -249,10 +249,8 @@ test("Bedroom Family Tree trims successful resident renames and shows rejected r
   await openFarm(page);
 
   await expect(page.getByRole("region", { name: "House Interior" })).toHaveCount(0);
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await enterHouseRoom(page, "Bedroom");
   await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
-  await expect(page.getByLabel("Family Tree")).toHaveCount(0);
-  await page.getByRole("navigation", { name: "Rooms" }).getByRole("button", { name: "Bedroom" }).click();
 
   const familyTree = page.getByLabel("Family Tree");
   await expect(familyTree).toBeVisible();
@@ -778,14 +776,14 @@ test("Farmhouse Oven status cue reflects producing ready and storage-full states
     owned_farmhouse_upgrades: ["oven"],
     oven: {
       id: "oven",
-      queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 5_000, ready_at_ms: now + 5_000 }],
+      queue: [{ id: "job-1", recipe_id: "bread", status: "producing", started_at_ms: now - 5_000, ready_at_ms: now + 5_000 }],
     },
   } satisfies FarmView;
   const readyView = {
     ...producingView,
     oven: {
       id: "oven",
-      queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
+      queue: [{ id: "job-1", recipe_id: "bread", status: "producing", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
     },
   } satisfies FarmView;
   const blockedView = {
@@ -1224,7 +1222,7 @@ test("Farmhouse Oven actions queue and collect Bread", async ({ page }) => {
       inventory: [{ item_id: "wheat", name: "Wheat", quantity: 3, kind: "crop" }],
       oven: {
         id: "oven",
-        queue: [{ id: "job-1", recipe_id: "bread", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
+        queue: [{ id: "job-1", recipe_id: "bread", status: "producing", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
       },
     },
     catalog,
@@ -1467,19 +1465,24 @@ test("enters the Farmhouse interior, switches rooms, and returns to the farm sce
   const house = page.getByRole("region", { name: "House Interior" });
   await expect(house).toBeVisible();
   await expect(page.getByLabel("Farmhouse structure")).toHaveCount(0);
-  await expect(page.getByTestId("house-room-living_room")).toBeVisible();
+  await expect(page.getByTestId("house-overview")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Rooms" })).toHaveCount(0);
 
-  const rooms = page.getByRole("navigation", { name: "Rooms" });
-  await rooms.getByRole("button", { name: "Kitchen" }).click();
+  await page.getByRole("button", { name: "Enter Kitchen" }).click();
   await expect(page.getByTestId("house-room-kitchen")).toBeVisible();
+  await page.getByRole("button", { name: "Exit Kitchen to House Overview" }).click();
+  await expect(page.getByTestId("house-overview")).toBeVisible();
 
-  await rooms.getByRole("button", { name: "Bedroom" }).click();
+  await page.getByRole("button", { name: "Enter Bedroom" }).click();
   await expect(page.getByTestId("house-room-bedroom")).toBeVisible();
+  await page.getByRole("button", { name: "Exit Bedroom to House Overview" }).click();
 
-  await rooms.getByRole("button", { name: "Living Room" }).click();
+  await page.getByRole("button", { name: "Enter Living Room" }).click();
   await expect(page.getByTestId("house-room-living_room")).toBeVisible();
+  await page.getByRole("button", { name: "Exit Living Room to House Overview" }).click();
+  await expect(page.getByTestId("house-overview")).toBeVisible();
 
-  await page.getByRole("button", { name: "Back to Farm" }).click();
+  await page.getByRole("button", { name: "Exit Farmhouse to Farm" }).click();
   await expect(house).toHaveCount(0);
   await expect(page.getByLabel("Farmhouse structure")).toBeVisible();
 });
@@ -1488,7 +1491,7 @@ test("frames the House Interior scene and controls on desktop and mobile", async
   await mockFarmApi(page, { ...farmView, level: 5 });
   await openFarm(page);
 
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await enterHouseRoom(page, "Living Room");
 
   await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
   await expectCanvasToRenderNonBlank(page);
@@ -1496,7 +1499,6 @@ test("frames the House Interior scene and controls on desktop and mobile", async
   await expectElementFramed(page, page.getByTestId("house-room-living_room"));
   await expectElementFramed(page, page.locator(".house-room-tiles"));
   await expectHouseInteriorControlsFramedWithoutOverlap(page);
-  await expectReadableButtons(page.getByRole("navigation", { name: "Rooms" }).getByRole("button"));
   await expectReadableButtons(page.getByRole("navigation", { name: "Decorations" }).getByRole("button"));
   await expect(page.getByTestId("farm-scene-resident-woman")).toHaveCount(0);
   await expect(page.getByTestId("farm-scene-resident-man")).toHaveCount(0);
@@ -1506,7 +1508,7 @@ test("house interior decoration controls are locked before Farm level 5", async 
   await mockFarmApi(page, { ...farmView, level: 4 });
   await openFarm(page);
 
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await enterHouseRoom(page, "Living Room");
 
   await expect(page.getByTestId("decoration-placement-status")).toContainText(
     "Decoration placement unlocks at Farm level 5",
@@ -1514,6 +1516,102 @@ test("house interior decoration controls are locked before Farm level 5", async 
   const decorations = page.getByRole("navigation", { name: "Decorations" });
   await expect(decorations.getByRole("button", { name: /Sofa/ })).toBeDisabled();
   await expect(page.getByLabel("Room Tile 0,0")).toBeDisabled();
+});
+
+test("house grid toggle hides and disables Decoration editing without blocking navigation", async ({ page }) => {
+  await mockFarmApi(page, { ...farmView, level: 5 });
+  await openFarm(page);
+
+  await enterHouseRoom(page, "Living Room");
+  await page.getByRole("button", { name: "Grid On" }).click();
+
+  await expect(page.getByTestId("decoration-placement-status")).toContainText(
+    "Grid off; turn on grid to edit Decorations.",
+  );
+  await expect(page.getByRole("navigation", { name: "Decorations" }).getByRole("button", { name: /Sofa/ })).toBeDisabled();
+  await expect(page.getByLabel("Room Tile 0,0")).toBeDisabled();
+
+  await page.getByRole("button", { name: "Exit Living Room to House Overview" }).click();
+  await expect(page.getByTestId("house-overview")).toBeVisible();
+  await page.getByRole("button", { name: "Enter Bedroom" }).click();
+  await expect(page.getByLabel("Family Tree")).toBeVisible();
+});
+
+test("Kitchen Oven Workstation sends oven commands and shows pending resident work", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  const now = Date.now();
+  const ovenTask: ResidentTask = {
+    id: "task-oven-start",
+    kind: { type: "production_work" },
+    started_at_ms: now - 500,
+    ready_at_ms: now + 500,
+    steps: [
+      taskStep({
+        reserved_work_target: { type: "oven" },
+        work: { type: "start_oven_recipe", job_id: "job-1", recipe_id: "bread" },
+        duration_ms: 1_000,
+      }),
+    ],
+  };
+  const view: FarmView = {
+    ...farmView,
+    level: 2,
+    owned_farmhouse_upgrades: ["oven"],
+    inventory: [{ item_id: "wheat", name: "Wheat", quantity: 6, kind: "crop" }],
+    oven: {
+      id: "oven",
+      queue: [{ id: "job-1", recipe_id: "bread", status: "pending_start", started_at_ms: 0, ready_at_ms: 0 }],
+    },
+    resident_task_queues: {
+      ...farmView.resident_task_queues,
+      woman: [ovenTask],
+    },
+  };
+  await mockFarmApi(page, view, catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  await enterHouseRoom(page, "Kitchen");
+  await expect(page.getByTestId("house-kitchen-oven")).toBeVisible();
+  await expect(page.getByTestId("kitchen-oven-status")).toContainText("Starting Bread");
+  await expect(page.getByTestId("house-resident-woman")).toBeVisible();
+  await expect(page.getByTestId("house-resident-man")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Bread", exact: true }).click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "queue_oven_recipe",
+    recipe_id: "bread",
+  });
+
+  await expect(page.getByRole("button", { name: /Collect Bread - Starting/ })).toBeDisabled();
+});
+
+test("Kitchen Oven Workstation sends collect command for ready output", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  const now = Date.now();
+  await mockFarmApi(
+    page,
+    {
+      ...farmView,
+      level: 2,
+      owned_farmhouse_upgrades: ["oven"],
+      oven: {
+        id: "oven",
+        queue: [{ id: "job-ready", recipe_id: "bread", status: "producing", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
+      },
+    },
+    catalog,
+    (request) => {
+      commands.push(request);
+    },
+  );
+  await openFarm(page);
+
+  await enterHouseRoom(page, "Kitchen");
+  await expect(page.getByTestId("kitchen-oven-status")).toContainText("Ready Bread");
+  await page.getByRole("button", { name: "Collect Bread" }).click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({ type: "collect_oven_job" });
 });
 
 test("places multiple copies of a selected house Decoration through the command path", async ({
@@ -1525,7 +1623,7 @@ test("places multiple copies of a selected house Decoration through the command 
   });
   await openFarm(page);
 
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await enterHouseRoom(page, "Living Room");
   await page.getByRole("navigation", { name: "Decorations" }).getByRole("button", { name: /Chair/ }).click();
   await page.getByLabel("Room Tile 0,0").hover();
   await expect(page.getByTestId("decoration-placement-status")).toContainText("Fits on Room Tile 0,0");
@@ -1557,7 +1655,7 @@ test("house decoration preview blocks overlap and bounds failures before sending
   });
   await openFarm(page);
 
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await enterHouseRoom(page, "Living Room");
   const decorations = page.getByRole("navigation", { name: "Decorations" });
 
   await decorations.getByRole("button", { name: /Chair/ }).click();
@@ -1591,7 +1689,7 @@ test("selects, moves, rejects invalid moves, and removes existing house Decorati
   });
   await openFarm(page);
 
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await enterHouseRoom(page, "Living Room");
   await page.getByLabel("Sofa placement at Room Tile 1,1").click();
   await expect(page.getByTestId("decoration-placement-status")).toContainText(
     "Selected Sofa at Room Tile 1,1",
@@ -1663,8 +1761,8 @@ test("house decoration changes arrive through farm snapshots for multiple client
     await installMockGameplayWebSocket(secondPage, [{ version: 1, view: { ...farmView, level: 5 }, catalog }]);
     await openFarm(firstPage);
     await openFarm(secondPage);
-    await firstPage.getByLabel("Farmhouse structure").click({ force: true });
-    await secondPage.getByLabel("Farmhouse structure").click({ force: true });
+    await enterHouseRoom(firstPage, "Living Room");
+    await enterHouseRoom(secondPage, "Living Room");
 
     await firstPage.evaluate((view) => {
       (window as unknown as {
@@ -3381,6 +3479,14 @@ async function openFarmhouseSelection(page: Page) {
   await expect(page.getByRole("region", { name: "House Interior" })).toHaveCount(0);
 }
 
+async function enterHouseRoom(page: Page, roomName: "Living Room" | "Kitchen" | "Bedroom") {
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
+  await expect(page.getByTestId("house-overview")).toBeVisible();
+  await page.getByRole("button", { name: `Enter ${roomName}` }).click();
+  await expect(page.getByTestId(`house-room-${roomName === "Living Room" ? "living_room" : roomName.toLowerCase()}`)).toBeVisible();
+}
+
 async function clickGroundTileUntilCommand(
   page: Page,
   commands: CommandRequest[],
@@ -3684,7 +3790,7 @@ async function expectHouseInteriorControlsFramedWithoutOverlap(page: Page) {
   const controls = [
     { name: "title", locator: page.locator(".house-interior__title") },
     { name: "back", locator: page.locator(".house-interior__back") },
-    { name: "rooms", locator: page.getByRole("navigation", { name: "Rooms" }) },
+    { name: "grid", locator: page.locator(".house-interior__grid-toggle") },
     { name: "decoration status", locator: page.getByTestId("decoration-placement-status") },
     { name: "decorations", locator: page.getByRole("navigation", { name: "Decorations" }) },
   ];

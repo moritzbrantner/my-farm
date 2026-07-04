@@ -284,6 +284,8 @@ export function residentTaskStepLabel(
       return `Harvest ${itemName(catalog, work.crop_id)}`;
     case "collect_machine_job":
       return `Collect ${recipeName(catalog, work.recipe_id)}`;
+    case "start_oven_recipe":
+      return `Start ${recipeName(catalog, work.recipe_id)}`;
     case "collect_oven_job":
       return `Collect ${recipeName(catalog, work.recipe_id)}`;
     case "feed_animal":

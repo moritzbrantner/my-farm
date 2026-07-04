@@ -492,6 +492,46 @@
         }
       }
     },
+    "OvenJob": {
+      "type": "object",
+      "required": [
+        "id",
+        "ready_at_ms",
+        "recipe_id",
+        "started_at_ms"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ready_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "recipe_id": {
+          "type": "string"
+        },
+        "started_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "status": {
+          "default": "producing",
+          "allOf": [
+            {
+              "$ref": "#/definitions/OvenJobStatus"
+            }
+          ]
+        }
+      }
+    },
+    "OvenJobStatus": {
+      "type": "string",
+      "enum": [
+        "pending_start",
+        "producing"
+      ]
+    },
     "OvenState": {
       "type": "object",
       "required": [
@@ -505,7 +545,7 @@
         "queue": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/MachineJob"
+            "$ref": "#/definitions/OvenJob"
           }
         }
       }
@@ -823,6 +863,28 @@
               "type": "string",
               "enum": [
                 "collect_machine_job"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "job_id",
+            "recipe_id",
+            "type"
+          ],
+          "properties": {
+            "job_id": {
+              "type": "string"
+            },
+            "recipe_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "start_oven_recipe"
               ]
             }
           }

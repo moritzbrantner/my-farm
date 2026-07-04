@@ -247,9 +247,44 @@ pub struct MachineJob {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OvenJobStatus {
+    PendingStart,
+    Producing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct OvenJob {
+    pub id: String,
+    pub recipe_id: String,
+    #[serde(default = "default_oven_job_status")]
+    pub status: OvenJobStatus,
+    #[ts(type = "number")]
+    pub started_at_ms: i64,
+    #[ts(type = "number")]
+    pub ready_at_ms: i64,
+}
+
+fn default_oven_job_status() -> OvenJobStatus {
+    OvenJobStatus::Producing
+}
+
+impl OvenJob {
+    pub fn from_producing_machine_job(job: MachineJob) -> Self {
+        Self {
+            id: job.id,
+            recipe_id: job.recipe_id,
+            status: OvenJobStatus::Producing,
+            started_at_ms: job.started_at_ms,
+            ready_at_ms: job.ready_at_ms,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 pub struct OvenState {
     pub id: String,
-    pub queue: Vec<MachineJob>,
+    pub queue: Vec<OvenJob>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -414,6 +449,7 @@ pub enum ResidentTaskStepWork {
     PlantCrop { crop_id: String },
     HarvestCrop { crop_id: String, quantity: u32 },
     CollectMachineJob { job_id: String, recipe_id: String },
+    StartOvenRecipe { job_id: String, recipe_id: String },
     CollectOvenJob { job_id: String, recipe_id: String },
     FeedAnimal,
     CollectAnimalProduct { item_id: String, quantity: u32 },
@@ -744,7 +780,11 @@ fn migrate_legacy_bakery(
     if !forward_oven_present {
         farm.oven = OvenState {
             id: legacy_bakery.id.clone(),
-            queue: legacy_bakery.queue,
+            queue: legacy_bakery
+                .queue
+                .into_iter()
+                .map(OvenJob::from_producing_machine_job)
+                .collect(),
         };
     }
 

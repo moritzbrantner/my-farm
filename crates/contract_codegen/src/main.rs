@@ -5,11 +5,11 @@ use my_farm_core::{
     DecorationPlacement, DeliveryOrder, FarmCommand, FarmEvent, FarmResident, FarmResponse,
     FarmState, FarmView, FarmhouseUpgradeDef, FarmhouseUpgradeKind, FieldPlot, HealthResponse,
     HouseInterior, InventoryItemView, ItemDef, ItemKind, ItemStack, MachineDef, MachineJob,
-    MachineKind, MachineState, MarketItemDef, OvenState, PlantedCrop, RecipeDef, RecipeTarget,
-    ReservedWorkTarget, ResidentTask, ResidentTaskKind, ResidentTaskStep, ResidentTaskStepWork,
-    Room, RoomTile, ShelterDef, ShelterKind, StorageKind, StorageUpgradeDef, StructureKind,
-    StructureTarget, SweepHarvestMode, Tile, UnlockView, WebsocketClientMessage, WebsocketError,
-    WebsocketServerMessage,
+    MachineKind, MachineState, MarketItemDef, OvenJob, OvenJobStatus, OvenState, PlantedCrop,
+    RecipeDef, RecipeTarget, ReservedWorkTarget, ResidentTask, ResidentTaskKind,
+    ResidentTaskStep, ResidentTaskStepWork, Room, RoomTile, ShelterDef, ShelterKind, StorageKind,
+    StorageUpgradeDef, StructureKind, StructureTarget, SweepHarvestMode, Tile, UnlockView,
+    WebsocketClientMessage, WebsocketError, WebsocketServerMessage,
 };
 use schemars::{JsonSchema, schema_for};
 use std::fs;
@@ -93,6 +93,8 @@ fn outputs() -> anyhow::Result<Vec<Output>> {
                 Tile::decl(),
                 PlantedCrop::decl(),
                 MachineJob::decl(),
+                OvenJobStatus::decl(),
+                OvenJob::decl(),
                 OvenState::decl(),
                 AnimalState::decl(),
                 AnimalSlot::decl(),

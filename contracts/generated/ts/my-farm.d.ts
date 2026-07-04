@@ -55,7 +55,11 @@ export type PlantedCrop = { item_id: string, planted_at_ms: number, ready_at_ms:
 
 export type MachineJob = { id: string, recipe_id: string, started_at_ms: number, ready_at_ms: number, };
 
-export type OvenState = { id: string, queue: Array<MachineJob>, };
+export type OvenJobStatus = "pending_start" | "producing";
+
+export type OvenJob = { id: string, recipe_id: string, status: OvenJobStatus, started_at_ms: number, ready_at_ms: number, };
+
+export type OvenState = { id: string, queue: Array<OvenJob>, };
 
 export type AnimalState = { "type": "idle" } | { "type": "producing", fed_at_ms: number, ready_at_ms: number, } | { "type": "ready" };
 
@@ -67,7 +71,7 @@ export type ReservedWorkTarget = { "type": "silo" } | { "type": "barn" } | { "ty
 
 export type ResidentTaskKind = { "type": "field_work" } | { "type": "production_work" };
 
-export type ResidentTaskStepWork = { "type": "plant_crop", crop_id: string, } | { "type": "harvest_crop", crop_id: string, quantity: number, } | { "type": "collect_machine_job", job_id: string, recipe_id: string, } | { "type": "collect_oven_job", job_id: string, recipe_id: string, } | { "type": "feed_animal" } | { "type": "collect_animal_product", item_id: string, quantity: number, } | { "type": "deposit_inventory", item_id: string, quantity: number, } | { "type": "return_tools" };
+export type ResidentTaskStepWork = { "type": "plant_crop", crop_id: string, } | { "type": "harvest_crop", crop_id: string, quantity: number, } | { "type": "collect_machine_job", job_id: string, recipe_id: string, } | { "type": "start_oven_recipe", job_id: string, recipe_id: string, } | { "type": "collect_oven_job", job_id: string, recipe_id: string, } | { "type": "feed_animal" } | { "type": "collect_animal_product", item_id: string, quantity: number, } | { "type": "deposit_inventory", item_id: string, quantity: number, } | { "type": "return_tools" };
 
 export type ResidentTaskStep = { reserved_work_target: ReservedWorkTarget, work: ResidentTaskStepWork, approach_tile?: Tile, walk_path: Array<Tile>, walk_duration_ms: number, work_duration_ms: number, duration_ms: number, };
 

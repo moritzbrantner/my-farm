@@ -132,13 +132,26 @@ button[aria-disabled="true"] {
   line-height: 1.05;
 }
 
+.house-interior__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.house-interior__grid-toggle,
 .house-interior__back {
   min-width: 120px;
   padding: 8px 12px;
   background: #fff7d0;
   border-color: #446d38;
   box-shadow: 0 10px 24px rgba(32, 49, 43, 0.14);
-  pointer-events: auto;
+}
+
+.house-interior__grid-toggle[aria-pressed="false"] {
+  background: #e7ebe3;
+  border-color: rgba(32, 49, 43, 0.28);
 }
 
 .house-interior__tabs {
@@ -179,6 +192,10 @@ button[aria-disabled="true"] {
   pointer-events: auto;
 }
 
+.house-room-tiles--hidden {
+  pointer-events: none;
+}
+
 .house-room-tile {
   min-width: 0;
   min-height: 0;
@@ -187,6 +204,72 @@ button[aria-disabled="true"] {
   border-radius: 0;
   background: rgba(255, 247, 208, 0.02);
   box-shadow: none;
+}
+
+.house-room-tiles--hidden .house-room-tile,
+.house-room-tiles--hidden .house-room-placement {
+  border-color: transparent;
+  background: transparent;
+  opacity: 0;
+}
+
+.house-overview-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.house-overview-room,
+.house-overview-front-door,
+.house-room-door {
+  position: absolute;
+  z-index: 35;
+  pointer-events: auto;
+  border-color: rgba(32, 49, 43, 0.32);
+  background: rgba(251, 246, 232, 0.9);
+  box-shadow: 0 10px 24px rgba(32, 49, 43, 0.14);
+}
+
+.house-overview-room {
+  width: clamp(104px, 15vw, 150px);
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.house-overview-room--living {
+  left: calc(50% - min(25vw, 230px));
+  top: 45%;
+}
+
+.house-overview-room--kitchen {
+  left: calc(50% + min(7vw, 70px));
+  top: 45%;
+}
+
+.house-overview-room--bedroom {
+  left: 50%;
+  top: 60%;
+  transform: translateX(-50%);
+}
+
+.house-overview-front-door {
+  left: 50%;
+  top: 71%;
+  min-width: 120px;
+  min-height: 38px;
+  padding: 7px 10px;
+  transform: translateX(-50%);
+  background: #fff7d0;
+}
+
+.house-room-door {
+  left: 50%;
+  top: 74%;
+  min-width: 104px;
+  min-height: 38px;
+  padding: 7px 10px;
+  transform: translateX(-50%);
+  background: #fff7d0;
 }
 
 .house-room-tile:hover,
@@ -321,6 +404,58 @@ button[aria-disabled="true"] {
   color: #536a5e;
   font-size: 11px;
   font-weight: 850;
+}
+
+.oven-workstation-panel {
+  position: absolute;
+  top: 86px;
+  right: 12px;
+  width: min(330px, calc(100vw - 24px));
+  max-height: calc(100vh - 190px);
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(32, 49, 43, 0.24);
+  border-radius: 8px;
+  background: rgba(251, 246, 232, 0.95);
+  box-shadow: 0 10px 24px rgba(32, 49, 43, 0.14);
+  pointer-events: auto;
+  overflow-y: auto;
+}
+
+.oven-workstation-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.oven-workstation-panel__header span,
+.oven-workstation-panel p {
+  color: #536a5e;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.oven-workstation-panel p {
+  margin: 0;
+}
+
+.oven-workstation-panel__items {
+  display: grid;
+  gap: 6px;
+}
+
+.oven-workstation-panel__item {
+  min-height: 38px;
+  padding: 7px 9px;
+  text-align: left;
+  background: #fbf6e8;
+}
+
+.oven-workstation-panel__item span {
+  overflow-wrap: anywhere;
 }
 
 .family-tree-panel {
@@ -2074,6 +2209,61 @@ h2 {
     bottom: 86px;
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+
+  .house-interior__hud {
+    align-items: flex-start;
+  }
+
+  .house-interior__title h1 {
+    font-size: 20px;
+  }
+
+  .house-interior__actions {
+    max-width: 150px;
+  }
+
+  .house-interior__grid-toggle,
+  .house-interior__back {
+    min-width: 0;
+    width: 100%;
+    padding: 7px 9px;
+    font-size: 12px;
+  }
+
+  .house-overview-room {
+    width: 112px;
+    min-height: 38px;
+    font-size: 12px;
+  }
+
+  .house-overview-room--living {
+    left: 12%;
+    top: 44%;
+  }
+
+  .house-overview-room--kitchen {
+    left: auto;
+    right: 12%;
+    top: 44%;
+  }
+
+  .house-overview-room--bedroom {
+    top: 58%;
+  }
+
+  .house-overview-front-door,
+  .house-room-door {
+    font-size: 12px;
+  }
+
+  .oven-workstation-panel,
+  .family-tree-panel {
+    top: 86px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+    max-height: 30vh;
   }
 
   .decoration-dock__status {

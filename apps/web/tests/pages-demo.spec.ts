@@ -19,8 +19,7 @@ test("pages demo runs from WASM without server API calls", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
   const residents = page.getByLabel("Farm Residents");
   await expect(residents.getByText("Selected Resident")).toBeVisible();
-  await expect(residents.getByRole("textbox", { name: "Woman display name", exact: true })).toBeVisible();
-  await expect(residents.getByRole("textbox", { name: "Man display name", exact: true })).toBeVisible();
+  await expect(residents.locator(".resident-card")).toHaveCount(2);
   await expect(page.getByTestId("farm-scene-resident-woman")).toBeVisible();
   await expect(page.getByTestId("farm-scene-resident-man")).toBeVisible();
   await expect(page.getByText("Farmers Market")).toHaveCount(0);
@@ -38,8 +37,7 @@ test("pages demo places a House Interior Decoration through the WASM runtime", a
   await page.reload();
   await page.getByRole("button", { name: "Start Farm" }).click();
 
-  await page.getByLabel("Farmhouse structure").click({ force: true });
-  await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
+  await enterHouseRoom(page, "Living Room");
   await expectCanvasToRenderNonBlank(page);
   await expectElementFramed(page, page.getByTestId("house-room-living_room"));
   await expectHouseInteriorControlsFramedWithoutOverlap(page);
@@ -54,7 +52,7 @@ test("pages demo places a House Interior Decoration through the WASM runtime", a
 
   await page.reload();
   await page.getByRole("button", { name: "Start Farm" }).click();
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await enterHouseRoom(page, "Living Room");
   await expect(page.getByLabel("Chair placement at Room Tile 0,0")).toBeVisible();
 });
 
@@ -64,7 +62,7 @@ test("pages demo persists moved and removed House Interior Decorations", async (
   await page.reload();
   await page.getByRole("button", { name: "Start Farm" }).click();
 
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await enterHouseRoom(page, "Living Room");
   await page.getByLabel("Sofa placement at Room Tile 1,1").click();
   await page.getByLabel("Room Tile 5,0").click();
   await expect.poll(() => livingRoomPlacementTile(page, "living-room-sofa")).toEqual({ x: 5, y: 0 });
@@ -76,7 +74,7 @@ test("pages demo persists moved and removed House Interior Decorations", async (
 
   await page.reload();
   await page.getByRole("button", { name: "Start Farm" }).click();
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await enterHouseRoom(page, "Living Room");
 
   await expect(page.getByLabel("Sofa placement at Room Tile 5,0")).toBeVisible();
   await expect(page.getByLabel("Rug placement at Room Tile 2,3")).toHaveCount(0);
@@ -173,6 +171,14 @@ async function closeGuidedTutorial(page: Page) {
   await expect(dialog).toHaveCount(0);
 }
 
+async function enterHouseRoom(page: Page, roomName: "Living Room" | "Kitchen" | "Bedroom") {
+  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
+  await expect(page.getByTestId("house-overview")).toBeVisible();
+  await page.getByRole("button", { name: `Enter ${roomName}` }).click();
+  await expect(page.getByTestId(`house-room-${roomName === "Living Room" ? "living_room" : roomName.toLowerCase()}`)).toBeVisible();
+}
+
 async function canvasSnapshot(page: Page) {
   return page.locator("canvas").first().evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL());
 }
@@ -203,7 +209,7 @@ async function expectHouseInteriorControlsFramedWithoutOverlap(page: Page) {
   const controls = [
     page.locator(".house-interior__title"),
     page.locator(".house-interior__back"),
-    page.getByRole("navigation", { name: "Rooms" }),
+    page.locator(".house-interior__grid-toggle"),
     page.getByTestId("decoration-placement-status"),
     page.getByRole("navigation", { name: "Decorations" }),
   ];
@@ -318,7 +324,14 @@ async function seedBreadSave(page: Page) {
 
     const wasm = (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
     await wasm.default();
-    const runtime = new wasm.DemoFarmRuntime(undefined, 1_000);
+    let runtime = new wasm.DemoFarmRuntime(undefined, 1_000);
+    const leveledSave = JSON.parse(runtime.save_json()) as {
+      farm: { xp: number; level: number; inventory: Record<string, number> };
+    };
+    leveledSave.farm.xp = 4;
+    leveledSave.farm.level = 2;
+    leveledSave.farm.inventory.wheat = 6;
+    runtime = new wasm.DemoFarmRuntime(JSON.stringify(leveledSave), 1_000);
     let version = 0;
     const send = (command: unknown, nowMs: number) => {
       const response = JSON.parse(
@@ -334,26 +347,11 @@ async function seedBreadSave(page: Page) {
       version = (JSON.parse(runtime.farm_json(nowMs)) as { version: number }).version;
     };
 
-    send(
-      {
-        type: "sweep_plant",
-        crop_id: "wheat",
-        plot_ids: ["plot-1", "plot-2", "plot-3", "plot-4"],
-      },
-      1_000,
-    );
-    send(
-      {
-        type: "sweep_harvest",
-        plot_ids: ["plot-1", "plot-2", "plot-3", "plot-4"],
-      },
-      40_000,
-    );
-    tick(65_000);
-    send({ type: "buy_farmhouse_upgrade", upgrade_kind: "oven" }, 65_000);
-    send({ type: "queue_oven_recipe", recipe_id: "bread" }, 65_000);
+    send({ type: "buy_farmhouse_upgrade", upgrade_kind: "oven" }, 1_000);
+    send({ type: "queue_oven_recipe", recipe_id: "bread" }, 2_000);
+    tick(40_000);
     send({ type: "collect_oven_job" }, 100_000);
-    tick(110_000);
+    tick(130_000);
     window.localStorage.setItem(key, runtime.save_json());
   }, demoSaveKey);
 }
@@ -372,7 +370,14 @@ async function seedQueuedBreadSave(page: Page) {
 
     const wasm = (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
     await wasm.default();
-    const runtime = new wasm.DemoFarmRuntime(undefined, 1_000);
+    let runtime = new wasm.DemoFarmRuntime(undefined, 1_000);
+    const leveledSave = JSON.parse(runtime.save_json()) as {
+      farm: { xp: number; level: number; inventory: Record<string, number> };
+    };
+    leveledSave.farm.xp = 4;
+    leveledSave.farm.level = 2;
+    leveledSave.farm.inventory.wheat = 6;
+    runtime = new wasm.DemoFarmRuntime(JSON.stringify(leveledSave), 1_000);
     let version = 0;
     const send = (command: unknown, nowMs: number) => {
       const response = JSON.parse(
@@ -388,25 +393,9 @@ async function seedQueuedBreadSave(page: Page) {
       version = (JSON.parse(runtime.farm_json(nowMs)) as { version: number }).version;
     };
 
-    send(
-      {
-        type: "sweep_plant",
-        crop_id: "wheat",
-        plot_ids: ["plot-1", "plot-2", "plot-3", "plot-4"],
-      },
-      1_000,
-    );
-    send(
-      {
-        type: "sweep_harvest",
-        plot_ids: ["plot-1", "plot-2", "plot-3", "plot-4"],
-      },
-      40_000,
-    );
-    tick(65_000);
-    send({ type: "buy_farmhouse_upgrade", upgrade_kind: "oven" }, 65_000);
-    send({ type: "queue_oven_recipe", recipe_id: "bread" }, 65_000);
-    tick(70_000);
+    send({ type: "buy_farmhouse_upgrade", upgrade_kind: "oven" }, 1_000);
+    send({ type: "queue_oven_recipe", recipe_id: "bread" }, 2_000);
+    tick(100_000);
     window.localStorage.setItem(key, runtime.save_json());
   }, demoSaveKey);
 }

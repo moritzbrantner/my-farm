@@ -16,9 +16,17 @@ _Avoid_: House building, home structure
 The saved inside-of-Farmhouse decoration space owned by the Farm. It contains starter Rooms and Decoration Placements that clients can browse and later edit.
 _Avoid_: Browser-only room state, UI-only house
 
+**House Overview**:
+The whole-Farmhouse navigation view used to enter individual Rooms or exit back to the Farm.
+_Avoid_: Room picker, house menu
+
 **Room**:
 A named area inside the House Interior, such as the Living Room, Kitchen, or Bedroom. Starter Rooms use fixed Room Tile grids.
 _Avoid_: Scene, level, screen
+
+**Room Door**:
+A fixed Room exit affordance that returns the player from a Room to the House Overview.
+_Avoid_: Back button, tab
 
 **Room Tile**:
 A discrete coordinate inside a Room grid used to place Decorations.
@@ -48,6 +56,10 @@ _Avoid_: Structure upgrade, house building
 The Farmhouse Upgrade that unlocks bread-family production from the Farmhouse kitchen. It keeps the prior bread-production balance but is not a placed or movable Structure.
 _Avoid_: placed kitchen Structure
 
+**Oven Workstation**:
+The fixed Kitchen surface for starting and collecting Oven recipes. It is derived from the Oven Farmhouse Upgrade and is not a Decoration.
+_Avoid_: Oven decoration, kitchen machine
+
 **Farm Resident**:
 One of the two saved household members who can perform work on the Farm. Farm Residents have stable ids `woman` and `man` and editable display names.
 _Avoid_: Character, avatar, worker
@@ -59,6 +71,10 @@ _Avoid_: Active character, current avatar
 **Resident Task**:
 A saved unit of Farm work assigned to a Farm Resident and advanced by elapsed Farm time. Resident Tasks are authoritative Farm state, not browser-only animation.
 _Avoid_: Animation job, client task
+
+**Start Oven Recipe**:
+A Resident Task step where a Farm Resident stands at the Oven Workstation and turns a pending Oven recipe into an active baking job.
+_Avoid_: Instant oven queueing, make cake
 
 **Resident Task Queue**:
 The per-resident FIFO list of Resident Tasks saved on the Farm. Later work may enqueue physical production tasks here; empty queues still exist for each Farm Resident.

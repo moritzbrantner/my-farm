@@ -1,6 +1,6 @@
 use my_farm_core::{
     AnimalState, CatalogDocument, DEFAULT_RESIDENT_TASK_STEP_DURATION_MS, FarmCommand, FarmEvent,
-    FarmState, FarmhouseUpgradeKind, ItemStack, MachineKind, RecipeTarget, Room, RoomTile,
+    FarmState, FarmhouseUpgradeKind, ItemStack, MachineKind, OvenJobStatus, RecipeTarget, Room, RoomTile,
     ShelterKind, StorageKind, StructureKind, StructureTarget, SweepHarvestMode, Tile,
     add_inventory, apply_command, apply_elapsed, farm_view, inventory_quantity, new_farm,
     scaled_duration_ms, update_level,
@@ -1430,6 +1430,48 @@ fn decoration_placement_rejects_unknown_ids_bounds_and_same_room_overlaps() {
 }
 
 #[test]
+fn kitchen_oven_space_blocks_decoration_placement_before_and_after_purchase() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.level = 5;
+
+    let blocked_before_purchase = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlaceDecoration {
+            room_id: "kitchen".to_owned(),
+            decoration_id: "chair".to_owned(),
+            tile: RoomTile::new(3, 0),
+        },
+        0,
+    );
+    assert!(!blocked_before_purchase.accepted);
+    assert_eq!(
+        blocked_before_purchase.error.unwrap().message,
+        "decoration placement overlaps"
+    );
+
+    farm.owned_farmhouse_upgrades
+        .push(FarmhouseUpgradeKind::Oven);
+
+    let blocked_after_purchase = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveDecoration {
+            room_id: "kitchen".to_owned(),
+            placement_id: "kitchen-chair".to_owned(),
+            tile: RoomTile::new(4, 0),
+        },
+        0,
+    );
+    assert!(!blocked_after_purchase.accepted);
+    assert_eq!(
+        blocked_after_purchase.error.unwrap().message,
+        "decoration placement overlaps"
+    );
+}
+
+#[test]
 fn players_can_place_unlimited_copies_of_starter_decorations_when_tiles_are_available() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
@@ -2853,7 +2895,7 @@ fn bread_family_recipes_target_the_farmhouse_oven() {
 }
 
 #[test]
-fn oven_recipes_require_ownership_and_queue_jobs_after_purchase() {
+fn queue_oven_recipe_creates_pending_job_and_start_task() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
     farm.xp = 4;
@@ -2894,14 +2936,19 @@ fn oven_recipes_require_ownership_and_queue_jobs_after_purchase() {
     assert_eq!(inventory_quantity(&farm, "wheat"), 3);
     assert_eq!(farm.oven.queue.len(), 1);
     assert_eq!(farm.oven.queue[0].recipe_id, "bread");
-    assert_eq!(
-        farm.oven.queue[0].ready_at_ms,
-        scaled_duration_ms(300, catalog.balance.time_scale)
-    );
+    assert_eq!(farm.oven.queue[0].status, OvenJobStatus::PendingStart);
+    assert_eq!(farm.oven.queue[0].started_at_ms, 0);
+    assert_eq!(farm.oven.queue[0].ready_at_ms, 0);
+    let task = &farm.resident_task_queues["woman"][0];
+    assert!(matches!(
+        &task.steps[0].work,
+        my_farm_core::ResidentTaskStepWork::StartOvenRecipe { recipe_id, .. } if recipe_id == "bread"
+    ));
+    assert_eq!(task.steps[0].reserved_work_target, my_farm_core::ReservedWorkTarget::Oven);
 }
 
 #[test]
-fn oven_queue_capacity_is_enforced_at_two_jobs() {
+fn pending_oven_job_reserves_capacity() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
     farm.xp = 4;
@@ -2936,7 +2983,7 @@ fn oven_queue_capacity_is_enforced_at_two_jobs() {
 }
 
 #[test]
-fn oven_jobs_collect_through_resident_work_and_respect_storage_capacity() {
+fn pending_oven_job_cannot_be_collected() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
     farm.xp = 4;
@@ -2953,7 +3000,67 @@ fn oven_jobs_collect_through_resident_work_and_respect_storage_capacity() {
         0,
     );
     assert!(queued.accepted);
-    let ready_at = scaled_duration_ms(300, catalog.balance.time_scale);
+
+    let rejected = apply_command(&mut farm, &catalog, FarmCommand::CollectOvenJob, 0);
+    assert!(!rejected.accepted);
+    assert_eq!(rejected.error.unwrap().message, "oven job has not started");
+}
+
+#[test]
+fn start_oven_recipe_step_starts_baking() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+    farm.owned_farmhouse_upgrades
+        .push(FarmhouseUpgradeKind::Oven);
+
+    let queued = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueOvenRecipe {
+            recipe_id: "bread".to_owned(),
+        },
+        0,
+    );
+    assert!(queued.accepted);
+    let job_id = farm.oven.queue[0].id.clone();
+    let start_ready_at = resident_task_ready_at(&farm, "woman", 0);
+
+    apply_elapsed(&mut farm, &catalog, start_ready_at - 1);
+    assert_eq!(farm.oven.queue[0].status, OvenJobStatus::PendingStart);
+
+    apply_elapsed(&mut farm, &catalog, start_ready_at);
+    assert_eq!(farm.oven.queue[0].id, job_id);
+    assert_eq!(farm.oven.queue[0].status, OvenJobStatus::Producing);
+    assert_eq!(farm.oven.queue[0].started_at_ms, start_ready_at);
+    assert_eq!(
+        farm.oven.queue[0].ready_at_ms,
+        start_ready_at + scaled_duration_ms(300, catalog.balance.time_scale)
+    );
+}
+
+#[test]
+fn oven_recipe_collection_still_uses_resident_work_and_respects_storage_capacity() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 4;
+    farm.level = 2;
+    farm.owned_farmhouse_upgrades
+        .push(FarmhouseUpgradeKind::Oven);
+
+    let queued = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::QueueOvenRecipe {
+            recipe_id: "bread".to_owned(),
+        },
+        0,
+    );
+    assert!(queued.accepted);
+    let start_ready_at = resident_task_ready_at(&farm, "woman", 0);
+    apply_elapsed(&mut farm, &catalog, start_ready_at);
+    let ready_at = farm.oven.queue[0].ready_at_ms;
 
     farm.barn_capacity = 0;
     let storage_full = apply_command(&mut farm, &catalog, FarmCommand::CollectOvenJob, ready_at);
@@ -2967,7 +3074,12 @@ fn oven_jobs_collect_through_resident_work_and_respect_storage_capacity() {
     assert!(collected.events.is_empty());
     assert_eq!(farm.oven.queue.len(), 1);
     assert_eq!(inventory_quantity(&farm, "bread"), 0);
-    let collect_duration = farm.resident_task_queues["woman"][0].steps[0].duration_ms;
+    let collect_task_index = farm.resident_task_queues["woman"].len() - 1;
+    assert!(matches!(
+        farm.resident_task_queues["woman"][collect_task_index].steps[0].work,
+        my_farm_core::ResidentTaskStepWork::CollectOvenJob { .. }
+    ));
+    let collect_duration = farm.resident_task_queues["woman"][collect_task_index].steps[0].duration_ms;
 
     let duplicate_collect =
         apply_command(&mut farm, &catalog, FarmCommand::CollectOvenJob, ready_at);
@@ -2978,7 +3090,7 @@ fn oven_jobs_collect_through_resident_work_and_respect_storage_capacity() {
     assert_eq!(farm.oven.queue.len(), 1);
     assert_eq!(inventory_quantity(&farm, "bread"), 0);
 
-    let collect_tail_ready_at = resident_task_tail_ready_at(&farm, "woman", 0);
+    let collect_tail_ready_at = resident_task_tail_ready_at(&farm, "woman", collect_task_index);
     let events = apply_elapsed(&mut farm, &catalog, ready_at + collect_duration);
     assert_eq!(farm.oven.queue.len(), 0);
     assert_eq!(inventory_quantity(&farm, "bread"), 0);

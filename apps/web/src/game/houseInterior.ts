@@ -8,6 +8,9 @@ export type DecorationPlacementStatus =
   | { fits: true; reason: null }
   | { fits: false; reason: "out_of_bounds" | "overlap" };
 
+const kitchenOvenTile = { x: 3, y: 0 };
+const kitchenOvenFootprint = { width: 2, height: 1 };
+
 export function decorationPlacementStatus(
   catalog: CatalogDocument,
   room: HouseInteriorRoom,
@@ -24,6 +27,9 @@ export function decorationPlacementStatus(
   if (right > room.width || bottom > room.height) {
     return { fits: false, reason: "out_of_bounds" };
   }
+  if (fixedRoomFeatureOverlaps(room, tile, decoration)) {
+    return { fits: false, reason: "overlap" };
+  }
 
   for (const placement of room.decoration_placements) {
     if (placement.id === options.ignorePlacementId) {
@@ -39,6 +45,26 @@ export function decorationPlacementStatus(
   }
 
   return { fits: true, reason: null };
+}
+
+function fixedRoomFeatureOverlaps(
+  room: HouseInteriorRoom,
+  tile: RoomTile,
+  decoration: DecorationDefinition,
+) {
+  if (room.id !== "kitchen") {
+    return false;
+  }
+  const right = tile.x + decoration.footprint.width;
+  const bottom = tile.y + decoration.footprint.height;
+  const ovenRight = kitchenOvenTile.x + kitchenOvenFootprint.width;
+  const ovenBottom = kitchenOvenTile.y + kitchenOvenFootprint.height;
+  return (
+    tile.x < ovenRight &&
+    right > kitchenOvenTile.x &&
+    tile.y < ovenBottom &&
+    bottom > kitchenOvenTile.y
+  );
 }
 
 function footprintsOverlap(

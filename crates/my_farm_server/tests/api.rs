@@ -856,6 +856,8 @@ async fn post_farmhouse_oven_queue_and_collect_persist_state_and_journal_through
     assert_eq!(inventory_quantity(&queued, "wheat"), 3);
 
     let mut ready_farm = load_saved_farm(&pool).await;
+    let start_ready_at = ready_farm.resident_task_queues["woman"][0].ready_at_ms;
+    my_farm_core::apply_elapsed(&mut ready_farm, &catalog, start_ready_at);
     ready_farm.oven.queue[0].ready_at_ms = 0;
     save_test_farm(&pool, queued.version, &ready_farm).await;
 

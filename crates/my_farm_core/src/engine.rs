@@ -1,11 +1,12 @@
 use crate::{
     AnimalShelterState, AnimalState, CatalogDocument, DecorationDef, DecorationPlacement,
     DeliveryOrder, FarmState, FarmhouseUpgradeKind, FieldPlot, ItemKind, ItemStack, MachineJob,
-    MachineKind, MachineState, RecipeTarget, ReservedWorkTarget, ResidentTask, ResidentTaskKind,
-    ResidentTaskStep, ResidentTaskStepWork, Room, RoomTile, ShelterKind, StorageKind,
-    StructureKind, Tile, ToolShedState, add_inventory, add_shelter_animals, barn_storage_used,
-    crop_storage_used, default_resident_task_step_duration_ms, gain_xp, next_id, remove_inventory,
-    scaled_duration_ms, update_level,
+    MachineKind, MachineState, OvenJob, OvenJobStatus, RecipeTarget, ReservedWorkTarget,
+    ResidentTask, ResidentTaskKind, ResidentTaskStep, ResidentTaskStepWork, Room, RoomTile,
+    ShelterKind, StorageKind, StructureKind, Tile, ToolShedState, add_inventory,
+    add_shelter_animals, barn_storage_used, crop_storage_used,
+    default_resident_task_step_duration_ms, gain_xp, next_id, remove_inventory, scaled_duration_ms,
+    update_level,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,11 @@ const TOOL_SHED_UNLOCK_LEVEL: u32 = 3;
 const DECORATION_EDITING_UNLOCK_LEVEL: u32 = 5;
 const RESIDENT_FIELD_WORK_BASE_DURATION_MS: i64 = 1_000;
 const RESIDENT_FIELD_WORK_WALKED_TILE_DURATION_MS: i64 = 750;
+const KITCHEN_OVEN_ROOM_ID: &str = "kitchen";
+const KITCHEN_OVEN_TILE_X: u32 = 3;
+const KITCHEN_OVEN_TILE_Y: u32 = 0;
+const KITCHEN_OVEN_FOOTPRINT_WIDTH: u32 = 2;
+const KITCHEN_OVEN_FOOTPRINT_HEIGHT: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StructureFootprint {
@@ -807,6 +813,7 @@ fn resident_task_step_work_duration_ms(work: &ResidentTaskStepWork) -> i64 {
         ResidentTaskStepWork::PlantCrop { .. }
         | ResidentTaskStepWork::HarvestCrop { .. }
         | ResidentTaskStepWork::CollectMachineJob { .. }
+        | ResidentTaskStepWork::StartOvenRecipe { .. }
         | ResidentTaskStepWork::CollectOvenJob { .. }
         | ResidentTaskStepWork::FeedAnimal
         | ResidentTaskStepWork::CollectAnimalProduct { .. } => RESIDENT_FIELD_WORK_BASE_DURATION_MS,
@@ -1232,6 +1239,25 @@ fn complete_resident_task_step(
                 recipe_id: recipe.id.clone(),
             }]
         }
+        ResidentTaskStepWork::StartOvenRecipe { job_id, recipe_id } => {
+            let ReservedWorkTarget::Oven = step.reserved_work_target else {
+                return Vec::new();
+            };
+            let Some(job_index) = farm.oven.queue.iter().position(|job| job.id == job_id) else {
+                return Vec::new();
+            };
+            if farm.oven.queue[job_index].status != OvenJobStatus::PendingStart {
+                return Vec::new();
+            }
+            let Some(recipe) = catalog.recipe(&recipe_id) else {
+                return Vec::new();
+            };
+            farm.oven.queue[job_index].status = OvenJobStatus::Producing;
+            farm.oven.queue[job_index].started_at_ms = completed_at_ms;
+            farm.oven.queue[job_index].ready_at_ms = completed_at_ms
+                + scaled_duration_ms(recipe.reference_seconds, catalog.balance.time_scale);
+            Vec::new()
+        }
         ResidentTaskStepWork::CollectOvenJob { job_id, recipe_id } => {
             let ReservedWorkTarget::Oven = step.reserved_work_target else {
                 return Vec::new();
@@ -1373,6 +1399,7 @@ fn step_inventory_outputs(catalog: &CatalogDocument, work: &ResidentTaskStepWork
         }
         ResidentTaskStepWork::PlantCrop { .. }
         | ResidentTaskStepWork::FeedAnimal
+        | ResidentTaskStepWork::StartOvenRecipe { .. }
         | ResidentTaskStepWork::DepositInventory { .. }
         | ResidentTaskStepWork::ReturnTools => Vec::new(),
     }
@@ -1911,22 +1938,36 @@ fn queue_oven_recipe(
     if farm.oven.queue.len() >= oven_def.queue_limit {
         return Err(CommandError::new("oven queue is full"));
     }
+    let mut planned = plan_resident_work(
+        farm,
+        catalog,
+        now_ms,
+        ResidentTaskKind::ProductionWork,
+        vec![resident_task_step(
+            ReservedWorkTarget::Oven,
+            ResidentTaskStepWork::StartOvenRecipe {
+                job_id: String::new(),
+                recipe_id: recipe.id.clone(),
+            },
+        )],
+    )?;
     remove_inventory(farm, &recipe.inputs)?;
-    let start_at = farm
-        .oven
-        .queue
-        .last()
-        .map(|job| job.ready_at_ms)
-        .unwrap_or(now_ms)
-        .max(now_ms);
-    let job = MachineJob {
+    let job = OvenJob {
         id: next_id(farm, "job"),
         recipe_id: recipe_id.to_owned(),
-        started_at_ms: start_at,
-        ready_at_ms: start_at
-            + scaled_duration_ms(recipe.reference_seconds, catalog.balance.time_scale),
+        status: OvenJobStatus::PendingStart,
+        started_at_ms: 0,
+        ready_at_ms: 0,
     };
+    let job_id = job.id.clone();
+    if let Some(step) = planned.steps.first_mut() {
+        step.work = ResidentTaskStepWork::StartOvenRecipe {
+            job_id,
+            recipe_id: recipe.id.clone(),
+        };
+    }
     farm.oven.queue.push(job);
+    push_planned_resident_work(farm, planned);
     Ok(vec![FarmEvent::RecipeQueued {
         recipe_id: recipe_id.to_owned(),
     }])
@@ -1988,6 +2029,9 @@ fn collect_oven_job(
         .first()
         .cloned()
         .ok_or_else(|| CommandError::new("oven queue is empty"))?;
+    if job.status == OvenJobStatus::PendingStart {
+        return Err(CommandError::new("oven job has not started"));
+    }
     if job.ready_at_ms > now_ms {
         return Err(CommandError::new("oven job is not ready"));
     }
@@ -2379,6 +2423,14 @@ fn ensure_decoration_tile_available(
     if right > room.width || bottom > room.height {
         return Err(CommandError::new("decoration placement is out of bounds"));
     }
+    if fixed_room_feature_overlaps(
+        room,
+        tile,
+        decoration.footprint.width,
+        decoration.footprint.height,
+    ) {
+        return Err(CommandError::new("decoration placement overlaps"));
+    }
 
     for placement in &room.decoration_placements {
         if ignored_placement_id.is_some_and(|ignored| ignored == placement.id) {
@@ -2401,10 +2453,42 @@ fn decoration_footprints_overlap(
     other_tile: &RoomTile,
     other_decoration: &DecorationDef,
 ) -> bool {
-    let right = tile.x + decoration.footprint.width;
-    let bottom = tile.y + decoration.footprint.height;
-    let other_right = other_tile.x + other_decoration.footprint.width;
-    let other_bottom = other_tile.y + other_decoration.footprint.height;
+    room_footprints_overlap(
+        tile,
+        decoration.footprint.width,
+        decoration.footprint.height,
+        other_tile,
+        other_decoration.footprint.width,
+        other_decoration.footprint.height,
+    )
+}
+
+fn fixed_room_feature_overlaps(room: &Room, tile: &RoomTile, width: u32, height: u32) -> bool {
+    if room.id != KITCHEN_OVEN_ROOM_ID {
+        return false;
+    }
+    room_footprints_overlap(
+        tile,
+        width,
+        height,
+        &RoomTile::new(KITCHEN_OVEN_TILE_X, KITCHEN_OVEN_TILE_Y),
+        KITCHEN_OVEN_FOOTPRINT_WIDTH,
+        KITCHEN_OVEN_FOOTPRINT_HEIGHT,
+    )
+}
+
+fn room_footprints_overlap(
+    tile: &RoomTile,
+    width: u32,
+    height: u32,
+    other_tile: &RoomTile,
+    other_width: u32,
+    other_height: u32,
+) -> bool {
+    let right = tile.x + width;
+    let bottom = tile.y + height;
+    let other_right = other_tile.x + other_width;
+    let other_bottom = other_tile.y + other_height;
 
     tile.x < other_right && right > other_tile.x && tile.y < other_bottom && bottom > other_tile.y
 }

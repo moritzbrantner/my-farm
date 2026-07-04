@@ -10,6 +10,11 @@ import type {
 export type StructureProductionStatus =
   | { type: "idle" }
   | {
+      type: "pending";
+      outputItemId: string;
+      outputItemKind?: ItemKind;
+    }
+  | {
       type: "producing";
       progress: number;
       outputItemId: string;
@@ -77,6 +82,13 @@ export function ovenProductionStatus(
   }
 
   const outputItemKind = itemKind(catalog, output.item_id);
+  if (firstJob.status === "pending_start") {
+    return {
+      type: "pending",
+      outputItemId: output.item_id,
+      outputItemKind,
+    };
+  }
   if (nowMs >= firstJob.ready_at_ms) {
     return {
       type: "ready",
@@ -143,6 +155,9 @@ export function productionStatusLabel(
     return null;
   }
   const outputName = itemName(catalog, status.outputItemId);
+  if (status.type === "pending") {
+    return `${structureName} status: Starting ${outputName}`;
+  }
   if (status.type === "producing") {
     return `${structureName} status: Producing ${outputName}`;
   }
