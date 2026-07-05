@@ -24,7 +24,9 @@ Build the static Pages demo locally:
 bun run build:pages
 ```
 
-The Pages demo uses `VITE_MY_FARM_RUNTIME=wasm_demo`, compiles `crates/my_farm_wasm` with `wasm-pack`, and bundles the generated WASM through Vite. It supports fields, Wheat, Corn, the Farmhouse Oven, Bread, storage display, reset, and browser-local saves. It intentionally does not expose later local-server features such as Tool Shed construction.
+The Pages demo uses `VITE_MY_FARM_RUNTIME=wasm_demo`, compiles `crates/my_farm_wasm` with `wasm-pack`, and bundles the generated WASM through Vite. It supports fields, Wheat, Corn, the Farmhouse Oven, Bread, storage display, reset, and browser-local saves. It intentionally does not expose later local-server features such as Tool Shed construction or the Farm Shop.
+
+In the local full game, the Farm Shop is a buildable road-edge Structure. Farm Residents move sellable Shop Stock into and out of the shop through queued Resident Tasks, and Customer Visits can passively buy one unreserved stocked item for coins. Delivery Orders remain the coins-and-XP objective.
 
 ## Commands
 

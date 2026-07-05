@@ -502,6 +502,32 @@ fn demo_runtime_rejects_farm_shop_builds_before_core_execution() {
     assert!(response.view.farm_shop.is_none());
 }
 
+#[test]
+fn demo_runtime_rejects_farm_shop_stock_commands_before_core_execution() {
+    let mut runtime = DemoFarmRuntime::new(None, 1_000.0);
+
+    for command in [
+        FarmCommand::StockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 1,
+        },
+        FarmCommand::UnstockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 1,
+        },
+    ] {
+        let response = command_raw(&mut runtime, 0, command, 1_000.0);
+
+        assert!(!response.accepted);
+        assert_eq!(response.version, 0);
+        assert_eq!(
+            response.error.as_deref(),
+            Some("feature is not available in the demo")
+        );
+        assert!(response.view.farm_shop.is_none());
+    }
+}
+
 fn command(
     runtime: &mut DemoFarmRuntime,
     expected_version: u64,

@@ -347,6 +347,122 @@ fn farm_shop_stocking_and_unstocking_are_resident_tasks() {
 }
 
 #[test]
+fn farm_shop_stocking_and_unstocking_validate_command_boundaries() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let no_shop = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::StockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!no_shop.accepted);
+    assert_eq!(no_shop.error.unwrap().message, "farm shop not built");
+
+    build_farm_shop(&mut farm, &catalog, 0);
+    let zero_stock = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::StockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 0,
+        },
+        0,
+    );
+    assert!(!zero_stock.accepted);
+    assert_eq!(
+        zero_stock.error.unwrap().message,
+        "quantity must be greater than zero"
+    );
+
+    unlock_level(&mut farm, &catalog, 3);
+    add_inventory(&mut farm, "chicken_feed", 1);
+    let not_sellable = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::StockFarmShop {
+            item_id: "chicken_feed".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!not_sellable.accepted);
+    assert_eq!(
+        not_sellable.error.unwrap().message,
+        "item is not available to sell"
+    );
+
+    add_inventory(&mut farm, "wheat", 10);
+    let too_much_stock = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::StockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 9,
+        },
+        0,
+    );
+    assert!(!too_much_stock.accepted);
+    assert_eq!(
+        too_much_stock.error.unwrap().message,
+        "farm shop stock is full"
+    );
+
+    farm.farm_shop.as_mut().unwrap().stock = vec![ItemStack::new("wheat", 1)];
+    farm.silo_capacity = 20;
+    let zero_return = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::UnstockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 0,
+        },
+        0,
+    );
+    assert!(!zero_return.accepted);
+    assert_eq!(
+        zero_return.error.unwrap().message,
+        "quantity must be greater than zero"
+    );
+
+    let unavailable_return = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::UnstockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 2,
+        },
+        0,
+    );
+    assert!(!unavailable_return.accepted);
+    assert_eq!(
+        unavailable_return.error.unwrap().message,
+        "not enough available shop stock wheat"
+    );
+
+    farm.silo_capacity = 19;
+    let full_storage_return = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::UnstockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(!full_storage_return.accepted);
+    assert_eq!(
+        full_storage_return.error.unwrap().message,
+        "storage is full"
+    );
+    assert!(farm.resident_task_queues["woman"].is_empty());
+}
+
+#[test]
 fn farm_view_exposes_reserved_and_available_shop_stock() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
