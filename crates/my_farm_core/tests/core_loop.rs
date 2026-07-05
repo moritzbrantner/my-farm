@@ -347,6 +347,37 @@ fn farm_shop_stocking_and_unstocking_are_resident_tasks() {
 }
 
 #[test]
+fn farm_view_exposes_reserved_and_available_shop_stock() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    farm.farm_shop.as_mut().unwrap().stock = vec![ItemStack::new("wheat", 3)];
+
+    let returned = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::UnstockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 2,
+        },
+        0,
+    );
+    assert!(returned.accepted, "{:?}", returned.error);
+
+    let view = farm_view(&farm, &catalog);
+    let shop = view.farm_shop.unwrap();
+    let wheat = shop
+        .stock
+        .iter()
+        .find(|item| item.item_id == "wheat")
+        .unwrap();
+
+    assert_eq!(wheat.quantity, 3);
+    assert_eq!(wheat.reserved_quantity, Some(2));
+    assert_eq!(wheat.available_quantity, Some(1));
+}
+
+#[test]
 fn farm_shop_customer_sale_uses_market_sell_price_without_xp() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
