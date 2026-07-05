@@ -414,6 +414,157 @@ fn farm_shop_customer_sale_uses_market_sell_price_without_xp() {
 }
 
 #[test]
+fn farm_shop_customer_visits_skip_empty_stock_and_reschedule_deterministically() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    let first_visit_at = farm.farm_shop.as_ref().unwrap().next_customer_visit_at_ms;
+
+    let events = apply_elapsed(&mut farm, &catalog, first_visit_at);
+
+    assert!(events.is_empty());
+    let shop = farm.farm_shop.as_ref().unwrap();
+    assert_eq!(shop.visit_count, 1);
+    assert_eq!(shop.next_customer_visit_at_ms, first_visit_at + 70_000);
+    assert!(shop.current_sale.is_none());
+
+    let events = apply_elapsed(&mut farm, &catalog, first_visit_at + 70_000);
+
+    assert!(events.is_empty());
+    let shop = farm.farm_shop.as_ref().unwrap();
+    assert_eq!(shop.visit_count, 2);
+    assert_eq!(shop.next_customer_visit_at_ms, first_visit_at + 150_000);
+    assert!(shop.current_sale.is_none());
+}
+
+#[test]
+fn farm_shop_customer_sales_rotate_across_available_stocked_items() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    farm.farm_shop.as_mut().unwrap().stock =
+        vec![ItemStack::new("wheat", 2), ItemStack::new("corn", 2)];
+    let first_visit_at = farm.farm_shop.as_ref().unwrap().next_customer_visit_at_ms;
+
+    let first_events = apply_elapsed(&mut farm, &catalog, first_visit_at);
+
+    assert!(first_events.iter().any(|event| matches!(
+        event,
+        FarmEvent::FarmShopSaleCompleted { item_id, quantity, coins_gained }
+            if item_id == "corn" && *quantity == 1 && *coins_gained == 4
+    )));
+    assert_eq!(
+        farm.farm_shop
+            .as_ref()
+            .unwrap()
+            .stock
+            .iter()
+            .find(|stock| stock.item_id == "corn")
+            .unwrap()
+            .quantity,
+        1
+    );
+
+    let second_visit_at = farm.farm_shop.as_ref().unwrap().next_customer_visit_at_ms;
+    let second_events = apply_elapsed(&mut farm, &catalog, second_visit_at);
+
+    assert!(second_events.iter().any(|event| matches!(
+        event,
+        FarmEvent::FarmShopSaleCompleted { item_id, quantity, coins_gained }
+            if item_id == "wheat" && *quantity == 1 && *coins_gained == 2
+    )));
+    assert_eq!(
+        farm.farm_shop
+            .as_ref()
+            .unwrap()
+            .stock
+            .iter()
+            .find(|stock| stock.item_id == "wheat")
+            .unwrap()
+            .quantity,
+        1
+    );
+}
+
+#[test]
+fn farm_shop_customer_sales_ignore_reserved_shop_stock() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    farm.farm_shop.as_mut().unwrap().stock =
+        vec![ItemStack::new("corn", 1), ItemStack::new("wheat", 1)];
+    let reserved = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::UnstockFarmShop {
+            item_id: "corn".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(reserved.accepted, "{:?}", reserved.error);
+    farm.farm_shop.as_mut().unwrap().next_customer_visit_at_ms = 1;
+
+    let events = apply_elapsed(&mut farm, &catalog, 1);
+
+    assert!(events.iter().any(|event| matches!(
+        event,
+        FarmEvent::FarmShopSaleCompleted { item_id, quantity, coins_gained }
+            if item_id == "wheat" && *quantity == 1 && *coins_gained == 2
+    )));
+    let shop = farm.farm_shop.as_ref().unwrap();
+    assert_eq!(
+        shop.stock
+            .iter()
+            .find(|stock| stock.item_id == "corn")
+            .unwrap()
+            .quantity,
+        1
+    );
+    assert!(!shop.stock.iter().any(|stock| stock.item_id == "wheat"));
+}
+
+#[test]
+fn farm_shop_customer_visits_run_after_resident_task_completion() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    let stocked = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::StockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(stocked.accepted, "{:?}", stocked.error);
+    let stock_ready_at = resident_task_tail_ready_at(&farm, "woman", 0);
+    farm.farm_shop.as_mut().unwrap().next_customer_visit_at_ms = stock_ready_at;
+
+    let events = apply_elapsed(&mut farm, &catalog, stock_ready_at);
+
+    let stocked_event_index = events.iter().position(|event| {
+        matches!(
+            event,
+            FarmEvent::FarmShopStocked { item_id, quantity } if item_id == "wheat" && *quantity == 1
+        )
+    });
+    let sale_event_index = events.iter().position(|event| {
+        matches!(
+            event,
+            FarmEvent::FarmShopSaleCompleted { item_id, quantity, coins_gained }
+                if item_id == "wheat" && *quantity == 1 && *coins_gained == 2
+        )
+    });
+    assert!(matches!(
+        (stocked_event_index, sale_event_index),
+        (Some(stocked_index), Some(sale_index)) if stocked_index < sale_index
+    ));
+    assert!(farm.farm_shop.as_ref().unwrap().stock.is_empty());
+}
+
+#[test]
 fn old_save_without_farm_shop_loads_with_none() {
     let catalog = CatalogDocument::default_catalog();
     let farm = new_farm(0, &catalog);
