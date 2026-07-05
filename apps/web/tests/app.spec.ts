@@ -2931,6 +2931,187 @@ test("renders, selects, and moves a built Tool Shed without upgrade actions", as
   });
 });
 
+test("Farm Shop build tray gates placement to a single road-edge shop", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop canvas hit geometry is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  await mockFarmApi(page, buildableFarmView(), catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  const tray = await openBuildMenu(page);
+  await tray.getByRole("button", { name: /Farm Shop/ }).click();
+
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Farm Shop");
+  await expect(page.getByTestId("build-detail-strip")).toContainText("25 coins");
+  await expect(page.getByText("Place Farm Shop")).toBeVisible();
+
+  await page.getByLabel("Ground tile 3,3").click({ force: true });
+  await expect(page.getByText("Tile is occupied")).toBeVisible();
+  expect(commands).toHaveLength(0);
+
+  const command = await clickGroundTileUntilCommand(page, commands, { x: 3, y: 17 });
+  expect(command.command).toEqual({
+    type: "buy_structure",
+    structure_kind: "farm_shop",
+    tile: { x: 3, y: 17 },
+  });
+
+  commands.length = 0;
+  await page.evaluate((view) => {
+    (window as unknown as {
+      __pushLatestGameplayFarmSnapshot: (snapshot: { version: number; view: FarmView }) => void;
+    }).__pushLatestGameplayFarmSnapshot({
+      version: 2,
+      view: {
+        ...view,
+        farm_shop: {
+          id: "farm-shop-1",
+          tile: { x: 3, y: 17 },
+          stock: [],
+          stock_capacity: 6,
+          next_customer_visit_at_ms: Date.now() + 60_000,
+          visit_count: 0,
+        },
+      },
+    });
+  }, buildableFarmView());
+  await tray.getByRole("button", { name: /Farm Shop/ }).click();
+  await expect(page.getByTestId("build-detail-strip")).toContainText("Already built");
+});
+
+test("Farm Shop panel stocks, returns, and shows reserved stock reasons", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  const view = farmShopView({
+    inventory: [
+      { item_id: "wheat", name: "Wheat", quantity: 5, available_quantity: 2, reserved_quantity: 3, kind: "crop" },
+      { item_id: "corn", name: "Corn", quantity: 1, kind: "crop" },
+    ],
+    farm_shop: {
+      id: "farm-shop-1",
+      tile: { x: 3, y: 17 },
+      stock: [
+        { item_id: "wheat", name: "Wheat", quantity: 3, available_quantity: 2, reserved_quantity: 1, kind: "crop" },
+      ],
+      stock_capacity: 5,
+      next_customer_visit_at_ms: Date.now() + 60_000,
+      visit_count: 0,
+    },
+    reservations: {
+      ...farmView.reservations,
+      farm_shop_stock: { wheat: 1 },
+    },
+  });
+  await mockFarmApi(page, view, catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  await page.getByLabel("Farm Shop structure").click();
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+
+  await expect(selection.getByText("Shop Stock storage - 3/5 items")).toBeVisible();
+  await expect(selection.getByText("Total stock")).toBeVisible();
+  await expect(selection.getByText("Reserved stock")).toBeVisible();
+  await expect(selection.getByText("Available stock")).toBeVisible();
+  await expect(selection.getByText("2 available, 1 reserved")).toBeVisible();
+
+  await selection.getByLabel("Farm Shop quantity").fill("3");
+  await expect(selection.getByRole("button", { name: "Stock" })).toBeDisabled();
+  await expect(selection.getByText("Need 1 more in storage")).toBeVisible();
+
+  await selection.getByLabel("Farm Shop quantity").fill("2");
+  await selection.getByRole("button", { name: "Stock" }).click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "stock_farm_shop",
+    item_id: "wheat",
+    quantity: 2,
+  });
+
+  await selection.getByRole("button", { name: "Return" }).click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "unstock_farm_shop",
+    item_id: "wheat",
+    quantity: 2,
+  });
+
+  await selection.getByLabel("Farm Shop quantity").fill("3");
+  await expect(selection.getByRole("button", { name: "Return" })).toBeDisabled();
+  await expect(selection.getByText("Not enough available Shop Stock")).toBeVisible();
+});
+
+test("Farm Shop move and stock controls respect queued work and sale feedback", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
+  const commands: CommandRequest[] = [];
+  const now = Date.now();
+  const view = withResidentTaskQueues(
+    farmShopView({
+      farm_shop: {
+        id: "farm-shop-1",
+        tile: { x: 3, y: 17 },
+        stock: [{ item_id: "wheat", name: "Wheat", quantity: 3, available_quantity: 3, reserved_quantity: 0, kind: "crop" }],
+        stock_capacity: 4,
+        next_customer_visit_at_ms: now + 60_000,
+        visit_count: 1,
+        current_sale: {
+          id: "sale-1",
+          item_id: "wheat",
+          quantity: 1,
+          coins_gained: 2,
+          sold_at_ms: now - 500,
+          visible_until_ms: now + 60_000,
+        },
+      },
+      inventory: [{ item_id: "wheat", name: "Wheat", quantity: 5, kind: "crop" }],
+    }),
+    {
+      woman: [
+        task({
+          id: "task-stock-shop",
+          kind: { type: "shop_work" },
+          started_at_ms: now,
+          ready_at_ms: now + 2_000,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "farm_shop", shop_id: "farm-shop-1" },
+              work: { type: "deposit_shop_stock", items: [{ item_id: "wheat", quantity: 1 }] },
+              duration_ms: 1_000,
+              approach_tile: { x: 3, y: 16 },
+            }),
+          ],
+        }),
+      ],
+    },
+  );
+  await mockFarmApi(page, view, catalog, (request) => {
+    commands.push(request);
+  });
+  await openFarm(page);
+
+  await expect(page.getByTestId("farm-shop-sale-car")).toBeVisible();
+  await page.getByLabel("Farm Shop structure").click();
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+  await expect(selection.getByText("Sold Wheat for 2 coins")).toBeVisible();
+  await selection.getByLabel("Farm Shop quantity").fill("1");
+  await expect(selection.getByRole("button", { name: "Stock" })).toBeDisabled();
+  await expect(selection.getByText("Projected Shop Stock capacity is full")).toBeVisible();
+
+  await page.getByLabel("Farm Shop structure").click({ button: "right" });
+  const menu = page.getByTestId("structure-context-menu");
+  await expect(menu.getByRole("menuitem", { name: "Move Reserved for Mara's task" })).toBeDisabled();
+  await menu.getByRole("menuitem", { name: "Move Reserved for Mara's task" }).click({ force: true });
+  await expect(page.getByText("Moving Farm Shop")).toHaveCount(0);
+  expect(commands).toHaveLength(0);
+});
+
 test("farmhouse does not expose move and blocks moved structures", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop right-click behavior is covered in desktop.");
   const commands: CommandRequest[] = [];
@@ -3277,6 +3458,28 @@ function taskStep(
     walk_path: step.walk_path ?? [],
     walk_duration_ms: step.walk_duration_ms ?? 0,
     work_duration_ms: step.work_duration_ms ?? step.duration_ms,
+  };
+}
+
+function task(task: ResidentTask): ResidentTask {
+  return task;
+}
+
+function farmShopView(overrides: Partial<FarmView>): FarmView {
+  return {
+    ...farmView,
+    level: 3,
+    coins: 120,
+    farm_shop: {
+      id: "farm-shop-1",
+      tile: { x: 3, y: 17 },
+      stock: [],
+      stock_capacity: 6,
+      next_customer_visit_at_ms: Date.now() + 60_000,
+      visit_count: 0,
+      ...overrides.farm_shop,
+    },
+    ...overrides,
   };
 }
 

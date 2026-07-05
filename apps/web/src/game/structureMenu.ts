@@ -83,11 +83,20 @@ export function buildStructureMenuModel(
       : null;
   }
   if (target.type === "farm_shop") {
+    const moveReason = farmShopMoveDisabledReason(view, target.id);
     return view.farm_shop?.id === target.id
       ? {
           title: "Farm Shop",
           subtitle: `${view.farm_shop.stock.reduce((sum, stock) => sum + stock.quantity, 0)}/${view.farm_shop.stock_capacity} items`,
-          items: [{ id: "move-structure", label: "Move", action: "move_structure" }],
+          items: [
+            {
+              id: "move-structure",
+              label: "Move",
+              action: moveReason ? undefined : "move_structure",
+              disabled: Boolean(moveReason),
+              reason: moveReason,
+            },
+          ],
         }
       : null;
   }
@@ -187,6 +196,20 @@ export function isStructureTargetPresent(view: FarmView, target: StructureSelect
     return view.farm_shop?.id === target.id;
   }
   return view.delivery_board_built;
+}
+
+export function farmShopMoveDisabledReason(view: FarmView, shopId: string): string | undefined {
+  for (const work of Object.values(view.resident_work)) {
+    if (
+      work?.queue.some((task) =>
+        task.steps.some((step) => step.target?.kind === "farm_shop" && step.target.id === shopId),
+      ) ||
+      (work?.current_step?.target?.kind === "farm_shop" && work.current_step.target.id === shopId)
+    ) {
+      return `Reserved for ${work.display_name}'s task`;
+    }
+  }
+  return undefined;
 }
 
 function farmhouseOvenItem(catalog: CatalogDocument, view: FarmView): StructureMenuItem {
