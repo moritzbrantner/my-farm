@@ -1123,7 +1123,7 @@
         }
       }
     },
-    "FarmShopState": {
+    "FarmShopView": {
       "type": "object",
       "required": [
         "id",
@@ -1155,7 +1155,7 @@
         "stock": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/ItemStack"
+            "$ref": "#/definitions/InventoryItemView"
           }
         },
         "stock_capacity": {
@@ -1245,7 +1245,7 @@
           "default": null,
           "anyOf": [
             {
-              "$ref": "#/definitions/FarmShopState"
+              "$ref": "#/definitions/FarmShopView"
             },
             {
               "type": "null"

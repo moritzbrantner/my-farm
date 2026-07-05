@@ -34,8 +34,9 @@ pub struct FarmView {
     #[ts(optional)]
     pub tool_shed: Option<crate::ToolShedState>,
     #[serde(default)]
+    #[ts(inline)]
     #[ts(optional)]
-    pub farm_shop: Option<crate::FarmShopState>,
+    pub farm_shop: Option<FarmShopView>,
     pub delivery_orders: Vec<crate::DeliveryOrder>,
     pub residents: Vec<crate::FarmResident>,
     pub selected_resident_id: String,
@@ -61,6 +62,21 @@ pub struct InventoryItemView {
     #[ts(optional)]
     pub available_quantity: Option<u32>,
     pub kind: ItemKind,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
+pub struct FarmShopView {
+    pub id: String,
+    pub tile: crate::Tile,
+    pub stock: Vec<InventoryItemView>,
+    pub stock_capacity: u32,
+    #[ts(type = "number")]
+    pub next_customer_visit_at_ms: i64,
+    #[ts(type = "number")]
+    pub visit_count: u64,
+    #[serde(default)]
+    #[ts(optional)]
+    pub current_sale: Option<crate::FarmShopSaleWindow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -339,7 +355,7 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
         delivery_board_built: farm.delivery_board_built,
         delivery_board_tile: farm.delivery_board_tile.clone(),
         tool_shed: farm.tool_shed.clone(),
-        farm_shop: farm.farm_shop.clone(),
+        farm_shop: farm_shop_view(farm, catalog),
         delivery_orders: farm.delivery_orders.clone(),
         residents: farm.residents.clone(),
         selected_resident_id: farm.selected_resident_id.clone(),
@@ -358,6 +374,35 @@ pub fn farm_view(farm: &FarmState, catalog: &CatalogDocument) -> FarmView {
             unlock(7, "Tomatoes and tomato tart", farm.level),
         ],
     }
+}
+
+fn farm_shop_view(farm: &FarmState, catalog: &CatalogDocument) -> Option<FarmShopView> {
+    let shop = farm.farm_shop.as_ref()?;
+    let mut stock = shop
+        .stock
+        .iter()
+        .filter_map(|stack| {
+            let reserved_quantity = crate::reserved_farm_shop_stock_pickups(farm, &stack.item_id);
+            catalog.item(&stack.item_id).map(|item| InventoryItemView {
+                item_id: stack.item_id.clone(),
+                name: item.name.clone(),
+                quantity: stack.quantity,
+                reserved_quantity: Some(reserved_quantity),
+                available_quantity: Some(stack.quantity.saturating_sub(reserved_quantity)),
+                kind: item.kind.clone(),
+            })
+        })
+        .collect::<Vec<_>>();
+    stock.sort_by(|left, right| left.item_id.cmp(&right.item_id));
+    Some(FarmShopView {
+        id: shop.id.clone(),
+        tile: shop.tile.clone(),
+        stock,
+        stock_capacity: shop.stock_capacity,
+        next_customer_visit_at_ms: shop.next_customer_visit_at_ms,
+        visit_count: shop.visit_count,
+        current_sale: shop.current_sale.clone(),
+    })
 }
 
 fn resident_work(
