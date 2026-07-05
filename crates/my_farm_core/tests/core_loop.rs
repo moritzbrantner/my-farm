@@ -169,7 +169,120 @@ fn farm_shop_must_be_built_by_the_road_after_unlock() {
         0,
     );
     assert!(built.accepted, "{:?}", built.error);
-    assert_eq!(farm.farm_shop.as_ref().unwrap().stock_capacity, 8);
+    let shop = farm.farm_shop.as_ref().unwrap();
+    assert_eq!(shop.tile, Tile::new(3, 17));
+    assert_eq!(shop.stock_capacity, 8);
+    assert_eq!(shop.stock, Vec::<ItemStack>::new());
+    assert_eq!(shop.visit_count, 0);
+    assert!(shop.current_sale.is_none());
+}
+
+#[test]
+fn farm_shop_build_spends_coins_and_rejects_duplicates() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    unlock_level(&mut farm, &catalog, 2);
+    let starting_coins = farm.coins;
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::FarmShop,
+            tile: Tile::new(3, 17),
+        },
+        0,
+    );
+    assert!(built.accepted, "{:?}", built.error);
+    assert_eq!(farm.coins, starting_coins - 25);
+
+    let duplicate = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::FarmShop,
+            tile: Tile::new(6, 17),
+        },
+        0,
+    );
+
+    assert!(!duplicate.accepted);
+    assert_eq!(duplicate.error.unwrap().message, "structure already built");
+    assert_eq!(farm.farm_shop.as_ref().unwrap().tile, Tile::new(3, 17));
+}
+
+#[test]
+fn farm_shop_moves_only_along_the_road_edge() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    let shop_id = farm.farm_shop.as_ref().unwrap().id.clone();
+
+    let inland = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::FarmShop {
+                id: shop_id.clone(),
+            },
+            tile: Tile::new(6, 16),
+        },
+        0,
+    );
+    assert!(!inland.accepted);
+    assert_eq!(
+        inland.error.unwrap().message,
+        "farm shop must be placed by the road"
+    );
+
+    let moved = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::FarmShop { id: shop_id },
+            tile: Tile::new(6, 17),
+        },
+        0,
+    );
+    assert!(moved.accepted, "{:?}", moved.error);
+    assert_eq!(farm.farm_shop.as_ref().unwrap().tile, Tile::new(6, 17));
+    assert_eq!(
+        farm_view(&farm, &catalog).farm_shop.unwrap().tile,
+        Tile::new(6, 17)
+    );
+}
+
+#[test]
+fn farm_shop_move_is_rejected_while_shop_work_is_queued() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    let shop_id = farm.farm_shop.as_ref().unwrap().id.clone();
+
+    let stocked = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::StockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(stocked.accepted, "{:?}", stocked.error);
+
+    let moved = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::MoveStructure {
+            target: StructureTarget::FarmShop { id: shop_id },
+            tile: Tile::new(6, 17),
+        },
+        0,
+    );
+
+    assert!(!moved.accepted);
+    assert_eq!(moved.error.unwrap().message, "farm shop is reserved");
+    assert_eq!(farm.farm_shop.as_ref().unwrap().tile, Tile::new(3, 17));
 }
 
 #[test]
