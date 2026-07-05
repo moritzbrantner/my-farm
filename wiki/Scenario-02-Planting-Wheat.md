@@ -55,4 +55,4 @@ A Field Plot holds one planted Crop job. Planting Wheat consumes an existing Whe
 
 ## Not covered here
 
-This scenario does not cover Sweep Harvest, animals, Machine recipes, Delivery Orders, Farm Shop, market trading, or House Interior.
+This scenario does not cover sweep harvesting, animals, machine recipes, delivery systems, roadside selling, market trading, or interior systems.

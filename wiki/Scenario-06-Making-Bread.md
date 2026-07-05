@@ -64,7 +64,7 @@ Bread production connects storage, resident work, the Farmhouse Oven, and output
 
 ## Not covered here
 
-This scenario does not cover Corn Bread, other Oven recipes, Machine recipes, animals, Feed Mill, Delivery Orders, Farm Shop, or market trading.
+This scenario does not cover other bread-family recipes, other Oven recipes, machine recipes, animals, feed production, delivery systems, roadside selling, or market trading.
 
 ## Accuracy notes
 

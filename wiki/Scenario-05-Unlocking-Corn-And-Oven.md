@@ -54,11 +54,11 @@ Progression opens new options without changing the core loop. At level 2, the de
 
 ## Not covered here
 
-This scenario does not cover Corn Bread, Feed Mill, animals, Delivery Orders, Farm Shop, storage upgrades, or any local-server-only production systems.
+This scenario does not cover other bread-family recipes, feed production, animals, delivery systems, roadside selling, storage expansion, or any local-server-only production systems.
 
 ## Accuracy notes
 
 - The Oven costs 40 coins.
 - A fresh Farm starts with 180 coins.
 - Corn is present in the Pages demo.
-- Corn Bread is not part of the Pages demo recipe set.
+- Corn-based bread is not part of the Pages demo recipe set.

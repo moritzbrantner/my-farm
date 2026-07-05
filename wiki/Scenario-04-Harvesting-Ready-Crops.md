@@ -55,7 +55,7 @@ Planted Crops become Ready Output after their timer finishes. Harvesting moves C
 
 ## Not covered here
 
-This scenario does not cover Sweep Harvest, storage upgrades, animals, Delivery Orders, Farm Shop, or market trading.
+This scenario does not cover sweep harvesting, storage expansion, animals, delivery systems, roadside selling, or market trading.
 
 ## Accuracy notes
 

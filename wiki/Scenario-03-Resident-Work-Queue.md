@@ -60,4 +60,4 @@ Player intent becomes scheduled resident work. The visual movement is not just a
 
 ## Not covered here
 
-This scenario does not explain the lower-level Command payloads or API response shapes. It also does not cover Tool Shed behavior, because Tool Shed construction is outside the Pages demo.
+This scenario does not explain the lower-level Command payloads or API response shapes. It also does not cover alternate tool-source construction, because that is outside the Pages demo.
