@@ -57,4 +57,4 @@ Nothing needs to change yet. This scenario establishes the baseline Farm state b
 
 ## Not covered here
 
-This scenario does not cover House Interior, Decoration, animals, Delivery Orders, Farm Shop, Feed Mill, Tool Shed, market trading, or storage upgrades.
+This scenario does not cover later interior, animal, delivery, roadside sale, tool-sourcing, market, or storage-expansion systems.

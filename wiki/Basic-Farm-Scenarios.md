@@ -15,7 +15,7 @@ These scenarios cover the early production loop that the Pages demo supports:
 - Resident Tasks, Resident Task Queues, Resident Details, walking/working state, carrying, and blocked work.
 - Coins, XP, level-gated progression, the Farmhouse Oven, the Oven Workstation, Bread production, and Barn storage.
 
-These scenarios do not cover House Interior, Decoration, animals, Feed Mill, Delivery Orders, Farm Shop, Tool Shed, market trading, storage upgrades, API commands, or implementation details.
+These scenarios do not cover later interior, animal, roadside sale, delivery, tool-sourcing, market, storage-expansion, API, or implementation systems.
 
 ## Reading Order
 

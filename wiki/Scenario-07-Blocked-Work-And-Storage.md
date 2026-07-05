@@ -60,4 +60,4 @@ Use any one of these setup shapes:
 
 ## Not covered here
 
-This scenario does not cover storage upgrades, discarding inventory, market trading, Delivery Orders, Farm Shop stock, Tool Shed sourcing, animals, or Machine output.
+This scenario does not cover storage expansion, discarding inventory, market trading, delivery systems, roadside selling stock, alternate tool sourcing, animals, or machine output.
