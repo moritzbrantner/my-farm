@@ -35,6 +35,7 @@ import {
 import {
   buildFieldMenuModel,
   buildStructureMenuModel,
+  farmShopMoveDisabledReason,
   farmhouseOvenDisabledReason,
   isStructureTargetPresent,
   type StructureMenuItem,
@@ -576,6 +577,13 @@ export function App() {
     (target: StructureSelection) => {
       if (!view) {
         return;
+      }
+      if (target.type === "farm_shop") {
+        const reason = farmShopMoveDisabledReason(view, target.id);
+        if (reason) {
+          setMessage(reason);
+          return;
+        }
       }
       setSelection(target);
       setFieldMenu(null);
@@ -2466,7 +2474,9 @@ function SelectionPanel({
         <ResidentActions catalog={catalog} view={view} resident={resident} nowMs={nowMs} />
       ) : null}
       {!demoMode && selection?.type === "delivery_board" ? <p>Use delivery orders below.</p> : null}
-      {!demoMode && isFarmShop ? <FarmShopActions catalog={catalog} view={view} send={send} /> : null}
+      {!demoMode && isFarmShop ? (
+        <FarmShopActions catalog={catalog} view={view} nowMs={nowMs} send={send} />
+      ) : null}
       {isToolShed ? <p>Tool Shed</p> : null}
       {!plot &&
       !machine &&
@@ -3120,10 +3130,12 @@ function Orders({
 function FarmShopActions({
   catalog,
   view,
+  nowMs,
   send,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
+  nowMs: number;
   send: SendCommand;
 }) {
   const shop = view.farm_shop;
@@ -3140,30 +3152,34 @@ function FarmShopActions({
   const selectedItemId = selectedMarketItem?.item_id ?? "";
   const stockUsed = shop?.stock.reduce((sum, stock) => sum + stock.quantity, 0) ?? 0;
   const stockCapacity = shop?.stock_capacity ?? 0;
-  const stockRoom = Math.max(0, stockCapacity - stockUsed);
   const selectedInventory = selectedItemId ? inventory.get(selectedItemId) : null;
   const availableInventory = selectedInventory?.available_quantity ?? selectedInventory?.quantity ?? 0;
   const selectedStock = shop?.stock.find((stock) => stock.item_id === selectedItemId)?.quantity ?? 0;
-  const reservedStock = selectedItemId ? view.reservations.farm_shop_stock[selectedItemId] ?? 0 : 0;
+  const selectedStockView = shop?.stock.find((stock) => stock.item_id === selectedItemId) ?? null;
+  const reservedStock = selectedItemId
+    ? selectedStockView?.reserved_quantity ?? view.reservations.farm_shop_stock[selectedItemId] ?? 0
+    : 0;
   const availableStock = Math.max(0, selectedStock - reservedStock);
+  const projectedStockUsed = shop ? projectedFarmShopStockUsed(view, shop.id, stockUsed) : 0;
+  const projectedStockRoom = Math.max(0, stockCapacity - projectedStockUsed);
   const commandQuantity = Math.max(1, Math.floor(quantity));
   const stockReason = !shop
     ? "Farm Shop not built"
     : !selectedMarketItem
-      ? "No sellable item"
+      ? "Item is unavailable"
       : commandQuantity > availableInventory
-        ? `Need ${commandQuantity - availableInventory} more`
-        : commandQuantity > stockRoom
-          ? "Shop stock is full"
+        ? `Need ${commandQuantity - availableInventory} more in storage`
+        : commandQuantity > projectedStockRoom
+          ? "Projected Shop Stock capacity is full"
           : undefined;
   const returnReason = !shop
     ? "Farm Shop not built"
     : !selectedMarketItem
-      ? "No stocked item"
+      ? "Item is unavailable"
       : commandQuantity > availableStock
-        ? "Not enough available stock"
+        ? "Not enough available Shop Stock"
         : !storageHasRoomForReturn(catalog, view, selectedItemId, commandQuantity)
-          ? "Storage is full"
+          ? "Destination storage is full"
           : undefined;
 
   useEffect(() => {
@@ -3180,11 +3196,25 @@ function FarmShopActions({
   return (
     <section className="farm-shop-panel" aria-label="Farm Shop stock">
       <StorageStatus label="Shop Stock" used={stockUsed} capacity={stockCapacity} unit="items" />
-      {shop.current_sale && shop.current_sale.visible_until_ms > view.last_update_ms ? (
+      {shop.current_sale && shop.current_sale.visible_until_ms > nowMs ? (
         <p className="farm-shop-panel__sale">
           Sold {itemName(catalog, shop.current_sale.item_id)} for {shop.current_sale.coins_gained} coins
         </p>
       ) : null}
+      <dl className="farm-shop-panel__summary">
+        <div>
+          <dt>Total stock</dt>
+          <dd>{selectedStock}</dd>
+        </div>
+        <div>
+          <dt>Reserved stock</dt>
+          <dd>{reservedStock}</dd>
+        </div>
+        <div>
+          <dt>Available stock</dt>
+          <dd>{availableStock}</dd>
+        </div>
+      </dl>
       <div className="farm-shop-panel__stock-list">
         {shop.stock.length === 0 ? <p>No Shop Stock</p> : null}
         {shop.stock.map((stock) => {
@@ -3211,6 +3241,7 @@ function FarmShopActions({
       <label className="farm-shop-panel__field">
         <span>Quantity</span>
         <input
+          aria-label="Farm Shop quantity"
           type="number"
           min={1}
           max={99}
@@ -3234,7 +3265,9 @@ function FarmShopActions({
           Return
         </button>
       </div>
-      <small className="farm-shop-panel__status">{stockReason ?? returnReason ?? "Ready"}</small>
+      <small className="farm-shop-panel__status">
+        {[stockReason, returnReason].filter(Boolean).join(" - ") || "Ready"}
+      </small>
     </section>
   );
 }
@@ -3253,6 +3286,24 @@ function storageHasRoomForReturn(
     return view.silo_used + quantity <= view.silo_capacity;
   }
   return view.barn_used + quantity <= view.barn_capacity;
+}
+
+function projectedFarmShopStockUsed(view: FarmView, shopId: string, currentStockUsed: number): number {
+  let projected = currentStockUsed;
+  for (const work of Object.values(view.resident_work)) {
+    const steps = work?.queue.flatMap((task) => task.steps) ?? (work?.current_step ? [work.current_step] : []);
+    for (const step of steps) {
+      if (step.target?.kind !== "farm_shop" || step.target.id !== shopId) {
+        continue;
+      }
+      if (step.activity === "depositing_inventory") {
+        projected += step.quantity;
+      } else if (step.activity === "picking_up_items") {
+        projected -= step.quantity;
+      }
+    }
+  }
+  return Math.max(0, projected);
 }
 
 function BuildTray({
