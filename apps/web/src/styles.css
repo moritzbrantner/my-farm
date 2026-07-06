@@ -48,6 +48,7 @@ button[aria-disabled="true"] {
   position: relative;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -899,6 +900,9 @@ button[aria-disabled="true"] {
   display: grid;
   place-items: center;
   padding: 24px;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background:
     linear-gradient(90deg, rgba(73, 112, 92, 0.7), rgba(73, 112, 92, 0.2)),
     rgba(247, 239, 221, 0.12);
@@ -906,9 +910,11 @@ button[aria-disabled="true"] {
 
 .main-menu__panel {
   width: min(500px, 100%);
+  max-height: calc(100% - 48px);
   display: grid;
   gap: 18px;
   padding: 22px;
+  overflow-y: auto;
   border: 1px solid rgba(32, 49, 43, 0.28);
   border-radius: 8px;
   background: rgba(251, 246, 232, 0.96);
@@ -2475,23 +2481,52 @@ h2 {
   }
 
   .main-menu {
-    align-items: end;
-    padding: 14px;
+    place-items: start center;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
   }
 
   .main-menu__panel {
-    gap: 14px;
-    padding: 16px;
+    gap: 12px;
+    margin-block: auto;
+    padding: 14px;
   }
 
   .main-menu h1 {
-    font-size: 34px;
+    font-size: 32px;
   }
 
-  .main-menu__stats,
-  .main-menu__actions,
+  .main-menu__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .main-menu__stats .metric {
+    gap: 5px;
+    padding: 7px 8px;
+    font-size: 14px;
+    line-height: 1.15;
+  }
+
+  .main-menu__stats .resource-icon {
+    width: 20px;
+    height: 20px;
+    flex-basis: 20px;
+  }
+
   .main-menu__options {
     grid-template-columns: 1fr;
+  }
+
+  .main-menu__actions {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .main-menu__actions button,
+  .main-menu__options button,
+  .main-menu__subheader button,
+  .main-menu__account button {
+    min-height: 42px;
   }
 
   .main-menu__subheader {
