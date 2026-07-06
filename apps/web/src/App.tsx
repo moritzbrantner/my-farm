@@ -1268,7 +1268,6 @@ export function App() {
             onStartHarvestSweep={startHarvestSweep}
             onEnterHarvestSweepPlot={enterHarvestSweepPlot}
             onCancelFieldToolAction={cancelFieldToolAction}
-            onEnterHouseInterior={enterHouseInterior}
           />
         )}
         {screen === "playing" && playScene === "farm" && visibleResidentPath ? (
@@ -1307,6 +1306,7 @@ export function App() {
                     selectedTaskPreview={selectedTaskPreview}
                     onPreviewTask={setSelectedTaskPreview}
                     onClearSelection={() => setSelection(null)}
+                    onEnterHouseInterior={enterHouseInterior}
                   />
                   <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
                   {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
@@ -1350,6 +1350,7 @@ export function App() {
                   onOpenMarket={openMarket}
                   onPreviewTask={setSelectedTaskPreview}
                   onClearSelection={() => setSelection(null)}
+                  onEnterHouseInterior={enterHouseInterior}
                 />
               )}
               {!demoMode && marketOpen ? (
@@ -1616,6 +1617,7 @@ type MobileFarmHudProps = {
   onOpenMarket: () => void;
   onPreviewTask: (selection: ResidentTaskPreviewSelection) => void;
   onClearSelection: () => void;
+  onEnterHouseInterior: () => void;
 };
 
 function MobileFarmHud({
@@ -1640,6 +1642,7 @@ function MobileFarmHud({
   onOpenMarket,
   onPreviewTask,
   onClearSelection,
+  onEnterHouseInterior,
 }: MobileFarmHudProps) {
   const [seedMenuOpen, setSeedMenuOpen] = useState(false);
   const [harvestMenuOpen, setHarvestMenuOpen] = useState(false);
@@ -1721,6 +1724,7 @@ function MobileFarmHud({
                 selectedTaskPreview={selectedTaskPreview}
                 onPreviewTask={onPreviewTask}
                 onClearSelection={onClearSelection}
+                onEnterHouseInterior={onEnterHouseInterior}
               />
               <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
             </div>
@@ -2889,6 +2893,7 @@ function SelectionPanel({
   selectedTaskPreview,
   onPreviewTask,
   onClearSelection,
+  onEnterHouseInterior,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
@@ -2899,6 +2904,7 @@ function SelectionPanel({
   selectedTaskPreview: ResidentTaskPreviewSelection;
   onPreviewTask: (selection: ResidentTaskPreviewSelection) => void;
   onClearSelection: () => void;
+  onEnterHouseInterior: () => void;
 }) {
   const plot = selectedPlot(view, selection);
   const machine = selectedMachine(view, selection);
@@ -2960,7 +2966,15 @@ function SelectionPanel({
           />
         )
       ) : null}
-      {isFarmhouse ? <FarmhouseActions catalog={catalog} view={view} nowMs={nowMs} send={send} /> : null}
+      {isFarmhouse ? (
+        <FarmhouseActions
+          catalog={catalog}
+          view={view}
+          nowMs={nowMs}
+          send={send}
+          onEnterHouseInterior={onEnterHouseInterior}
+        />
+      ) : null}
       {plot ? <PlotActions catalog={catalog} view={view} plot={plot} nowMs={nowMs} send={send} /> : null}
       {machine ? (
         <MachineActions catalog={catalog} view={view} machine={machine} nowMs={nowMs} send={send} />
@@ -3333,11 +3347,13 @@ function FarmhouseActions({
   view,
   nowMs,
   send,
+  onEnterHouseInterior,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
   nowMs: number;
   send: SendCommand;
+  onEnterHouseInterior: () => void;
 }) {
   const oven = catalog.farmhouse_upgrades.find((upgrade) => upgrade.kind === "oven");
   const reason = farmhouseOvenDisabledReason(catalog, view);
@@ -3351,6 +3367,9 @@ function FarmhouseActions({
   return (
     <div className="action-stack">
       <p>Farmhouse</p>
+      <button type="button" onClick={onEnterHouseInterior}>
+        Enter Farmhouse
+      </button>
       {!oven ? (
         <p>Oven upgrade unavailable</p>
       ) : ovenOwned ? (

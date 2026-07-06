@@ -1790,7 +1790,8 @@ test("enters the Farmhouse interior, switches rooms, and returns to the farm sce
   await mockFarmApi(page, { ...farmView, level: 1 });
   await openFarm(page);
 
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await openFarmhouseSelection(page);
+  await page.getByRole("button", { name: "Enter Farmhouse" }).click();
 
   const house = page.getByRole("region", { name: "House Interior" });
   await expect(house).toBeVisible();
@@ -1841,6 +1842,33 @@ test("enters the Farmhouse interior, switches rooms, and returns to the farm sce
   await page.getByRole("button", { name: "Exit Farmhouse to Farm" }).click();
   await expect(house).toHaveCount(0);
   await expect(page.getByLabel("Farmhouse structure")).toBeVisible();
+});
+
+test("farmhouse click selects exterior management before entering the interior", async ({ page }) => {
+  await mockFarmApi(page, { ...farmView, level: 2, coins: 40, owned_farmhouse_upgrades: [] });
+  await openFarm(page);
+
+  const farmHouse = page.getByLabel("Farmhouse structure");
+  await expect(farmHouse).toBeVisible();
+  const box = await farmHouse.boundingBox();
+  expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+  await farmHouse.click({ force: true });
+
+  await expect(page.getByRole("region", { name: "House Interior" })).toHaveCount(0);
+  await expect(page.getByLabel("Farmhouse structure")).toBeVisible();
+
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+  await expect(selection.locator("p").filter({ hasText: /^Farmhouse$/ })).toBeVisible();
+  await expect(selection.getByRole("button", { name: "Enter Farmhouse" })).toBeVisible();
+  await expect(selection.getByRole("button", { name: "Buy Oven" })).toBeVisible();
+
+  await selection.getByRole("button", { name: "Enter Farmhouse" }).click();
+  await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
+  await expect(page.getByTestId("house-overview")).toBeVisible();
 });
 
 test("frames the House Interior scene and controls on desktop and mobile", async ({ page }) => {
@@ -4373,13 +4401,13 @@ async function resetFarmFromPlaying(page: Page, projectName: string) {
 
 async function openFarmhouseSelection(page: Page) {
   await page.getByLabel("Farmhouse structure").click({ force: true });
-  await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
-  await page.getByRole("button", { name: "Back to Farm" }).click();
   await expect(page.getByRole("region", { name: "House Interior" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Enter Farmhouse" })).toBeVisible();
 }
 
 async function enterHouseRoom(page: Page, roomName: "Living Room" | "Kitchen" | "Bedroom") {
-  await page.getByLabel("Farmhouse structure").click({ force: true });
+  await openFarmhouseSelection(page);
+  await page.getByRole("button", { name: "Enter Farmhouse" }).click();
   await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
   await expect(page.getByTestId("house-overview")).toBeVisible();
   await page.getByRole("button", { name: `Enter ${roomName}` }).click();

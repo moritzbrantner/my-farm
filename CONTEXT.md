@@ -60,6 +60,10 @@ _Avoid_: Structure upgrade, house building
 The Farmhouse Upgrade that unlocks bread-family production from the Farmhouse kitchen. It keeps the prior bread-production balance but is not a placed or movable Structure.
 _Avoid_: placed kitchen Structure
 
+**Farmhouse Baking Surface**:
+The exterior Farmhouse management surface where the player can buy the Oven, start Oven recipes, and collect Oven output before entering the House Interior. It is a player Command surface, not the Resident Task work target.
+_Avoid_: Bakery, placed baking station, outside Oven Workstation
+
 **Oven Workstation**:
 The fixed Kitchen surface for starting and collecting Oven recipes. It is derived from the Oven Farmhouse Upgrade and is not a Decoration.
 _Avoid_: Oven decoration, kitchen machine

@@ -75,7 +75,6 @@ type Props = {
   onStartHarvestSweep: (plotId: string, pointerId: number) => void;
   onEnterHarvestSweepPlot: (plotId: string) => void;
   onCancelFieldToolAction: () => void;
-  onEnterHouseInterior: () => void;
 };
 
 export function FarmScene({
@@ -100,7 +99,6 @@ export function FarmScene({
   onStartHarvestSweep,
   onEnterHarvestSweepPlot,
   onCancelFieldToolAction,
-  onEnterHouseInterior,
   onSelectResident,
 }: Props) {
   const [hoverTile, setHoverTile] = useState<Tile | null>(null);
@@ -175,7 +173,6 @@ export function FarmScene({
           buildPlacement={buildPlacement}
           movingStructure={movingStructure}
           onSelect={() => onSelect({ type: "farmhouse" })}
-          onEnterHouseInterior={onEnterHouseInterior}
           onOpenStructureMenu={onOpenStructureMenu}
           onPlaceNewStructure={onPlaceNewStructure}
           onPlaceStructure={onPlaceStructure}
@@ -548,7 +545,6 @@ function StaticFarmHouse({
   buildPlacement,
   movingStructure,
   onSelect,
-  onEnterHouseInterior,
   onOpenStructureMenu,
   onPlaceNewStructure,
   onPlaceStructure,
@@ -560,7 +556,6 @@ function StaticFarmHouse({
   buildPlacement: BuildPlacementState;
   movingStructure: StructureSelection | null;
   onSelect: () => void;
-  onEnterHouseInterior: () => void;
   onOpenStructureMenu: (target: StructureSelection, point: { x: number; y: number }) => void;
   onPlaceNewStructure: (tile: Tile) => void;
   onPlaceStructure: (tile: Tile) => void;
@@ -585,7 +580,6 @@ function StaticFarmHouse({
       return;
     }
     onSelect();
-    onEnterHouseInterior();
   };
 
   const handleFixedContextMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -615,8 +609,8 @@ function StaticFarmHouse({
           tabIndex={-1}
           aria-label="Farmhouse structure"
           style={{
-            width: `${structureHitTargetWidth(FARM_HOUSE_FOOTPRINT)}px`,
-            height: `${structureHitTargetHeight(FARM_HOUSE_FOOTPRINT)}px`,
+            width: `${farmhouseHitTargetWidth(FARM_HOUSE_FOOTPRINT)}px`,
+            height: `${farmhouseHitTargetHeight(FARM_HOUSE_FOOTPRINT)}px`,
           }}
           onClick={handleFixedClick}
           onContextMenu={handleFixedContextMenu}
@@ -1840,6 +1834,14 @@ function structureHitTargetWidth(footprint: StructureFootprint) {
 
 function structureHitTargetHeight(footprint: StructureFootprint) {
   return 14 + (footprint.height - 1) * 8;
+}
+
+function farmhouseHitTargetWidth(footprint: StructureFootprint) {
+  return Math.max(72, structureHitTargetWidth(footprint));
+}
+
+function farmhouseHitTargetHeight(footprint: StructureFootprint) {
+  return Math.max(56, structureHitTargetHeight(footprint));
 }
 
 function assetKindForTarget(target: StructureSelection, label: string): Exclude<FarmAssetKind, "ground_tile" | "field_plot"> {

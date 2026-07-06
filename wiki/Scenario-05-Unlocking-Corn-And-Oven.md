@@ -15,22 +15,24 @@ Progression opens new options without changing the core loop. At level 2, the de
 ## Player steps
 
 1. Notice that Corn is available as a Crop option.
-2. Select the Farmhouse or Oven-related UI surface.
-3. Buy the Oven Farmhouse Upgrade.
-4. Re-open the Farmhouse or Oven surface and look for Bread production.
+2. Select the Farmhouse from the Farm to open the exterior Farmhouse Baking Surface.
+3. Buy the Oven Farmhouse Upgrade from that exterior surface.
+4. Look for Bread production on the Farmhouse Baking Surface or enter the House Interior to inspect the Kitchen Oven Workstation.
 
 ## What changes on the farm
 
 - Corn becomes available to plant in the demo.
 - The Oven is added to owned Farmhouse Upgrades.
-- The Oven Workstation becomes the place to start and collect Oven recipes.
+- The Farmhouse Baking Surface can start and collect Oven recipes from outside the House Interior.
+- The Oven Workstation remains the Kitchen work target for resident Oven work.
 - Coins decrease by the Oven cost.
 - Bread production becomes reachable once Wheat x3 is available.
 
 ## What the model calls this
 
 - The Oven is a Farmhouse Upgrade, not a placed Structure.
-- The Oven Workstation is the fixed kitchen surface derived from owning the Oven.
+- The Farmhouse Baking Surface is a command surface, not a placed Structure or Resident Task work target.
+- The Oven Workstation is the fixed Kitchen surface derived from owning the Oven.
 - Corn is a Crop stored in the Silo.
 - Coins are spent on durable progression.
 - Level-gated progression controls which catalog options are available.
@@ -38,7 +40,7 @@ Progression opens new options without changing the core loop. At level 2, the de
 ## Suggested visual callouts
 
 - Crop picker showing Corn.
-- Farmhouse or Oven purchase action.
+- Farmhouse Baking Surface showing the Oven purchase action.
 - Coin count before and after buying the Oven.
 - Oven Workstation or Oven status after purchase.
 
@@ -47,6 +49,7 @@ Progression opens new options without changing the core loop. At level 2, the de
 - Crop
 - Silo
 - Farmhouse
+- Farmhouse Baking Surface
 - Farmhouse Upgrade
 - Oven
 - Oven Workstation
