@@ -1,6 +1,7 @@
 import { Html, OrbitControls } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
-import { useEffect, useMemo, useState } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type MutableRefObject } from "react";
+import * as THREE from "three";
 import {
   decorationPlacementStatus,
   type DecorationDefinition,
@@ -89,6 +90,44 @@ export const houseRooms: HouseRoomStyle[] = [
   },
 ];
 
+type HouseCameraFrame = {
+  key: string;
+  target: [number, number, number];
+  position: [number, number, number];
+  zoom: number;
+  minZoom: number;
+  maxZoom: number;
+};
+
+type HouseCameraApi = {
+  rotateLeft: () => void;
+  rotateRight: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  reset: () => void;
+};
+
+type OrbitControlsRef = ComponentRef<typeof OrbitControls>;
+
+const houseCameraFrames = {
+  overview: {
+    key: "overview",
+    target: [0, 0.8, 0] as [number, number, number],
+    position: [7.8, 7.6, 8.4] as [number, number, number],
+    zoom: 46,
+    minZoom: 30,
+    maxZoom: 92,
+  },
+  room: {
+    key: "room",
+    target: [0, 0.45, 0] as [number, number, number],
+    position: [7.8, 7.2, 7.8] as [number, number, number],
+    zoom: 58,
+    minZoom: 36,
+    maxZoom: 110,
+  },
+} satisfies Record<HouseInteriorMode, HouseCameraFrame>;
+
 export function HouseInteriorScene({
   catalog,
   view,
@@ -111,6 +150,7 @@ export function HouseInteriorScene({
   onBackToFarm,
 }: Props) {
   const [hoverTile, setHoverTile] = useState<RoomTile | null>(null);
+  const cameraApiRef = useRef<HouseCameraApi | null>(null);
   const roomStyle = houseRooms.find((entry) => entry.id === selectedRoom) ?? houseRooms[0];
   const room =
     view.house_interior.rooms.find((entry) => entry.id === roomStyle.id) ??
@@ -138,6 +178,26 @@ export function HouseInteriorScene({
         }
       : null;
   const houseTitle = mode === "overview" ? "House Overview" : roomStyle.label;
+  const cameraFrame = useMemo<HouseCameraFrame>(
+    () =>
+      mode === "overview"
+        ? houseCameraFrames.overview
+        : { ...houseCameraFrames.room, key: `room:${selectedRoom}` },
+    [mode, selectedRoom],
+  );
+  const setCameraApi = useCallback((api: HouseCameraApi | null) => {
+    cameraApiRef.current = api;
+  }, []);
+  const handlePlacementActivate = useCallback(
+    (placement: HouseInteriorRoom["decoration_placements"][number]) => {
+      if (selectedPlacementId && selectedPlacementId !== placement.id) {
+        onMoveDecoration(room.id, selectedPlacementId, placement.tile);
+        return;
+      }
+      onSelectPlacement(room.id, placement.id);
+    },
+    [onMoveDecoration, onSelectPlacement, room.id, selectedPlacementId],
+  );
 
   return (
     <section className="house-interior" aria-label="House Interior">
@@ -145,7 +205,7 @@ export function HouseInteriorScene({
         className="house-interior__canvas"
         gl={{ preserveDrawingBuffer: true }}
         orthographic
-        camera={{ position: [7.8, 7.2, 7.8], zoom: 58, near: 0.1, far: 100 }}
+        camera={{ position: cameraFrame.position, zoom: cameraFrame.zoom, near: 0.1, far: 100 }}
         shadows
         dpr={[1, 2]}
       >
@@ -153,9 +213,9 @@ export function HouseInteriorScene({
         <hemisphereLight args={["#fff6df", "#52665c", 1.4]} />
         <ambientLight intensity={0.5} />
         <directionalLight position={[5, 8, 5]} intensity={2.1} castShadow />
-        <OrbitControls enableRotate={false} enablePan={false} enableZoom={false} target={[0, 0.3, 0]} />
+        <HouseCameraController frame={cameraFrame} onReady={setCameraApi} />
         {mode === "overview" ? (
-          <HouseOverviewSet />
+          <HouseOverviewSet onSelectRoom={onSelectRoom} onBackToFarm={onBackToFarm} />
         ) : (
           <RoomSet
             catalog={catalog}
@@ -165,35 +225,18 @@ export function HouseInteriorScene({
             roomStyle={roomStyle}
             preview={preview}
             gridEnabled={gridEnabled}
-          />
-        )}
-      </Canvas>
-      {mode === "overview" ? (
-        <HouseOverviewControls onSelectRoom={onSelectRoom} onBackToFarm={onBackToFarm} />
-      ) : (
-        <>
-          <RoomTileGrid
-            catalog={catalog}
-            room={room}
             selectedDecoration={activeDecoration}
             selectedPlacementId={selectedPlacement?.id ?? null}
             canEditDecorations={canEditDecorations}
-            gridEnabled={gridEnabled}
             onHoverTile={setHoverTile}
-            onSelectPlacement={onSelectPlacement}
+            onSelectPlacement={handlePlacementActivate}
             onPlaceDecoration={onPlaceDecoration}
             onMoveDecoration={onMoveDecoration}
+            onExitRoomToOverview={onExitRoomToOverview}
           />
-          <button
-            className="house-room-door"
-            type="button"
-            aria-label={`Exit ${roomStyle.label} to House Overview`}
-            onClick={onExitRoomToOverview}
-          >
-            Door
-          </button>
-        </>
-      )}
+        )}
+      </Canvas>
+      <HouseCameraToolbar cameraApiRef={cameraApiRef} />
       <div className="house-interior__hud">
         <div className="house-interior__title">
           <span>Farmhouse</span>
@@ -233,6 +276,11 @@ export function HouseInteriorScene({
           selectedPlacement={selectedPlacement}
           selectedPlacementDecoration={selectedPlacementDecoration}
           canEditDecorations={canEditDecorations}
+          room={room}
+          activeDecoration={activeDecoration}
+          selectedPlacementId={selectedPlacement?.id ?? null}
+          onPlaceDecoration={onPlaceDecoration}
+          onMoveDecoration={onMoveDecoration}
           onSelectDecoration={onSelectDecoration}
           onRemoveDecoration={() => {
             if (selectedPlacement) {
@@ -242,6 +290,127 @@ export function HouseInteriorScene({
         />
       ) : null}
     </section>
+  );
+}
+
+function HouseCameraController({
+  frame,
+  onReady,
+}: {
+  frame: HouseCameraFrame;
+  onReady: (api: HouseCameraApi | null) => void;
+}) {
+  const { camera, invalidate } = useThree();
+  const controlsRef = useRef<OrbitControlsRef | null>(null);
+
+  const reset = useCallback(() => {
+    applyHouseCameraFrame(camera, controlsRef.current, frame);
+    invalidate();
+  }, [camera, frame, invalidate]);
+
+  const rotate = useCallback(
+    (radians: number) => {
+      if (!(camera instanceof THREE.OrthographicCamera)) {
+        return;
+      }
+      const target = controlsRef.current?.target ?? new THREE.Vector3(...frame.target);
+      const offset = camera.position.clone().sub(target);
+      offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), radians);
+      camera.position.copy(target).add(offset);
+      camera.lookAt(target);
+      camera.updateMatrixWorld();
+      controlsRef.current?.update();
+      invalidate();
+    },
+    [camera, frame.target, invalidate],
+  );
+
+  const zoom = useCallback(
+    (factor: number) => {
+      if (!(camera instanceof THREE.OrthographicCamera)) {
+        return;
+      }
+      camera.zoom = clamp(camera.zoom * factor, frame.minZoom, frame.maxZoom);
+      camera.updateProjectionMatrix();
+      controlsRef.current?.update();
+      invalidate();
+    },
+    [camera, frame.maxZoom, frame.minZoom, invalidate],
+  );
+
+  useEffect(() => {
+    reset();
+  }, [frame.key, reset]);
+
+  useEffect(() => {
+    const api: HouseCameraApi = {
+      rotateLeft: () => rotate(Math.PI / 8),
+      rotateRight: () => rotate(-Math.PI / 8),
+      zoomIn: () => zoom(1.16),
+      zoomOut: () => zoom(1 / 1.16),
+      reset,
+    };
+    onReady(api);
+    return () => onReady(null);
+  }, [onReady, reset, rotate, zoom]);
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      enableRotate
+      enablePan={false}
+      enableZoom
+      minZoom={frame.minZoom}
+      maxZoom={frame.maxZoom}
+      minPolarAngle={0.58}
+      maxPolarAngle={1.08}
+      target={frame.target}
+      mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }}
+      touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE }}
+    />
+  );
+}
+
+function applyHouseCameraFrame(
+  camera: THREE.Camera,
+  controls: OrbitControlsRef | null,
+  frame: HouseCameraFrame,
+) {
+  if (!(camera instanceof THREE.OrthographicCamera)) {
+    return;
+  }
+  camera.position.set(...frame.position);
+  camera.zoom = frame.zoom;
+  camera.lookAt(...frame.target);
+  camera.updateMatrixWorld();
+  camera.updateProjectionMatrix();
+  controls?.target.set(...frame.target);
+  controls?.update();
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function HouseCameraToolbar({ cameraApiRef }: { cameraApiRef: MutableRefObject<HouseCameraApi | null> }) {
+  return (
+    <div className="house-camera-controls" aria-label="House camera controls">
+      <button type="button" aria-label="Rotate camera left" onClick={() => cameraApiRef.current?.rotateLeft()}>
+        <span aria-hidden="true">&lt;</span>
+      </button>
+      <button type="button" aria-label="Rotate camera right" onClick={() => cameraApiRef.current?.rotateRight()}>
+        <span aria-hidden="true">&gt;</span>
+      </button>
+      <button type="button" aria-label="Zoom camera in" onClick={() => cameraApiRef.current?.zoomIn()}>
+        <span aria-hidden="true">+</span>
+      </button>
+      <button type="button" aria-label="Zoom camera out" onClick={() => cameraApiRef.current?.zoomOut()}>
+        <span aria-hidden="true">-</span>
+      </button>
+      <button type="button" aria-label="Reset camera" onClick={() => cameraApiRef.current?.reset()}>
+        Reset
+      </button>
+    </div>
   );
 }
 
@@ -351,39 +520,126 @@ function FamilyTreeResidentEditor({
   );
 }
 
-function HouseOverviewSet() {
+function HouseOverviewSet({
+  onSelectRoom,
+  onBackToFarm,
+}: {
+  onSelectRoom: (room: HouseRoomId) => void;
+  onBackToFarm: () => void;
+}) {
   return (
     <group>
       <mesh receiveShadow position={[0, -0.06, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[7.6, 5.6]} />
+        <planeGeometry args={[8.2, 6.4]} />
         <meshStandardMaterial color="#6d8b72" roughness={1} />
       </mesh>
-      <OverviewRoomBlock position={[-1.75, 0, -0.85]} size={[2.5, 0.22, 2.3]} color="#d8b06a" wall="#f1dfb6" />
-      <OverviewRoomBlock position={[1.25, 0, -0.85]} size={[2.5, 0.22, 2.3]} color="#c8d0c4" wall="#f6ead0" />
-      <OverviewRoomBlock position={[-0.25, 0, 1.15]} size={[5.5, 0.22, 1.7]} color="#bca3be" wall="#ead9cf" />
-      <mesh castShadow receiveShadow position={[0, 0.76, -2.15]}>
-        <boxGeometry args={[5.9, 1.45, 0.18]} />
+      <mesh castShadow receiveShadow position={[0, 0.04, -0.35]}>
+        <boxGeometry args={[6.4, 0.16, 4.7]} />
+        <meshStandardMaterial color="#d8cfb3" roughness={0.88} />
+      </mesh>
+      <OverviewRoomBlock position={[-1.62, 0.16, -0.95]} size={[2.75, 0.24, 2.25]} color="#d8b06a" wall="#f1dfb6" />
+      <OverviewRoomBlock position={[1.46, 0.16, -0.95]} size={[2.75, 0.24, 2.25]} color="#c8d0c4" wall="#f6ead0" />
+      <mesh castShadow receiveShadow position={[0, 1.28, 1.04]}>
+        <boxGeometry args={[5.75, 0.18, 1.85]} />
+        <meshStandardMaterial color="#d8cfb3" roughness={0.88} />
+      </mesh>
+      <Html position={[0, 1.5, 1.04]} center wrapperClass="farm-scene-marker-wrapper">
+        <div
+          className="farm-scene-marker"
+          data-testid="house-overview-second-floor"
+          aria-label="House Overview second floor"
+        />
+      </Html>
+      <OverviewRoomBlock position={[0, 1.4, 1.04]} size={[5.4, 0.24, 1.55]} color="#bca3be" wall="#ead9cf" />
+      <StairRun />
+      <mesh castShadow receiveShadow position={[0, 0.96, -2.72]}>
+        <boxGeometry args={[6.4, 1.55, 0.18]} />
         <meshStandardMaterial color="#eadfcb" roughness={0.9} />
       </mesh>
-      <mesh castShadow receiveShadow position={[-3.05, 0.48, 0]}>
-        <boxGeometry args={[0.18, 0.96, 4.1]} />
+      <mesh castShadow receiveShadow position={[-3.3, 0.62, -0.35]}>
+        <boxGeometry args={[0.18, 1.24, 4.72]} />
         <meshStandardMaterial color="#eadfcb" roughness={0.9} />
       </mesh>
-      <mesh castShadow receiveShadow position={[3.05, 0.48, 0]}>
-        <boxGeometry args={[0.18, 0.96, 4.1]} />
+      <mesh castShadow receiveShadow position={[3.3, 0.62, -0.35]}>
+        <boxGeometry args={[0.18, 1.24, 4.72]} />
         <meshStandardMaterial color="#eadfcb" roughness={0.9} />
       </mesh>
-      <mesh castShadow receiveShadow position={[0, 0.52, 2.1]}>
-        <boxGeometry args={[5.9, 1.04, 0.18]} />
+      <mesh castShadow receiveShadow position={[0, 0.62, 2.05]}>
+        <boxGeometry args={[6.4, 1.24, 0.18]} />
         <meshStandardMaterial color="#b98762" roughness={0.9} />
       </mesh>
-      <mesh castShadow receiveShadow position={[0, 0.38, 2.22]}>
-        <boxGeometry args={[0.62, 0.76, 0.12]} />
-        <meshStandardMaterial color="#7c5638" roughness={0.72} />
-      </mesh>
+      <HouseDoor
+        label="Living Room"
+        ariaLabel="Enter Living Room"
+        testId="house-door-living-room"
+        position={[-1.62, 0.48, 0.28]}
+        rotation={[0, 0, 0]}
+        labelOffset={[-0.42, 0.74, 0.1]}
+        labelScreenOffset={[-108, 18]}
+        color="#7d5a3e"
+        onActivate={() => onSelectRoom("living_room")}
+      />
+      <HouseDoor
+        label="Kitchen"
+        ariaLabel="Enter Kitchen"
+        testId="house-door-kitchen"
+        position={[1.46, 0.48, 0.28]}
+        rotation={[0, 0, 0]}
+        labelOffset={[0.36, 0.74, 0.1]}
+        labelScreenOffset={[98, 18]}
+        color="#516979"
+        onActivate={() => onSelectRoom("kitchen")}
+      />
+      <HouseDoor
+        label="Bedroom"
+        ariaLabel="Enter Bedroom"
+        testId="house-door-bedroom"
+        position={[0, 1.76, 1.94]}
+        rotation={[0, 0, 0]}
+        labelOffset={[0.18, 0.86, 0.1]}
+        labelScreenOffset={[0, -58]}
+        color="#795f86"
+        onActivate={() => onSelectRoom("bedroom")}
+      />
+      <Html position={[0, 2.12, 1.2]} center wrapperClass="farm-scene-marker-wrapper">
+        <div
+          className="farm-scene-marker"
+          data-testid="house-overview-bedroom-upstairs"
+          aria-label="Bedroom upstairs"
+        />
+      </Html>
+      <HouseDoor
+        label="Front Door"
+        ariaLabel="Exit Farmhouse to Farm"
+        testId="house-door-front"
+        position={[0, 0.48, 2.18]}
+        rotation={[0, 0, 0]}
+        labelOffset={[0, 0.78, 0.1]}
+        labelScreenOffset={[0, 64]}
+        color="#7c5638"
+        onActivate={onBackToFarm}
+      />
       <Html position={[0, 1.25, 0]} center wrapperClass="farm-scene-marker-wrapper">
         <div className="farm-scene-marker" data-testid="house-overview" aria-label="House Overview" />
       </Html>
+    </group>
+  );
+}
+
+function StairRun() {
+  return (
+    <group position={[-2.45, 0.18, 0.88]} rotation={[0, -0.32, 0]}>
+      {Array.from({ length: 7 }, (_, index) => (
+        <mesh
+          key={index}
+          castShadow
+          receiveShadow
+          position={[index * 0.25, index * 0.16, index * 0.16]}
+        >
+          <boxGeometry args={[0.72, 0.12, 0.34]} />
+          <meshStandardMaterial color="#b98762" roughness={0.82} />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -417,48 +673,67 @@ function OverviewRoomBlock({
   );
 }
 
-function HouseOverviewControls({
-  onSelectRoom,
-  onBackToFarm,
+function HouseDoor({
+  label,
+  ariaLabel,
+  testId,
+  position,
+  rotation,
+  labelOffset = [0, 0.75, 0.1],
+  labelScreenOffset = [0, 0],
+  color,
+  onActivate,
 }: {
-  onSelectRoom: (room: HouseRoomId) => void;
-  onBackToFarm: () => void;
+  label: string;
+  ariaLabel: string;
+  testId: string;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  labelOffset?: [number, number, number];
+  labelScreenOffset?: [number, number];
+  color: string;
+  onActivate: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   return (
-    <div className="house-overview-controls" aria-label="House Overview rooms">
-      <button
-        type="button"
-        className="house-overview-room house-overview-room--living"
-        aria-label="Enter Living Room"
-        onClick={() => onSelectRoom("living_room")}
+    <group position={position} rotation={rotation}>
+      <mesh
+        castShadow
+        receiveShadow
+        onPointerEnter={(event) => {
+          event.stopPropagation();
+          setHovered(true);
+        }}
+        onPointerLeave={() => setHovered(false)}
+        onClick={(event) => {
+          event.stopPropagation();
+          onActivate();
+        }}
       >
-        Living Room
-      </button>
-      <button
-        type="button"
-        className="house-overview-room house-overview-room--kitchen"
-        aria-label="Enter Kitchen"
-        onClick={() => onSelectRoom("kitchen")}
-      >
-        Kitchen
-      </button>
-      <button
-        type="button"
-        className="house-overview-room house-overview-room--bedroom"
-        aria-label="Enter Bedroom"
-        onClick={() => onSelectRoom("bedroom")}
-      >
-        Bedroom
-      </button>
-      <button
-        type="button"
-        className="house-overview-front-door"
-        aria-label="Exit Farmhouse to Farm"
-        onClick={onBackToFarm}
-      >
-        Front Door
-      </button>
-    </div>
+        <boxGeometry args={[0.62, 0.86, 0.12]} />
+        <meshStandardMaterial color={hovered ? "#fff7d0" : color} roughness={0.68} />
+      </mesh>
+      <mesh castShadow receiveShadow position={[0.2, 0.02, 0.07]}>
+        <sphereGeometry args={[0.035, 12, 12]} />
+        <meshStandardMaterial color="#f0cb6b" roughness={0.42} />
+      </mesh>
+      <Html position={labelOffset} center wrapperClass="house-door-label-wrapper">
+        <button
+          type="button"
+          className="house-door-label"
+          aria-label={ariaLabel}
+          data-testid={testId}
+          style={{ transform: `translate(${labelScreenOffset[0]}px, ${labelScreenOffset[1]}px)` }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onActivate();
+          }}
+        >
+          {label}
+        </button>
+      </Html>
+    </group>
   );
 }
 
@@ -470,6 +745,14 @@ function RoomSet({
   roomStyle,
   preview,
   gridEnabled,
+  selectedDecoration,
+  selectedPlacementId,
+  canEditDecorations,
+  onHoverTile,
+  onSelectPlacement,
+  onPlaceDecoration,
+  onMoveDecoration,
+  onExitRoomToOverview,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
@@ -478,7 +761,16 @@ function RoomSet({
   roomStyle: HouseRoomStyle;
   preview: { tile: RoomTile; decoration: DecorationDefinition; status: ReturnType<typeof decorationPlacementStatus> } | null;
   gridEnabled: boolean;
+  selectedDecoration: DecorationDefinition | null;
+  selectedPlacementId: string | null;
+  canEditDecorations: boolean;
+  onHoverTile: (tile: RoomTile | null) => void;
+  onSelectPlacement: (placement: HouseInteriorRoom["decoration_placements"][number]) => void;
+  onPlaceDecoration: (roomId: string, decorationId: string, tile: RoomTile) => void;
+  onMoveDecoration: (roomId: string, placementId: string, tile: RoomTile) => void;
+  onExitRoomToOverview: () => void;
 }) {
+  const floorHeight = room.height * tileSize;
   return (
     <group>
       <mesh receiveShadow position={[0, -0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -486,10 +778,30 @@ function RoomSet({
         <meshStandardMaterial color="#6d8b72" roughness={1} />
       </mesh>
       <RoomShell room={room} roomStyle={roomStyle} gridEnabled={gridEnabled} />
+      <HouseDoor
+        label="Door"
+        ariaLabel={`Exit ${roomStyle.label} to House Overview`}
+        testId={`house-door-exit-${room.id}`}
+        position={[0, 0.46, floorHeight / 2 + 0.22]}
+        rotation={[0, 0, 0]}
+        color="#7c5638"
+        onActivate={onExitRoomToOverview}
+      />
       {room.id === "kitchen" ? <OvenWorkstationObject room={room} owned={view.owned_farmhouse_upgrades.includes("oven")} /> : null}
       {room.id === "kitchen" ? <InteriorOvenResidents view={view} nowMs={nowMs} room={room} /> : null}
+      <RoomFloorTileTargets
+        room={room}
+        selectedDecoration={selectedDecoration}
+        selectedPlacementId={selectedPlacementId}
+        canEditDecorations={canEditDecorations}
+        gridEnabled={gridEnabled}
+        onHoverTile={onHoverTile}
+        onPlaceDecoration={onPlaceDecoration}
+        onMoveDecoration={onMoveDecoration}
+      />
       {room.decoration_placements.map((placement) => {
         const decoration = catalog.decorations.find((entry) => entry.id === placement.decoration_id);
+        const placementInteractive = selectedPlacementId === null || placement.id === selectedPlacementId;
         return decoration ? (
           <DecorationObject
             key={placement.id}
@@ -497,6 +809,9 @@ function RoomSet({
             decoration={decoration}
             tile={placement.tile}
             opacity={1}
+            selected={placement.id === selectedPlacementId}
+            ariaLabel={`${decoration.name} placement at Room Tile ${placement.tile.x},${placement.tile.y}`}
+            onActivate={placementInteractive ? () => onSelectPlacement(placement) : undefined}
           />
         ) : null;
       })}
@@ -507,6 +822,7 @@ function RoomSet({
           tile={preview.tile}
           opacity={0.62}
           invalid={!preview.status.fits}
+          selected={false}
         />
       ) : null}
       <Html position={[0, 1.1, 0]} center wrapperClass="farm-scene-marker-wrapper">
@@ -655,52 +971,22 @@ function InteriorOvenResidents({ view, nowMs, room }: { view: FarmView; nowMs: n
   );
 }
 
-function DecorationObject({
-  room,
-  decoration,
-  tile,
-  opacity,
-  invalid = false,
-}: {
-  room: HouseInteriorRoom;
-  decoration: DecorationDefinition;
-  tile: RoomTile;
-  opacity: number;
-  invalid?: boolean;
-}) {
-  const width = decoration.footprint.width * tileSize;
-  const height = decoration.footprint.height * tileSize;
-  const x = (tile.x + decoration.footprint.width / 2 - room.width / 2) * tileSize;
-  const z = (tile.y + decoration.footprint.height / 2 - room.height / 2) * tileSize;
-  const color = invalid ? "#b8463d" : decorationColors[decoration.id] ?? "#d7c48a";
-  return (
-    <mesh castShadow receiveShadow position={[x, 0.12, z]}>
-      <boxGeometry args={[Math.max(0.18, width - 0.08), 0.24, Math.max(0.18, height - 0.08)]} />
-      <meshStandardMaterial color={color} roughness={0.78} transparent opacity={opacity} />
-    </mesh>
-  );
-}
-
-function RoomTileGrid({
-  catalog,
+function RoomFloorTileTargets({
   room,
   selectedDecoration,
   selectedPlacementId,
   canEditDecorations,
   gridEnabled,
   onHoverTile,
-  onSelectPlacement,
   onPlaceDecoration,
   onMoveDecoration,
 }: {
-  catalog: CatalogDocument;
   room: HouseInteriorRoom;
   selectedDecoration: DecorationDefinition | null;
   selectedPlacementId: string | null;
   canEditDecorations: boolean;
   gridEnabled: boolean;
   onHoverTile: (tile: RoomTile | null) => void;
-  onSelectPlacement: (roomId: string, placementId: string) => void;
   onPlaceDecoration: (roomId: string, decorationId: string, tile: RoomTile) => void;
   onMoveDecoration: (roomId: string, placementId: string, tile: RoomTile) => void;
 }) {
@@ -712,77 +998,144 @@ function RoomTileGrid({
       })),
     [room.height, room.width],
   );
+  const actionEnabled = gridEnabled && canEditDecorations && (Boolean(selectedDecoration) || Boolean(selectedPlacementId));
+
+  if (!gridEnabled) {
+    return null;
+  }
 
   return (
-    <div
-      className={gridEnabled ? "house-room-tiles" : "house-room-tiles house-room-tiles--hidden"}
-      style={{
-        gridTemplateColumns: `repeat(${room.width}, minmax(0, 1fr))`,
-        gridTemplateRows: `repeat(${room.height}, minmax(0, 1fr))`,
-        aspectRatio: `${room.width} / ${room.height}`,
-      }}
-      aria-label={`${room.name} Room Tiles`}
-    >
-      {tiles.map((tile) => (
-        <button
-          key={`${tile.x},${tile.y}`}
-          type="button"
-          className="house-room-tile"
-          aria-label={`Room Tile ${tile.x},${tile.y}`}
-          disabled={!gridEnabled || !canEditDecorations || !selectedDecoration}
-          onPointerEnter={() => onHoverTile(tile)}
-          onFocus={() => onHoverTile(tile)}
-          onPointerLeave={() => onHoverTile(null)}
-          onBlur={() => onHoverTile(null)}
-          onClick={() => {
-            if (selectedPlacementId) {
-              onMoveDecoration(room.id, selectedPlacementId, tile);
-              return;
-            }
-            if (selectedDecoration) {
-              onPlaceDecoration(room.id, selectedDecoration.id, tile);
-            }
-          }}
-        />
-      ))}
-      {room.decoration_placements.map((placement) => {
-        const decoration = catalog.decorations.find((entry) => entry.id === placement.decoration_id);
-        if (!decoration) {
-          return null;
-        }
+    <group>
+      {tiles.map((tile) => {
+        const x = (tile.x + 0.5 - room.width / 2) * tileSize;
+        const z = (tile.y + 0.5 - room.height / 2) * tileSize;
+        const activate = () => {
+          if (!actionEnabled) {
+            return;
+          }
+          if (selectedPlacementId) {
+            onMoveDecoration(room.id, selectedPlacementId, tile);
+            return;
+          }
+          if (selectedDecoration) {
+            onPlaceDecoration(room.id, selectedDecoration.id, tile);
+          }
+        };
         return (
-          <button
-            key={placement.id}
-            type="button"
-            className={
-              placement.id === selectedPlacementId
-                ? "house-room-placement house-room-placement--selected"
-                : "house-room-placement"
-            }
-            style={{
-              gridColumn: `${placement.tile.x + 1} / span ${decoration.footprint.width}`,
-              gridRow: `${placement.tile.y + 1} / span ${decoration.footprint.height}`,
-            }}
-            aria-label={`${decoration.name} placement at Room Tile ${placement.tile.x},${placement.tile.y}`}
-            aria-pressed={placement.id === selectedPlacementId}
-            disabled={!gridEnabled || !canEditDecorations}
-            onPointerEnter={() => onHoverTile(placement.tile)}
-            onFocus={() => onHoverTile(placement.tile)}
-            onPointerLeave={() => onHoverTile(null)}
-            onBlur={() => onHoverTile(null)}
-            onClick={(event) => {
-              event.stopPropagation();
-              onHoverTile(null);
-              if (selectedPlacementId && selectedPlacementId !== placement.id) {
-                onMoveDecoration(room.id, selectedPlacementId, placement.tile);
-                return;
-              }
-              onSelectPlacement(room.id, placement.id);
-            }}
-          />
+          <group key={`${tile.x},${tile.y}`} position={[x, 0.026, z]}>
+            <mesh
+              rotation={[-Math.PI / 2, 0, 0]}
+              onPointerEnter={(event) => {
+                event.stopPropagation();
+                onHoverTile(tile);
+              }}
+              onPointerLeave={() => onHoverTile(null)}
+              onClick={(event) => {
+                event.stopPropagation();
+                activate();
+              }}
+            >
+              <planeGeometry args={[tileSize * 0.92, tileSize * 0.92]} />
+              <meshBasicMaterial
+                color={actionEnabled ? "#fff7d0" : "#20312b"}
+                transparent
+                opacity={actionEnabled ? 0.08 : 0.02}
+                depthWrite={false}
+              />
+            </mesh>
+            <Html
+              position={[0, 0.04, 0]}
+              center
+              wrapperClass="house-room-tile-marker-wrapper"
+              zIndexRange={actionEnabled ? [80, 40] : [10, 0]}
+            >
+              <button
+                type="button"
+                className="house-room-tile-marker"
+                aria-label={`Room Tile ${tile.x},${tile.y}`}
+                disabled={!actionEnabled}
+                style={{ pointerEvents: actionEnabled ? "auto" : "none" }}
+                onPointerEnter={() => onHoverTile(tile)}
+                onFocus={() => onHoverTile(tile)}
+                onPointerLeave={() => onHoverTile(null)}
+                onBlur={() => onHoverTile(null)}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  activate();
+                }}
+              />
+            </Html>
+          </group>
         );
       })}
-    </div>
+    </group>
+  );
+}
+
+function DecorationObject({
+  room,
+  decoration,
+  tile,
+  opacity,
+  invalid = false,
+  selected = false,
+  ariaLabel,
+  onActivate,
+}: {
+  room: HouseInteriorRoom;
+  decoration: DecorationDefinition;
+  tile: RoomTile;
+  opacity: number;
+  invalid?: boolean;
+  selected?: boolean;
+  ariaLabel?: string;
+  onActivate?: () => void;
+}) {
+  const width = decoration.footprint.width * tileSize;
+  const height = decoration.footprint.height * tileSize;
+  const x = (tile.x + decoration.footprint.width / 2 - room.width / 2) * tileSize;
+  const z = (tile.y + decoration.footprint.height / 2 - room.height / 2) * tileSize;
+  const color = invalid ? "#b8463d" : decorationColors[decoration.id] ?? "#d7c48a";
+  return (
+    <group position={[x, 0.12, z]}>
+      <mesh
+        castShadow
+        receiveShadow
+        onClick={
+          onActivate
+            ? (event) => {
+                event.stopPropagation();
+                onActivate();
+              }
+            : undefined
+        }
+      >
+        <boxGeometry args={[Math.max(0.18, width - 0.08), 0.24, Math.max(0.18, height - 0.08)]} />
+        <meshStandardMaterial color={color} roughness={0.78} transparent opacity={opacity} />
+      </mesh>
+      {selected ? (
+        <mesh position={[0, 0.135, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[Math.max(0.24, width), Math.max(0.24, height)]} />
+          <meshBasicMaterial color="#fff7d0" transparent opacity={0.28} depthWrite={false} />
+        </mesh>
+      ) : null}
+      {ariaLabel && onActivate ? (
+        <Html position={[0, 0.26, 0]} center wrapperClass="house-placement-marker-wrapper" zIndexRange={[30, 10]}>
+          <button
+            type="button"
+            className={selected ? "house-placement-marker house-placement-marker--selected" : "house-placement-marker"}
+            aria-label={ariaLabel}
+            aria-pressed={selected}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onActivate();
+            }}
+          />
+        </Html>
+      ) : null}
+    </group>
   );
 }
 
@@ -856,6 +1209,11 @@ function DecorationCatalogTray({
   selectedPlacement,
   selectedPlacementDecoration,
   canEditDecorations,
+  room,
+  activeDecoration,
+  selectedPlacementId,
+  onPlaceDecoration,
+  onMoveDecoration,
   onSelectDecoration,
   onRemoveDecoration,
 }: {
@@ -866,6 +1224,11 @@ function DecorationCatalogTray({
   selectedPlacement: HouseInteriorRoom["decoration_placements"][number] | null;
   selectedPlacementDecoration: DecorationDefinition | null;
   canEditDecorations: boolean;
+  room: HouseInteriorRoom;
+  activeDecoration: DecorationDefinition | null;
+  selectedPlacementId: string | null;
+  onPlaceDecoration: (roomId: string, decorationId: string, tile: RoomTile) => void;
+  onMoveDecoration: (roomId: string, placementId: string, tile: RoomTile) => void;
   onSelectDecoration: (decorationId: string) => void;
   onRemoveDecoration: () => void;
 }) {
@@ -886,6 +1249,16 @@ function DecorationCatalogTray({
           </button>
         ) : null}
       </div>
+      <RoomTileCoordinateControls
+        catalog={catalog}
+        room={room}
+        activeDecoration={activeDecoration}
+        selectedPlacementId={selectedPlacementId}
+        gridEnabled={gridEnabled}
+        canEditDecorations={canEditDecorations}
+        onPlaceDecoration={onPlaceDecoration}
+        onMoveDecoration={onMoveDecoration}
+      />
       <nav className="decoration-tray" aria-label="Decorations">
         {catalog.decorations.map((decoration) => (
           <button
@@ -909,6 +1282,97 @@ function DecorationCatalogTray({
         ))}
       </nav>
     </section>
+  );
+}
+
+function RoomTileCoordinateControls({
+  catalog,
+  room,
+  activeDecoration,
+  selectedPlacementId,
+  gridEnabled,
+  canEditDecorations,
+  onPlaceDecoration,
+  onMoveDecoration,
+}: {
+  catalog: CatalogDocument;
+  room: HouseInteriorRoom;
+  activeDecoration: DecorationDefinition | null;
+  selectedPlacementId: string | null;
+  gridEnabled: boolean;
+  canEditDecorations: boolean;
+  onPlaceDecoration: (roomId: string, decorationId: string, tile: RoomTile) => void;
+  onMoveDecoration: (roomId: string, placementId: string, tile: RoomTile) => void;
+}) {
+  const [tile, setTile] = useState<RoomTile>({ x: 0, y: 0 });
+  const actionEnabled = gridEnabled && canEditDecorations && Boolean(activeDecoration);
+  const status = activeDecoration
+    ? decorationPlacementStatus(catalog, room, activeDecoration.id, tile, {
+        ignorePlacementId: selectedPlacementId,
+      })
+    : null;
+  const disabled = !actionEnabled || !status?.fits;
+
+  useEffect(() => {
+    setTile((current) => ({
+      x: clamp(current.x, 0, Math.max(0, room.width - 1)),
+      y: clamp(current.y, 0, Math.max(0, room.height - 1)),
+    }));
+  }, [room.height, room.width]);
+
+  const runAction = () => {
+    if (disabled || !activeDecoration) {
+      return;
+    }
+    if (selectedPlacementId) {
+      onMoveDecoration(room.id, selectedPlacementId, tile);
+      return;
+    }
+    onPlaceDecoration(room.id, activeDecoration.id, tile);
+  };
+
+  return (
+    <div className="room-tile-coordinate-controls" aria-label="Room Tile coordinates">
+      <label>
+        <span>X</span>
+        <input
+          aria-label="Room Tile X"
+          type="number"
+          min={0}
+          max={Math.max(0, room.width - 1)}
+          value={tile.x}
+          disabled={!gridEnabled || !canEditDecorations}
+          onChange={(event) => {
+            const next = Number.parseInt(event.currentTarget.value, 10);
+            setTile((current) => ({
+              ...current,
+              x: Number.isFinite(next) ? clamp(next, 0, Math.max(0, room.width - 1)) : current.x,
+            }));
+          }}
+        />
+      </label>
+      <label>
+        <span>Y</span>
+        <input
+          aria-label="Room Tile Y"
+          type="number"
+          min={0}
+          max={Math.max(0, room.height - 1)}
+          value={tile.y}
+          disabled={!gridEnabled || !canEditDecorations}
+          onChange={(event) => {
+            const next = Number.parseInt(event.currentTarget.value, 10);
+            setTile((current) => ({
+              ...current,
+              y: Number.isFinite(next) ? clamp(next, 0, Math.max(0, room.height - 1)) : current.y,
+            }));
+          }}
+        />
+      </label>
+      <button type="button" disabled={disabled} onClick={runAction}>
+        {selectedPlacementId ? "Move" : "Place"}
+      </button>
+    </div>
   );
 }
 

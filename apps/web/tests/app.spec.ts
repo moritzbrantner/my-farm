@@ -1701,7 +1701,14 @@ test("enters the Farmhouse interior, switches rooms, and returns to the farm sce
   await expect(house).toBeVisible();
   await expect(page.getByLabel("Farmhouse structure")).toHaveCount(0);
   await expect(page.getByTestId("house-overview")).toBeVisible();
+  await expect(page.getByTestId("house-overview-second-floor")).toBeVisible();
+  await expect(page.getByTestId("house-overview-bedroom-upstairs")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Rooms" })).toHaveCount(0);
+  const beforeRotate = await canvasSnapshot(page);
+  await page.getByRole("button", { name: "Rotate camera right" }).click();
+  await expect.poll(async () => await canvasSnapshot(page), { timeout: 2_000 }).not.toBe(beforeRotate);
+  await page.getByRole("button", { name: "Zoom camera in" }).click();
+  await page.getByRole("button", { name: "Reset camera" }).click();
 
   await page.getByRole("button", { name: "Enter Kitchen" }).click();
   await expect(page.getByTestId("house-room-kitchen")).toBeVisible();
@@ -1732,7 +1739,12 @@ test("frames the House Interior scene and controls on desktop and mobile", async
   await expectCanvasToRenderNonBlank(page);
   await expect(page.getByTestId("house-room-living_room")).toBeVisible();
   await expectElementFramed(page, page.getByTestId("house-room-living_room"));
-  await expectElementFramed(page, page.locator(".house-room-tiles"));
+  await expectElementFramed(page, page.getByRole("button", { name: "Room Tile 0,0" }));
+  const beforeRoomRotate = await canvasSnapshot(page);
+  await page.getByRole("button", { name: "Rotate camera left" }).click();
+  await expect.poll(async () => await canvasSnapshot(page), { timeout: 2_000 }).not.toBe(beforeRoomRotate);
+  await page.getByRole("button", { name: "Zoom camera out" }).click();
+  await page.getByRole("button", { name: "Reset camera" }).click();
   await expectHouseInteriorControlsFramedWithoutOverlap(page);
   await expectReadableButtons(page.getByRole("navigation", { name: "Decorations" }).getByRole("button"));
   await expect(page.getByTestId("farm-scene-resident-woman")).toHaveCount(0);
@@ -1764,7 +1776,8 @@ test("house grid toggle hides and disables Decoration editing without blocking n
     "Grid off; turn on grid to edit Decorations.",
   );
   await expect(page.getByRole("navigation", { name: "Decorations" }).getByRole("button", { name: /Sofa/ })).toBeDisabled();
-  await expect(page.getByLabel("Room Tile 0,0")).toBeDisabled();
+  await expect(page.getByLabel("Room Tile 0,0")).toHaveCount(0);
+  await expect(page.getByLabel("Room Tile X")).toBeDisabled();
 
   await page.getByRole("button", { name: "Exit Living Room to House Overview" }).click();
   await expect(page.getByTestId("house-overview")).toBeVisible();
@@ -1943,11 +1956,11 @@ test("selects, moves, rejects invalid moves, and removes existing house Decorati
     tile: { x: 5, y: 0 },
   });
 
-  await page.getByLabel("Rug placement at Room Tile 2,3").hover();
+  await page.getByLabel("Room Tile 2,3").hover();
   await expect(page.getByTestId("decoration-placement-status")).toContainText(
     "Blocked: overlaps at Room Tile 2,3",
   );
-  await page.getByLabel("Rug placement at Room Tile 2,3").click();
+  await page.getByLabel("Room Tile 2,3").click();
   expect(commands).toHaveLength(1);
 
   await page.getByLabel("Room Tile 6,0").hover();
@@ -4483,9 +4496,11 @@ async function expectElementFramed(page: Page, target: Locator) {
 async function expectHouseInteriorControlsFramedWithoutOverlap(page: Page) {
   const controls = [
     { name: "title", locator: page.locator(".house-interior__title") },
+    { name: "camera", locator: page.locator(".house-camera-controls") },
     { name: "back", locator: page.locator(".house-interior__back") },
     { name: "grid", locator: page.locator(".house-interior__grid-toggle") },
     { name: "decoration status", locator: page.getByTestId("decoration-placement-status") },
+    { name: "room coordinates", locator: page.locator(".room-tile-coordinate-controls") },
     { name: "decorations", locator: page.getByRole("navigation", { name: "Decorations" }) },
   ];
 

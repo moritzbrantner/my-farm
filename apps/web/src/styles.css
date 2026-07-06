@@ -180,134 +180,108 @@ button[aria-disabled="true"] {
   outline-offset: -2px;
 }
 
-.house-room-tiles {
+.house-camera-controls {
   position: absolute;
   left: 50%;
-  top: 50%;
-  width: min(58vw, 520px);
-  aspect-ratio: 8 / 6;
-  display: grid;
-  gap: 1px;
-  transform: translate(-50%, -43%);
+  top: 14px;
+  z-index: 34;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(32, 49, 43, 0.2);
+  border-radius: 8px;
+  background: rgba(251, 246, 232, 0.92);
+  box-shadow: 0 10px 24px rgba(32, 49, 43, 0.12);
   pointer-events: auto;
+  transform: translateX(-50%);
 }
 
-.house-room-tiles--hidden {
+.house-camera-controls button {
+  min-width: 36px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border-color: rgba(32, 49, 43, 0.3);
+  background: #fff7d0;
+  box-shadow: none;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.house-door-label {
+  min-width: 72px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border-color: rgba(32, 49, 43, 0.34);
+  background: rgba(251, 246, 232, 0.92);
+  box-shadow: 0 8px 18px rgba(32, 49, 43, 0.14);
+  font-size: 12px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.house-door-label-wrapper,
+.house-room-tile-marker-wrapper,
+.house-placement-marker-wrapper {
   pointer-events: none;
 }
 
-.house-room-tile {
-  min-width: 0;
-  min-height: 0;
+.house-door-label,
+.house-room-tile-marker,
+.house-placement-marker {
+  pointer-events: auto;
+}
+
+.house-door-label:hover,
+.house-door-label:focus-visible {
+  background: #fff7d0;
+  outline: 2px solid rgba(68, 109, 56, 0.42);
+  outline-offset: 1px;
+}
+
+.house-room-tile-marker {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
   padding: 0;
-  border: 1px solid rgba(32, 49, 43, 0.08);
-  border-radius: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: rgba(255, 247, 208, 0.02);
   box-shadow: none;
 }
 
-.house-room-tiles--hidden .house-room-tile,
-.house-room-tiles--hidden .house-room-placement {
-  border-color: transparent;
-  background: transparent;
-  opacity: 0;
-}
-
-.house-overview-controls {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.house-overview-room,
-.house-overview-front-door,
-.house-room-door {
-  position: absolute;
-  z-index: 35;
-  pointer-events: auto;
-  border-color: rgba(32, 49, 43, 0.32);
-  background: rgba(251, 246, 232, 0.9);
-  box-shadow: 0 10px 24px rgba(32, 49, 43, 0.14);
-}
-
-.house-overview-room {
-  width: clamp(104px, 15vw, 150px);
-  min-height: 42px;
-  padding: 8px 10px;
-}
-
-.house-overview-room--living {
-  left: calc(50% - min(25vw, 230px));
-  top: 45%;
-}
-
-.house-overview-room--kitchen {
-  left: calc(50% + min(7vw, 70px));
-  top: 45%;
-}
-
-.house-overview-room--bedroom {
-  left: 50%;
-  top: 60%;
-  transform: translateX(-50%);
-}
-
-.house-overview-front-door {
-  left: 50%;
-  top: 71%;
-  min-width: 120px;
-  min-height: 38px;
-  padding: 7px 10px;
-  transform: translateX(-50%);
-  background: #fff7d0;
-}
-
-.house-room-door {
-  left: 50%;
-  top: 74%;
-  min-width: 104px;
-  min-height: 38px;
-  padding: 7px 10px;
-  transform: translateX(-50%);
-  background: #fff7d0;
-}
-
-.house-room-tile:hover,
-.house-room-tile:focus-visible {
+.house-room-tile-marker:hover,
+.house-room-tile-marker:focus-visible {
   border-color: rgba(68, 109, 56, 0.65);
-  background: rgba(255, 247, 208, 0.24);
+  background: rgba(255, 247, 208, 0.28);
   outline: 2px solid rgba(68, 109, 56, 0.35);
   outline-offset: -2px;
 }
 
-.house-room-tile:disabled {
+.house-room-tile-marker:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: 0.24;
 }
 
-.house-room-placement {
-  z-index: 2;
-  min-width: 0;
-  min-height: 0;
+.house-placement-marker {
+  width: 34px;
+  min-width: 34px;
+  height: 28px;
+  min-height: 28px;
   padding: 0;
-  border: 2px solid rgba(32, 49, 43, 0.18);
+  border: 2px solid rgba(32, 49, 43, 0.22);
   border-radius: 4px;
   background: rgba(255, 247, 208, 0.08);
   box-shadow: none;
 }
 
-.house-room-placement:hover,
-.house-room-placement:focus-visible,
-.house-room-placement--selected {
+.house-placement-marker:hover,
+.house-placement-marker:focus-visible,
+.house-placement-marker--selected {
   border-color: #446d38;
-  background: rgba(255, 247, 208, 0.28);
+  background: rgba(255, 247, 208, 0.3);
   outline: 2px solid rgba(68, 109, 56, 0.45);
   outline-offset: -2px;
-}
-
-.house-room-placement:disabled {
-  cursor: not-allowed;
-  opacity: 0.35;
 }
 
 .decoration-dock {
@@ -316,12 +290,13 @@ button[aria-disabled="true"] {
   right: 12px;
   bottom: 74px;
   display: grid;
-  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 320px) minmax(160px, 230px) minmax(0, 1fr);
   gap: 8px;
   pointer-events: none;
 }
 
 .decoration-dock__status,
+.room-tile-coordinate-controls,
 .decoration-tray {
   pointer-events: auto;
   border: 1px solid rgba(32, 49, 43, 0.24);
@@ -349,6 +324,41 @@ button[aria-disabled="true"] {
   font-size: 13px;
   background: #fff7d0;
   border-color: #9b4d42;
+}
+
+.room-tile-coordinate-controls {
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: 6px;
+  align-items: end;
+  padding: 8px;
+}
+
+.room-tile-coordinate-controls label {
+  display: grid;
+  gap: 4px;
+  color: #536a5e;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.room-tile-coordinate-controls input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid rgba(32, 49, 43, 0.26);
+  border-radius: 6px;
+  background: #fbf6e8;
+  color: #20312b;
+  font: inherit;
+  font-weight: 800;
+  padding: 5px 7px;
+}
+
+.room-tile-coordinate-controls button {
+  min-width: 58px;
+  padding: 7px 9px;
+  background: #fff7d0;
 }
 
 .decoration-tray {
@@ -2595,6 +2605,16 @@ h2 {
     max-width: 150px;
   }
 
+  .house-camera-controls {
+    top: 112px;
+    right: auto;
+    left: 8px;
+    max-width: calc(100vw - 16px);
+    transform: none;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
   .house-interior__grid-toggle,
   .house-interior__back {
     min-width: 0;
@@ -2603,29 +2623,10 @@ h2 {
     font-size: 12px;
   }
 
-  .house-overview-room {
-    width: 112px;
-    min-height: 38px;
-    font-size: 12px;
-  }
-
-  .house-overview-room--living {
-    left: 12%;
-    top: 44%;
-  }
-
-  .house-overview-room--kitchen {
-    left: auto;
-    right: 12%;
-    top: 44%;
-  }
-
-  .house-overview-room--bedroom {
-    top: 58%;
-  }
-
-  .house-overview-front-door,
-  .house-room-door {
+  .house-door-label {
+    min-width: 64px;
+    min-height: 28px;
+    padding: 5px 7px;
     font-size: 12px;
   }
 
@@ -2642,6 +2643,13 @@ h2 {
     min-height: 48px;
     padding: 8px 10px;
     font-size: 13px;
+  }
+
+  .room-tile-coordinate-controls {
+    min-height: 46px;
+    grid-template-columns: repeat(2, minmax(0, 80px)) minmax(64px, auto);
+    align-items: end;
+    padding: 7px;
   }
 
   .decoration-tray {

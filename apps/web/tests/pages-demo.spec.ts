@@ -211,10 +211,12 @@ async function expectElementFramed(page: Page, target: ReturnType<Page["locator"
 
 async function expectHouseInteriorControlsFramedWithoutOverlap(page: Page) {
   const controls = [
+    page.locator(".house-camera-controls"),
     page.locator(".house-interior__title"),
     page.locator(".house-interior__back"),
     page.locator(".house-interior__grid-toggle"),
     page.getByTestId("decoration-placement-status"),
+    page.locator(".room-tile-coordinate-controls"),
     page.getByRole("navigation", { name: "Decorations" }),
   ];
   const boxes: Array<{ x: number; y: number; width: number; height: number }> = [];

@@ -24,9 +24,9 @@ _Avoid_: Room picker, house menu
 A named area inside the House Interior, such as the Living Room, Kitchen, or Bedroom. Starter Rooms use fixed Room Tile grids.
 _Avoid_: Scene, level, screen
 
-**Room Door**:
-A fixed Room exit affordance that returns the player from a Room to the House Overview.
-_Avoid_: Back button, tab
+**House Door**:
+A visible House Interior navigation affordance that enters a Room, returns from a Room to the House Overview, or exits through the Front Door to the Farm. House Doors are navigation affordances, not Decoration Placements or saved Room state.
+_Avoid_: Door button, room tab, back button
 
 **Room Tile**:
 A discrete coordinate inside a Room grid used to place Decorations.
