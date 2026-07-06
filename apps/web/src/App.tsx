@@ -48,6 +48,7 @@ import {
   reservedFieldReason,
   reservedMachineReason,
   reservedOvenReason,
+  type ResidentScenePath,
   residentWork,
   residentTaskStatus,
   residentTaskStepLabel,
@@ -112,6 +113,10 @@ type HarvestSweepState = {
   harvestMode: SweepHarvestMode;
   plotIds: string[];
   pointerId: number;
+} | null;
+type ResidentTaskPreviewSelection = {
+  residentId: string;
+  taskId: string;
 } | null;
 
 const structureBuildCardMetas: Record<BuildableKind, StructureBuildCardMeta> = {
@@ -197,6 +202,7 @@ export function App() {
   const [selectedHouseRoom, setSelectedHouseRoom] = useState<HouseRoomId>("living_room");
   const [selectedDecorationId, setSelectedDecorationId] = useState<string | null>(null);
   const [selectedDecorationPlacementId, setSelectedDecorationPlacementId] = useState<string | null>(null);
+  const [selectedTaskPreview, setSelectedTaskPreview] = useState<ResidentTaskPreviewSelection>(null);
   const [guidedTutorialStep, setGuidedTutorialStep] = useState<number | null>(null);
   const [marketOpen, setMarketOpen] = useState(false);
   const [message, setMessage] = useState(
@@ -338,6 +344,18 @@ export function App() {
   }, [selectedDecorationPlacementId, view]);
 
   useEffect(() => {
+    if (!view || !selectedTaskPreview) {
+      return;
+    }
+    const taskExists = residentWork(view, selectedTaskPreview.residentId)?.queue.some(
+      (task) => task.id === selectedTaskPreview.taskId,
+    );
+    if (!taskExists) {
+      setSelectedTaskPreview(null);
+    }
+  }, [selectedTaskPreview, view]);
+
+  useEffect(() => {
     if (
       !fieldMenu &&
       !structureMenu &&
@@ -399,6 +417,7 @@ export function App() {
     setMovingStructure(null);
     setSelectedDecorationId(null);
     setSelectedDecorationPlacementId(null);
+    setSelectedTaskPreview(null);
     setMarketOpen(false);
     plantSweepRef.current = null;
     harvestSweepRef.current = null;
@@ -408,6 +427,7 @@ export function App() {
 
   const select = useCallback((nextSelection: Selection) => {
     setSelection(nextSelection);
+    setSelectedTaskPreview(null);
     setFieldMenu(null);
     setStructureMenu(null);
     setBuildPlacement(null);
@@ -492,6 +512,7 @@ export function App() {
   const selectResidentForWork = useCallback(
     async (residentId: string) => {
       setSelection({ type: "resident", id: residentId });
+      setSelectedTaskPreview(null);
       setFieldMenu(null);
       setStructureMenu(null);
       setBuildPlacement(null);
@@ -1163,6 +1184,8 @@ export function App() {
   const selectedPath = selection?.type === "resident"
     ? currentResidentScenePath(view, selection.id, nowMs)
     : null;
+  const selectedPreviewPath = selectedResidentTaskPreviewPath(view, selectedTaskPreview);
+  const visibleResidentPath = selectedPreviewPath ?? selectedPath;
 
   return (
     <main className={`app ${appToolClass}`}>
@@ -1201,6 +1224,7 @@ export function App() {
             movingStructure={movingStructure}
             plantSweep={plantSweep}
             harvestSweep={harvestSweep}
+            previewResidentPath={selectedPreviewPath}
             onSelect={select}
             onSelectResident={selectResidentForWork}
             onOpenFieldMenu={openFieldMenu}
@@ -1215,11 +1239,11 @@ export function App() {
             onEnterHouseInterior={enterHouseInterior}
           />
         )}
-        {screen === "playing" && playScene === "farm" && selectedPath ? (
+        {screen === "playing" && playScene === "farm" && visibleResidentPath ? (
           <div
             className="resident-path-marker"
-            data-testid={`resident-path-${selectedPath.residentId}`}
-            data-path-tile-count={selectedPath.tiles.length}
+            data-testid={`resident-path-${visibleResidentPath.residentId}`}
+            data-path-tile-count={visibleResidentPath.tiles.length}
             aria-hidden="true"
           />
         ) : null}
@@ -1247,6 +1271,8 @@ export function App() {
                   nowMs={nowMs}
                   send={send}
                   demoMode={demoMode}
+                  selectedTaskPreview={selectedTaskPreview}
+                  onPreviewTask={setSelectedTaskPreview}
                   onClearSelection={() => setSelection(null)}
                 />
                 <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
@@ -1694,38 +1720,29 @@ function ResidentCard({
   onSelectResident: (residentId: string) => void;
 }) {
   const status = residentTaskStatus(catalog, view, resident.id, nowMs);
-  const work = residentWork(view, resident.id);
+  const pose = currentResidentScenePose(view, resident.id, nowMs);
 
   const selectResident = async () => {
     await onSelectResident(resident.id);
   };
 
   return (
-    <article className={selected ? "resident-card resident-card--selected" : "resident-card"}>
-      <div className="resident-card__topline">
-        <strong>{selected ? "Selected Resident" : "Farm Resident"}</strong>
-        <button type="button" disabled={selected} onClick={() => void selectResident()}>
-          {selected ? "Selected" : "Select"}
-        </button>
-      </div>
-      <strong className="resident-card__display-name">{resident.display_name}</strong>
-      <dl className="resident-card__status">
-        <div>
-          <dt>Current task</dt>
-          <dd>{status.label}</dd>
-        </div>
-        <div>
-          <dt>Queued tasks</dt>
-          <dd>{status.queuedCount}</dd>
-        </div>
-      </dl>
-      {status.currentTask ? (
-        <div className="resident-task-progress">
+    <article className={selected ? "resident-picker-row resident-picker-row--selected" : "resident-picker-row"}>
+      <button
+        type="button"
+        className="resident-picker-row__button"
+        aria-pressed={selected}
+        onClick={() => void selectResident()}
+      >
+        <span className="resident-picker-row__name">{resident.display_name}</span>
+        <span className="resident-picker-row__meta">
+          <span>{selected ? "Selected" : sceneStateLabel(pose.state)}</span>
+          <span className="resident-picker-row__badge">{status.queuedCount}</span>
+        </span>
+        {status.currentTask ? (
           <progress value={status.progress} max={1} aria-label={`${resident.display_name} task progress`} />
-          <span>{Math.round(status.progress * 100)}%</span>
-        </div>
-      ) : null}
-      <ResidentCarrySummary work={work} compact />
+        ) : null}
+      </button>
     </article>
   );
 }
@@ -2399,6 +2416,8 @@ function SelectionPanel({
   nowMs,
   send,
   demoMode,
+  selectedTaskPreview,
+  onPreviewTask,
   onClearSelection,
 }: {
   catalog: CatalogDocument;
@@ -2407,6 +2426,8 @@ function SelectionPanel({
   nowMs: number;
   send: SendCommand;
   demoMode: boolean;
+  selectedTaskPreview: ResidentTaskPreviewSelection;
+  onPreviewTask: (selection: ResidentTaskPreviewSelection) => void;
   onClearSelection: () => void;
 }) {
   const plot = selectedPlot(view, selection);
@@ -2423,7 +2444,14 @@ function SelectionPanel({
       <div className="selection-panel__header">
         <h2>{resident ? "Resident Details" : "Selection"}</h2>
         {resident ? (
-          <button type="button" aria-label="Close Resident Details" onClick={onClearSelection}>
+          <button
+            type="button"
+            aria-label="Close Resident Details"
+            onClick={() => {
+              onPreviewTask(null);
+              onClearSelection();
+            }}
+          >
             Close
           </button>
         ) : null}
@@ -2471,7 +2499,15 @@ function SelectionPanel({
         <ShelterActions catalog={catalog} view={view} shelter={shelter} nowMs={nowMs} send={send} />
       ) : null}
       {resident ? (
-        <ResidentActions catalog={catalog} view={view} resident={resident} nowMs={nowMs} />
+        <ResidentActions
+          catalog={catalog}
+          view={view}
+          resident={resident}
+          nowMs={nowMs}
+          send={send}
+          selectedTaskPreview={selectedTaskPreview}
+          onPreviewTask={onPreviewTask}
+        />
       ) : null}
       {!demoMode && selection?.type === "delivery_board" ? <p>Use delivery orders below.</p> : null}
       {!demoMode && isFarmShop ? (
@@ -2503,11 +2539,17 @@ function ResidentActions({
   view,
   resident,
   nowMs,
+  send,
+  selectedTaskPreview,
+  onPreviewTask,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
   resident: FarmResident;
   nowMs: number;
+  send: SendCommand;
+  selectedTaskPreview: ResidentTaskPreviewSelection;
+  onPreviewTask: (selection: ResidentTaskPreviewSelection) => void;
 }) {
   const status = residentTaskStatus(catalog, view, resident.id, nowMs);
   const work = residentWork(view, resident.id);
@@ -2556,10 +2598,46 @@ function ResidentActions({
               <ResidentTaskQueueRow
                 key={task.id}
                 catalog={catalog}
+                residentId={resident.id}
                 task={task}
+                queue={queue}
+                index={index}
                 fallbackQueueState={index === 0 ? "Current" : "Queued"}
+                selected={selectedTaskPreview?.residentId === resident.id && selectedTaskPreview.taskId === task.id}
+                onPreviewTask={onPreviewTask}
+                onReorderTask={async (taskId, beforeTaskId) => {
+                  await send({
+                    type: "reorder_resident_task",
+                    resident_id: resident.id,
+                    task_id: taskId,
+                    ...(beforeTaskId ? { before_task_id: beforeTaskId } : {}),
+                  });
+                }}
               />
             ))}
+            {queue.length > 2 ? (
+              <li
+                className="resident-queue-drop-target"
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(event) => {
+                  const draggedTaskId = event.dataTransfer.getData("application/x-my-farm-resident-task");
+                  if (!draggedTaskId) {
+                    return;
+                  }
+                  event.preventDefault();
+                  void send({
+                    type: "reorder_resident_task",
+                    resident_id: resident.id,
+                    task_id: draggedTaskId,
+                  });
+                }}
+              >
+                Drop at end
+              </li>
+            ) : null}
           </ol>
         )}
       </div>
@@ -2569,17 +2647,69 @@ function ResidentActions({
 
 function ResidentTaskQueueRow({
   catalog,
+  residentId,
   task,
+  queue,
+  index,
   fallbackQueueState,
+  selected,
+  onPreviewTask,
+  onReorderTask,
 }: {
   catalog: CatalogDocument;
+  residentId: string;
   task: ResidentTaskSummaryView;
+  queue: ResidentTaskSummaryView[];
+  index: number;
   fallbackQueueState: string;
+  selected: boolean;
+  onPreviewTask: (selection: ResidentTaskPreviewSelection) => void;
+  onReorderTask: (taskId: string, beforeTaskId?: string) => Promise<void>;
 }) {
+  const reorderable = index > 0 && task.queue_state === "queued";
+  const moveUpBeforeTaskId = index > 1 ? queue[index - 1]?.id : null;
+  const moveDownBeforeTaskId = queue[index + 2]?.id ?? null;
+  const canMoveUp = reorderable && index > 1;
+  const canMoveDown = reorderable && index < queue.length - 1;
+  const previewTask = () => onPreviewTask({ residentId, taskId: task.id });
+  const reorder = async (beforeTaskId?: string) => {
+    await onReorderTask(task.id, beforeTaskId);
+  };
+
   return (
-    <li className="resident-queue-task">
-      <details>
-        <summary>
+    <li
+      className={selected ? "resident-queue-task resident-queue-task--selected" : "resident-queue-task"}
+      draggable={reorderable}
+      data-task-id={task.id}
+      data-task-reorderable={reorderable}
+      onDragStart={(event) => {
+        if (!reorderable) {
+          event.preventDefault();
+          return;
+        }
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("application/x-my-farm-resident-task", task.id);
+      }}
+      onDragOver={(event) => {
+        if (reorderable) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        }
+      }}
+      onDrop={(event) => {
+        if (!reorderable) {
+          return;
+        }
+        const draggedTaskId = event.dataTransfer.getData("application/x-my-farm-resident-task");
+        if (!draggedTaskId || draggedTaskId === task.id) {
+          return;
+        }
+        event.preventDefault();
+        void onReorderTask(draggedTaskId, task.id);
+      }}
+    >
+      <details open={selected}>
+        <summary onClick={previewTask}>
           <span>{taskLabel(catalog, task)}</span>
           <small>
             {queueStateLabel(task, fallbackQueueState)} - {task.step_count}{" "}
@@ -2600,6 +2730,28 @@ function ResidentTaskQueueRow({
           ))}
         </ol>
       </details>
+      <div className="resident-queue-task__controls">
+        <button
+          type="button"
+          disabled={!canMoveUp || !moveUpBeforeTaskId}
+          onClick={() => {
+            if (moveUpBeforeTaskId) {
+              void reorder(moveUpBeforeTaskId);
+            }
+          }}
+        >
+          Move up
+        </button>
+        <button
+          type="button"
+          disabled={!canMoveDown}
+          onClick={() => {
+            void reorder(moveDownBeforeTaskId ?? undefined);
+          }}
+        >
+          Move down
+        </button>
+      </div>
     </li>
   );
 }
@@ -2641,6 +2793,24 @@ function itemKindLabel(kind: ResidentStepView["kind"]) {
     return "animal product";
   }
   return kind;
+}
+
+function selectedResidentTaskPreviewPath(
+  view: FarmView,
+  selection: ResidentTaskPreviewSelection,
+): ResidentScenePath | null {
+  if (!selection) {
+    return null;
+  }
+  const task = residentWork(view, selection.residentId)?.queue.find((entry) => entry.id === selection.taskId);
+  if (!task || task.preview.path.length === 0) {
+    return null;
+  }
+  return {
+    residentId: selection.residentId,
+    tiles: task.preview.path,
+    state: "walking",
+  };
 }
 
 function ResidentCarrySummary({

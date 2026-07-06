@@ -394,6 +394,35 @@
     {
       "type": "object",
       "required": [
+        "resident_id",
+        "task_id",
+        "type"
+      ],
+      "properties": {
+        "before_task_id": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resident_id": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "reorder_resident_task"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "display_name",
         "resident_id",
         "type"

@@ -179,6 +179,7 @@ fn unsupported_demo_command<'a>(_farm: &FarmState, command: &'a FarmCommand) -> 
         | FarmCommand::CollectOvenJob
         | FarmCommand::BuyFieldPlot { .. }
         | FarmCommand::SelectResident { .. }
+        | FarmCommand::ReorderResidentTask { .. }
         | FarmCommand::RenameResident { .. }
         | FarmCommand::CollectMachineJob { .. }
         | FarmCommand::PlaceDecoration { .. }

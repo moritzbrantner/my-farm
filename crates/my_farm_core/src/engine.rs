@@ -113,6 +113,13 @@ pub enum FarmCommand {
     SelectResident {
         resident_id: String,
     },
+    ReorderResidentTask {
+        resident_id: String,
+        task_id: String,
+        #[serde(default)]
+        #[ts(optional)]
+        before_task_id: Option<String>,
+    },
     RenameResident {
         resident_id: String,
         display_name: String,
@@ -221,6 +228,13 @@ pub enum FarmEvent {
     },
     ResidentSelected {
         resident_id: String,
+    },
+    ResidentTaskReordered {
+        resident_id: String,
+        task_id: String,
+        #[serde(default)]
+        #[ts(optional)]
+        before_task_id: Option<String>,
     },
     ResidentRenamed {
         resident_id: String,
@@ -391,6 +405,11 @@ pub fn apply_command(
             discard_inventory(farm, &item_id, quantity)
         }
         FarmCommand::SelectResident { resident_id } => select_resident(farm, &resident_id),
+        FarmCommand::ReorderResidentTask {
+            resident_id,
+            task_id,
+            before_task_id,
+        } => reorder_resident_task(farm, catalog, &resident_id, &task_id, before_task_id),
         FarmCommand::RenameResident {
             resident_id,
             display_name,
@@ -3114,6 +3133,145 @@ fn select_resident(
     Ok(vec![FarmEvent::ResidentSelected {
         resident_id: resident_id.to_owned(),
     }])
+}
+
+fn reorder_resident_task(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    resident_id: &str,
+    task_id: &str,
+    before_task_id: Option<String>,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    find_resident_index(farm, resident_id)?;
+    let queue = farm
+        .resident_task_queues
+        .get(resident_id)
+        .ok_or_else(|| CommandError::new("resident task queue not found"))?;
+    if queue.len() <= 1 {
+        return Err(CommandError::new("no queued resident tasks to reorder"));
+    }
+
+    let source_index = queue
+        .iter()
+        .position(|task| task.id == task_id)
+        .ok_or_else(|| CommandError::new("resident task not found"))?;
+    if source_index == 0 {
+        return Err(CommandError::new(
+            "current resident task cannot be reordered",
+        ));
+    }
+
+    if before_task_id.as_deref() == Some(task_id) {
+        return Err(CommandError::new(
+            "resident task cannot be moved before itself",
+        ));
+    }
+
+    let future_tasks = queue.iter().skip(1).cloned().collect::<Vec<_>>();
+    let mut reordered = future_tasks.clone();
+    let source_future_index = source_index - 1;
+    let moved_task = reordered.remove(source_future_index);
+    let insert_index = match before_task_id.as_deref() {
+        Some(before_id) => reordered
+            .iter()
+            .position(|task| task.id == before_id)
+            .ok_or_else(|| CommandError::new("destination resident task not found"))?,
+        None => reordered.len(),
+    };
+    reordered.insert(insert_index, moved_task);
+
+    let replanned_queue = replan_resident_future_queue(farm, catalog, resident_id, reordered)?;
+    farm.resident_task_queues
+        .insert(resident_id.to_owned(), replanned_queue);
+
+    Ok(vec![FarmEvent::ResidentTaskReordered {
+        resident_id: resident_id.to_owned(),
+        task_id: task_id.to_owned(),
+        before_task_id,
+    }])
+}
+
+fn replan_resident_future_queue(
+    farm: &FarmState,
+    catalog: &CatalogDocument,
+    resident_id: &str,
+    future_tasks: Vec<ResidentTask>,
+) -> Result<Vec<ResidentTask>, CommandError> {
+    let original_queue = farm
+        .resident_task_queues
+        .get(resident_id)
+        .ok_or_else(|| CommandError::new("resident task queue not found"))?;
+    let current_task = original_queue
+        .first()
+        .cloned()
+        .ok_or_else(|| CommandError::new("current resident task not found"))?;
+
+    let mut scratch = farm.clone();
+    scratch
+        .resident_task_queues
+        .insert(resident_id.to_owned(), vec![current_task]);
+
+    let mut planned_future_count = 0usize;
+    for task in future_tasks {
+        let base_steps = resident_task_reorder_work_steps(&task);
+        if base_steps.is_empty() {
+            return Err(CommandError::new("resident task has no reorderable work"));
+        }
+        if planned_future_count > 0 {
+            strip_trailing_cleanup_steps(&mut scratch, resident_id);
+        }
+
+        let started_at_ms = scratch
+            .resident_task_queues
+            .get(resident_id)
+            .and_then(|queue| queue.last())
+            .map(resident_task_tail_ready_at)
+            .unwrap_or(farm.last_update_ms)
+            .max(farm.last_update_ms);
+        let steps = plan_resource_steps(&scratch, catalog, resident_id, base_steps)?;
+        let steps = plan_resident_task_steps(&scratch, resident_id, steps)?;
+        let ready_at_ms = started_at_ms
+            + steps
+                .first()
+                .map(resident_task_step_duration_ms)
+                .unwrap_or(0);
+        scratch
+            .resident_task_queues
+            .entry(resident_id.to_owned())
+            .or_default()
+            .push(ResidentTask {
+                id: task.id,
+                kind: task.kind,
+                steps,
+                started_at_ms,
+                ready_at_ms,
+            });
+        planned_future_count += 1;
+    }
+
+    scratch
+        .resident_task_queues
+        .remove(resident_id)
+        .ok_or_else(|| CommandError::new("resident task queue not found"))
+}
+
+fn resident_task_reorder_work_steps(task: &ResidentTask) -> Vec<ResidentTaskStep> {
+    task.steps
+        .iter()
+        .filter(|step| is_reorder_base_work(&step.work))
+        .map(|step| resident_task_step(step.reserved_work_target.clone(), step.work.clone()))
+        .collect()
+}
+
+fn is_reorder_base_work(work: &ResidentTaskStepWork) -> bool {
+    !matches!(
+        work,
+        ResidentTaskStepWork::PickupItems { .. }
+            | ResidentTaskStepWork::PickupTools { .. }
+            | ResidentTaskStepWork::DepositInventory { .. }
+            | ResidentTaskStepWork::DepositItems { .. }
+            | ResidentTaskStepWork::ReturnTools { .. }
+    )
 }
 
 fn rename_resident(

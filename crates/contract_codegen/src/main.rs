@@ -11,12 +11,12 @@ use my_farm_core::{
     ReservationView, ReservedPathTileView, ReservedWorkTarget, ResidentCarryItemView,
     ResidentCarryToolView, ResidentCarryView, ResidentCleanupBlock, ResidentInventory,
     ResidentPathState, ResidentScenePoint, ResidentSceneView, ResidentStepView, ResidentTargetKind,
-    ResidentTargetView, ResidentTask, ResidentTaskKind, ResidentTaskQueueState, ResidentTaskStep,
-    ResidentTaskStepWork, ResidentTaskSummaryView, ResidentVisualActivity, ResidentVisualProp,
-    ResidentWorkState, ResidentWorkView, Room, RoomTile, ShelterDef, ShelterKind, StorageKind,
-    StorageSourceRef, StorageUpgradeDef, StructureKind, StructureTarget, SweepHarvestMode, Tile,
-    ToolKind, ToolSourceRef, ToolStack, UnlockView, WebsocketClientMessage, WebsocketError,
-    WebsocketServerMessage,
+    ResidentTargetView, ResidentTask, ResidentTaskKind, ResidentTaskPreviewView,
+    ResidentTaskQueueState, ResidentTaskStep, ResidentTaskStepWork, ResidentTaskSummaryView,
+    ResidentVisualActivity, ResidentVisualProp, ResidentWorkState, ResidentWorkView, Room,
+    RoomTile, ShelterDef, ShelterKind, StorageKind, StorageSourceRef, StorageUpgradeDef,
+    StructureKind, StructureTarget, SweepHarvestMode, Tile, ToolKind, ToolSourceRef, ToolStack,
+    UnlockView, WebsocketClientMessage, WebsocketError, WebsocketServerMessage,
 };
 use schemars::{JsonSchema, schema_for};
 use std::fs;
@@ -134,6 +134,7 @@ fn outputs() -> anyhow::Result<Vec<Output>> {
                 ResidentSceneView::decl(),
                 ResidentStepView::decl(),
                 ResidentTaskQueueState::decl(),
+                ResidentTaskPreviewView::decl(),
                 ResidentTaskSummaryView::decl(),
                 ResidentCarryItemView::decl(),
                 ResidentCarryToolView::decl(),

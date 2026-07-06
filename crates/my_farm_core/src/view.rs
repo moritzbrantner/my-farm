@@ -222,11 +222,20 @@ pub struct ResidentTaskSummaryView {
     pub label: String,
     pub step_count: u32,
     pub steps: Vec<ResidentStepView>,
+    pub preview: ResidentTaskPreviewView,
     pub queue_state: ResidentTaskQueueState,
     #[ts(type = "number")]
     pub started_at_ms: i64,
     #[ts(type = "number")]
     pub ready_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
+pub struct ResidentTaskPreviewView {
+    pub path: Vec<ResidentScenePoint>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub target: Option<ResidentTargetView>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -626,9 +635,31 @@ fn resident_task_summary(
             .iter()
             .map(|step| resident_step_view(farm, catalog, step))
             .collect(),
+        preview: resident_task_preview(farm, task),
         queue_state,
         started_at_ms: task.started_at_ms,
         ready_at_ms: task.ready_at_ms,
+    }
+}
+
+fn resident_task_preview(farm: &FarmState, task: &ResidentTask) -> ResidentTaskPreviewView {
+    let mut path = Vec::new();
+    for step in &task.steps {
+        for tile in &step.walk_path {
+            let point = ResidentScenePoint::from_tile(tile);
+            if path.last() != Some(&point) {
+                path.push(point);
+            }
+        }
+    }
+    ResidentTaskPreviewView {
+        path,
+        target: task
+            .steps
+            .iter()
+            .find(|step| !is_resource_step_work(&step.work))
+            .or_else(|| task.steps.first())
+            .and_then(|step| resident_target_view(farm, step)),
     }
 }
 

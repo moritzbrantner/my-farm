@@ -132,6 +132,187 @@ fn planting_fetches_crop_from_silo_before_fetching_tool() {
 }
 
 #[test]
+fn resident_future_tasks_can_be_reordered_authoritatively() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    for plot_id in ["plot-1", "plot-2", "plot-3"] {
+        let planted = apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::PlantCrop {
+                plot_id: plot_id.to_owned(),
+                crop_id: "wheat".to_owned(),
+            },
+            0,
+        );
+        assert!(planted.accepted, "{:?}", planted.error);
+    }
+    let original_order = farm.resident_task_queues["woman"]
+        .iter()
+        .map(|task| task.id.clone())
+        .collect::<Vec<_>>();
+    let moved_task_id = original_order[2].clone();
+    let before_task_id = original_order[1].clone();
+    let old_moved_ready_at = farm.resident_task_queues["woman"][2].ready_at_ms;
+
+    let reordered = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::ReorderResidentTask {
+            resident_id: "woman".to_owned(),
+            task_id: moved_task_id.clone(),
+            before_task_id: Some(before_task_id.clone()),
+        },
+        0,
+    );
+
+    assert!(reordered.accepted, "{:?}", reordered.error);
+    assert!(matches!(
+        reordered.events.as_slice(),
+        [FarmEvent::ResidentTaskReordered { resident_id, task_id, before_task_id: event_before }]
+            if resident_id == "woman" && task_id == &moved_task_id && event_before.as_deref() == Some(before_task_id.as_str())
+    ));
+    let reordered_queue = &farm.resident_task_queues["woman"];
+    assert_eq!(reordered_queue[0].id, original_order[0]);
+    assert_eq!(reordered_queue[1].id, original_order[2]);
+    assert_eq!(reordered_queue[2].id, original_order[1]);
+    assert_ne!(reordered_queue[1].ready_at_ms, old_moved_ready_at);
+    assert!(!reordered_queue[1].steps[0].walk_path.is_empty());
+}
+
+#[test]
+fn resident_reorder_rejects_current_unknown_and_invalid_destinations() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    for plot_id in ["plot-1", "plot-2"] {
+        let planted = apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::PlantCrop {
+                plot_id: plot_id.to_owned(),
+                crop_id: "wheat".to_owned(),
+            },
+            0,
+        );
+        assert!(planted.accepted, "{:?}", planted.error);
+    }
+    let current_id = farm.resident_task_queues["woman"][0].id.clone();
+    let future_id = farm.resident_task_queues["woman"][1].id.clone();
+
+    let current = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::ReorderResidentTask {
+            resident_id: "woman".to_owned(),
+            task_id: current_id,
+            before_task_id: None,
+        },
+        0,
+    );
+    assert!(!current.accepted);
+    assert_eq!(
+        current.error.unwrap().message,
+        "current resident task cannot be reordered"
+    );
+
+    let unknown_resident = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::ReorderResidentTask {
+            resident_id: "unknown".to_owned(),
+            task_id: future_id.clone(),
+            before_task_id: None,
+        },
+        0,
+    );
+    assert!(!unknown_resident.accepted);
+    assert_eq!(
+        unknown_resident.error.unwrap().message,
+        "resident not found"
+    );
+
+    let bad_destination = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::ReorderResidentTask {
+            resident_id: "woman".to_owned(),
+            task_id: future_id,
+            before_task_id: Some("missing-task".to_owned()),
+        },
+        0,
+    );
+    assert!(!bad_destination.accepted);
+    assert_eq!(
+        bad_destination.error.unwrap().message,
+        "destination resident task not found"
+    );
+}
+
+#[test]
+fn resident_reorder_failure_leaves_queue_unchanged() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    for plot_id in ["plot-1", "plot-2", "plot-3"] {
+        let planted = apply_command(
+            &mut farm,
+            &catalog,
+            FarmCommand::PlantCrop {
+                plot_id: plot_id.to_owned(),
+                crop_id: "wheat".to_owned(),
+            },
+            0,
+        );
+        assert!(planted.accepted, "{:?}", planted.error);
+    }
+    let original_queue = farm.resident_task_queues["woman"].clone();
+    let moved_task_id = original_queue[2].id.clone();
+    let before_task_id = original_queue[1].id.clone();
+    farm.field_plots.retain(|plot| plot.id != "plot-3");
+
+    let reordered = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::ReorderResidentTask {
+            resident_id: "woman".to_owned(),
+            task_id: moved_task_id,
+            before_task_id: Some(before_task_id),
+        },
+        0,
+    );
+
+    assert!(!reordered.accepted);
+    assert_eq!(
+        reordered.error.unwrap().message,
+        "work target is unreachable"
+    );
+    assert_eq!(farm.resident_task_queues["woman"], original_queue);
+}
+
+#[test]
+fn farm_view_exposes_resident_task_preview_paths() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    let planted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(planted.accepted, "{:?}", planted.error);
+
+    let view = farm_view(&farm, &catalog);
+    let task = &view.resident_work["woman"].queue[0];
+    assert!(!task.preview.path.is_empty());
+    assert_eq!(
+        task.preview.target.as_ref().unwrap().label,
+        "Field Plot plot-1"
+    );
+}
+
+#[test]
 fn farm_shop_must_be_built_by_the_road_after_unlock() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);

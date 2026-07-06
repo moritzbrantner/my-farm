@@ -31,6 +31,8 @@ export type ResidentScenePath = {
   state: ResidentPathState;
 };
 
+export type ResidentFacing = "north" | "east" | "south" | "west";
+
 export type ResidentVisualCue = {
   activity: ResidentVisualActivity;
   prop: ResidentVisualProp;
@@ -144,6 +146,24 @@ export function currentResidentScenePath(
   };
 }
 
+export function currentResidentFacing(
+  view: FarmView,
+  residentId: string,
+  nowMs = Date.now(),
+): ResidentFacing {
+  const work = residentWork(view, residentId);
+  const scene = currentResidentScenePose(view, residentId, nowMs);
+  const target = work?.target?.tile;
+  if (!work?.current_task || !work.current_step || work.scene.path.length <= 1) {
+    return facingBetween(scene.tile, target);
+  }
+  const walkEndsAtMs = work.current_task.started_at_ms + work.current_step.walk_duration_ms;
+  if (nowMs < walkEndsAtMs) {
+    return pathSegmentFacing(work.scene.path, progressBetween(work.current_task.started_at_ms, walkEndsAtMs, nowMs));
+  }
+  return facingBetween(scene.tile, target);
+}
+
 export function reservedFieldReason(view: FarmView, plotId: string): string | null {
   return reservationReason(view.reservations.field_plots[plotId]);
 }
@@ -204,4 +224,32 @@ export function interpolatePath(
     x: from.x + (to.x - from.x) * segmentProgress,
     y: from.y + (to.y - from.y) * segmentProgress,
   };
+}
+
+function pathSegmentFacing(path: Array<{ x: number; y: number }>, progress: number): ResidentFacing {
+  if (path.length < 2) {
+    return "south";
+  }
+  const clamped = Math.min(1, Math.max(0, progress));
+  const segmentCount = path.length - 1;
+  const segmentIndex = Math.min(segmentCount - 1, Math.floor(clamped * segmentCount));
+  return facingBetween(path[segmentIndex], path[segmentIndex + 1]);
+}
+
+function facingBetween(
+  from: { x: number; y: number },
+  to: { x: number; y: number } | null | undefined,
+): ResidentFacing {
+  if (!to) {
+    return "south";
+  }
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dx >= 0 ? "east" : "west";
+  }
+  if (Math.abs(dy) > 0) {
+    return dy >= 0 ? "south" : "north";
+  }
+  return "south";
 }

@@ -532,6 +532,35 @@
         {
           "type": "object",
           "required": [
+            "resident_id",
+            "task_id",
+            "type"
+          ],
+          "properties": {
+            "before_task_id": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "resident_id": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "resident_task_reordered"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "display_name",
             "resident_id",
             "type"
@@ -1757,6 +1786,31 @@
         }
       ]
     },
+    "ResidentTaskPreviewView": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResidentScenePoint"
+          }
+        },
+        "target": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ResidentTargetView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
     "ResidentTaskQueueState": {
       "type": "string",
       "enum": [
@@ -1771,6 +1825,7 @@
         "id",
         "kind",
         "label",
+        "preview",
         "queue_state",
         "ready_at_ms",
         "started_at_ms",
@@ -1786,6 +1841,9 @@
         },
         "label": {
           "type": "string"
+        },
+        "preview": {
+          "$ref": "#/definitions/ResidentTaskPreviewView"
         },
         "queue_state": {
           "$ref": "#/definitions/ResidentTaskQueueState"

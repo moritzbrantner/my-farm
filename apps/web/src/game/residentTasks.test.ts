@@ -395,6 +395,22 @@ function farmViewWithTask(task: ResidentTask | null): FarmView {
   const path = currentStep?.walk_path.length
     ? [residentLocations.woman, ...currentStep.walk_path]
     : [];
+  const summary = task
+    ? {
+        id: task.id,
+        kind: task.kind,
+        label: currentStep ? taskLabelForStep(currentStep) : "Field work",
+        step_count: task.steps.length,
+        steps: task.steps.map(stepView),
+        preview: {
+          path: task.steps.flatMap((step) => step.walk_path),
+          target,
+        },
+        queue_state: "current" as const,
+        started_at_ms: task.started_at_ms,
+        ready_at_ms: task.ready_at_ms,
+      }
+    : undefined;
   return {
     last_update_ms: 0,
     xp: 0,
@@ -429,30 +445,8 @@ function farmViewWithTask(task: ResidentTask | null): FarmView {
         display_name: "Woman",
         selected: true,
         state: task ? "working" : "idle",
-        current_task: task
-          ? {
-              id: task.id,
-              kind: task.kind,
-              label: currentStep ? taskLabelForStep(currentStep) : "Field work",
-              step_count: task.steps.length,
-              steps: task.steps.map(stepView),
-              queue_state: "current",
-              started_at_ms: task.started_at_ms,
-              ready_at_ms: task.ready_at_ms,
-            }
-          : undefined,
-        queue: task
-          ? [{
-              id: task.id,
-              kind: task.kind,
-              label: currentStep ? taskLabelForStep(currentStep) : "Field work",
-              step_count: task.steps.length,
-              steps: task.steps.map(stepView),
-              queue_state: "current",
-              started_at_ms: task.started_at_ms,
-              ready_at_ms: task.ready_at_ms,
-            }]
-          : [],
+        current_task: summary,
+        queue: summary ? [summary] : [],
         current_step: currentStep
           ? {
               label: taskLabelForStep(currentStep),

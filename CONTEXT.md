@@ -84,6 +84,14 @@ _Avoid_: Instant oven queueing, make cake
 The per-resident FIFO list of Resident Tasks saved on the Farm. Later work may enqueue physical production tasks here; empty queues still exist for each Farm Resident.
 _Avoid_: Local queue, animation queue
 
+**Resident Task Preview**:
+A browser-facing inspection of a Resident Task's planned path, target, and steps. It is derived from authoritative Resident Task Queue state and does not change Farm state by itself.
+_Avoid_: Client-only route, speculative task
+
+**Resident Task Reordering**:
+A player Command that changes the order of future queued Resident Tasks for one Farm Resident. The current Resident Task stays fixed, future tasks are replanned atomically, and unsafe reorder attempts are rejected without changing the queue.
+_Avoid_: Drag-only UI order, task cancellation
+
 **Resident Details**:
 The selected-Farm Resident UI surface that shows current Resident Task state, current step, target, progress, carried Resident Inventory, blocked reason, and expandable Resident Task Queue.
 _Avoid_: Worker debug panel, task queue modal, character stats

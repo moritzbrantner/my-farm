@@ -269,8 +269,18 @@ function createWasmDemoClient(): FarmClient {
   }
 
   async function loadWasmDemoRuntime(): Promise<WasmDemoRuntime> {
-    const module = await import("./generated/my_farm_wasm/my_farm_wasm.js");
-    await module.default();
+    const existingModule = import.meta.env.DEV
+      ? (window as typeof window & {
+          __myFarmWasmModule?: typeof import("./generated/my_farm_wasm/my_farm_wasm.js");
+        }).__myFarmWasmModule
+      : undefined;
+    const module = existingModule ?? await import("./generated/my_farm_wasm/my_farm_wasm.js");
+    if (!existingModule) {
+      await module.default();
+    }
+    if (import.meta.env.DEV) {
+      (window as typeof window & { __myFarmWasmModule?: typeof module }).__myFarmWasmModule = module;
+    }
     return new module.DemoFarmRuntime(window.localStorage.getItem(demoSaveKey) ?? undefined, Date.now());
   }
 

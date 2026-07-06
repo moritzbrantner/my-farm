@@ -1,9 +1,9 @@
 import { Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
-import type { ResidentVisualActivity, ResidentVisualProp } from "../../game/residentTasks";
+import type { ResidentFacing, ResidentVisualActivity, ResidentVisualProp } from "../../game/residentTasks";
 
 export type FarmResidentPresentation = {
   id: string;
@@ -18,6 +18,7 @@ export type FarmResidentPresentation = {
   selected: boolean;
   blocked: boolean;
   animationPaused: boolean;
+  facing: ResidentFacing;
 };
 
 type ResidentModelProps = {
@@ -61,7 +62,7 @@ export function FarmResidentFigure({
         <boxGeometry args={[0.72, 1.25, 0.72]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
-      <group>
+      <ResidentFacingRoot facing={resident.facing} animated={!resident.animationPaused}>
         <ResidentShadow />
         {resident.selected ? <ResidentSelectionRing /> : null}
         <ResidentModel
@@ -70,7 +71,7 @@ export function FarmResidentFigure({
           prop={resident.prop}
           animationPaused={resident.animationPaused}
         />
-      </group>
+      </ResidentFacingRoot>
       <Html position={[0, 0.96, 0]} center zIndexRange={[88, 0]} wrapperClass="farm-scene-resident-marker-wrapper">
         <div className="farm-scene-resident-ui">
           <button
@@ -81,6 +82,7 @@ export function FarmResidentFigure({
             data-resident-activity={resident.activity}
             data-resident-prop={resident.prop}
             data-resident-target={resident.targetLabel}
+            data-resident-facing={resident.facing}
             aria-label={`${resident.displayName} Farm Resident`}
             aria-pressed={resident.selected}
             onClick={onSelect}
@@ -108,6 +110,48 @@ export function FarmResidentFigure({
       </Html>
     </group>
   );
+}
+
+function ResidentFacingRoot({
+  facing,
+  animated,
+  children,
+}: {
+  facing: ResidentFacing;
+  animated: boolean;
+  children: ReactNode;
+}) {
+  const ref = useRef<THREE.Group | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+  const targetRotation = facingRotation(facing);
+
+  useEffect(() => {
+    if (!animated || reducedMotion) {
+      ref.current?.rotation.set(0, targetRotation, 0);
+    }
+  }, [animated, reducedMotion, targetRotation]);
+
+  useFrame(() => {
+    if (!animated || reducedMotion || !ref.current) {
+      return;
+    }
+    ref.current.rotation.y = THREE.MathUtils.lerp(ref.current.rotation.y, targetRotation, 0.22);
+  });
+
+  return <group ref={ref}>{children}</group>;
+}
+
+function facingRotation(facing: ResidentFacing) {
+  switch (facing) {
+    case "north":
+      return Math.PI;
+    case "east":
+      return Math.PI / 2;
+    case "west":
+      return -Math.PI / 2;
+    case "south":
+      return 0;
+  }
 }
 
 function activityToken(activity: ResidentVisualActivity) {

@@ -200,13 +200,14 @@ test("resident selector shows both residents and sends selected resident command
   await openFarm(page);
 
   const residents = page.getByLabel("Farm Residents");
-  await expect(residents.getByText("Selected Resident")).toBeVisible();
+  await expect(residents.getByText("Selected")).toBeVisible();
   await expect(residents.getByText("Mara")).toBeVisible();
   await expect(residents.getByText("Jon")).toBeVisible();
+  await expect(residents.locator(".resident-picker-row")).toHaveCount(2);
   await expect(residents.getByRole("textbox")).toHaveCount(0);
   await expect(residents.getByRole("button", { name: "Rename" })).toHaveCount(0);
 
-  await residents.locator(".resident-card").nth(1).getByRole("button", { name: "Select" }).click();
+  await residents.getByRole("button", { name: /Jon/ }).click();
 
   await expect.poll(() => commands.at(-1)?.command).toEqual({
     type: "select_resident",
@@ -312,14 +313,98 @@ test("resident selector shows queue counts and live task progress", async ({ pag
 
   await openFarm(page);
 
-  const maraCard = page.getByLabel("Farm Residents").locator(".resident-card").first();
-  await expect(maraCard.getByText("Plant Wheat")).toBeVisible();
-  await expect(maraCard.getByText("Queued tasks")).toBeVisible();
-  await expect(maraCard.getByText("2", { exact: true })).toBeVisible();
-  const progress = maraCard.getByLabel("Mara task progress");
+  const maraRow = page.getByLabel("Farm Residents").locator(".resident-picker-row").first();
+  await expect(maraRow.getByText("Mara")).toBeVisible();
+  await expect(maraRow.getByText("Selected")).toBeVisible();
+  await expect(maraRow.getByText("2", { exact: true })).toBeVisible();
+  await expect(maraRow.getByText("Plant Wheat")).toHaveCount(0);
+  const progress = maraRow.getByLabel("Mara task progress");
   await expect(progress).toBeVisible();
   const initialProgress = Number(await progress.getAttribute("value"));
   await expect.poll(async () => Number(await progress.getAttribute("value")), { timeout: 4_000 }).toBeGreaterThan(initialProgress);
+});
+
+test("Resident Details reorders future queued tasks with controls and drag", async ({ page }) => {
+  const commands: CommandRequest[] = [];
+  const now = Date.now();
+  const view = withResidentTaskQueues(farmView, {
+      woman: [
+        task({
+          id: "task-1",
+          kind: { type: "field_work" },
+          started_at_ms: now,
+          ready_at_ms: now + 5_000,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "plant_crop", crop_id: "wheat" },
+              approach_tile: { x: 0, y: 0 },
+              duration_ms: 5_000,
+            }),
+          ],
+        }),
+        task({
+          id: "task-2",
+          kind: { type: "field_work" },
+          started_at_ms: now + 5_000,
+          ready_at_ms: now + 10_000,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
+              work: { type: "plant_crop", crop_id: "corn" },
+              approach_tile: { x: 1, y: 0 },
+              walk_path: [{ x: 1, y: 0 }],
+              walk_duration_ms: 1_000,
+              work_duration_ms: 4_000,
+              duration_ms: 5_000,
+            }),
+          ],
+        }),
+        task({
+          id: "task-3",
+          kind: { type: "field_work" },
+          started_at_ms: now + 10_000,
+          ready_at_ms: now + 15_000,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-3" },
+              work: { type: "harvest_crop", crop_id: "wheat", quantity: 1 },
+              approach_tile: { x: 2, y: 0 },
+              walk_path: [{ x: 2, y: 0 }],
+              walk_duration_ms: 1_000,
+              work_duration_ms: 4_000,
+              duration_ms: 5_000,
+            }),
+          ],
+        }),
+      ],
+      man: [],
+  });
+  await mockFarmApi(page, view, catalog, (request) => commands.push(request));
+  await openFarm(page);
+  await page.getByLabel("Farm Residents").getByRole("button", { name: /Mara/ }).click();
+
+  const details = page.locator(".resident-details-panel");
+  const currentRow = details.locator("[data-task-id='task-1']");
+  await expect(currentRow).toHaveAttribute("data-task-reorderable", "false");
+  await expect(currentRow.locator(".resident-queue-task__controls button").nth(1)).toBeDisabled();
+
+  const secondRow = details.locator("[data-task-id='task-2']");
+  await secondRow.locator("summary").click();
+  await secondRow.getByRole("button", { name: "Move down" }).click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "reorder_resident_task",
+    resident_id: "woman",
+    task_id: "task-2",
+  });
+
+  await details.locator("[data-task-id='task-3']").dragTo(details.locator("[data-task-id='task-2']"));
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "reorder_resident_task",
+    resident_id: "woman",
+    task_id: "task-3",
+    before_task_id: "task-2",
+  });
 });
 
 test("reserved work targets disable direct actions with a pending reason", async ({ page }, testInfo) => {
@@ -486,11 +571,11 @@ test("moves a resident toward the current task target over authoritative task ti
             taskStep({
               reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
               work: { type: "plant_crop", crop_id: "wheat" },
-              approach_tile: { x: 0, y: 0 },
+              approach_tile: { x: 1, y: 1 },
               walk_path: [
                 { x: 0, y: 2 },
                 { x: 0, y: 1 },
-                { x: 0, y: 0 },
+                { x: 1, y: 1 },
               ],
               walk_duration_ms: 8_000,
               work_duration_ms: 2_000,
@@ -506,6 +591,7 @@ test("moves a resident toward the current task target over authoritative task ti
   const resident = page.getByTestId("farm-scene-resident-man");
   await expect(resident).toHaveAttribute("data-resident-state", "walking");
   await expect(resident).toHaveAttribute("data-resident-target", "Field Plot plot-1");
+  await expect(resident).toHaveAttribute("data-resident-facing", "north");
   await page.waitForTimeout(Math.max(0, startedAt + 500 - Date.now()));
 
   const firstCenter = await elementCenter(resident);
@@ -517,6 +603,9 @@ test("moves a resident toward the current task target over authoritative task ti
   const thirdCenter = await elementCenter(resident);
   expect(distanceBetween(secondCenter, thirdCenter)).toBeGreaterThan(3);
   await expect(resident).toHaveAttribute("data-resident-state", "walking");
+
+  await page.waitForTimeout(Math.max(0, startedAt + 5_600 - Date.now()));
+  await expect(resident).toHaveAttribute("data-resident-facing", "east");
 
   await page.waitForTimeout(Math.max(0, startedAt + 8_200 - Date.now()));
   await expect(resident).toHaveAttribute("data-resident-state", "working");
@@ -577,6 +666,26 @@ test("clicking a farm resident selects them, sends assignment command, and shows
             }),
           ],
         },
+        {
+          id: "man-task-queued",
+          kind: { type: "field_work" },
+          started_at_ms: now + 5_000,
+          ready_at_ms: now + 9_000,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-2" },
+              work: { type: "harvest_crop", crop_id: "corn", quantity: 2 },
+              approach_tile: { x: 1, y: 0 },
+              walk_path: [
+                { x: 0, y: 1 },
+                { x: 1, y: 0 },
+              ],
+              walk_duration_ms: 3_000,
+              work_duration_ms: 1_000,
+              duration_ms: 4_000,
+            }),
+          ],
+        },
       ],
   });
   await mockFarmApi(page, view, catalog, (request) => commands.push(request));
@@ -620,6 +729,11 @@ test("clicking a farm resident selects them, sends assignment command, and shows
   await taskRow.locator("summary").click();
   await expect(taskRow).toContainText("Walk 4s / Work 1s");
   await expect(taskRow).toContainText("1 crop");
+  const queuedTaskRow = selection.getByRole("listitem").filter({ hasText: "Harvest Corn" }).first();
+  await queuedTaskRow.locator("summary").click();
+  await expect(page.getByTestId("resident-path-man")).toHaveAttribute("data-path-tile-count", "2");
+  await expect(queuedTaskRow).toContainText("Queued");
+  await expect(queuedTaskRow).toContainText("Walk 3s / Work 1s");
 });
 
 test("blocked resident work shows a scene warning and Resident Details reason", async ({ page }, testInfo) => {
@@ -3531,12 +3645,17 @@ function withResidentTaskQueues(
 }
 
 function taskSummary(view: FarmView, task: ResidentTask, queueState: "current" | "queued" | "blocked") {
+  const previewTargetStep = task.steps.find((step) => !isResourceStep(step)) ?? task.steps[0];
   return {
     id: task.id,
     kind: task.kind,
-    label: taskLabelForStep(task.steps.find((step) => !isResourceStep(step)) ?? task.steps[0]),
+    label: taskLabelForStep(previewTargetStep),
     step_count: task.steps.length,
     steps: task.steps.map((step) => stepView(view, step)),
+    preview: {
+      path: task.steps.flatMap((step) => step.walk_path),
+      target: previewTargetStep ? targetViewForStep(view, previewTargetStep) : undefined,
+    },
     queue_state: queueState,
     started_at_ms: task.started_at_ms,
     ready_at_ms: task.ready_at_ms,

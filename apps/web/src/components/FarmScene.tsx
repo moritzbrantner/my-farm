@@ -33,10 +33,12 @@ import {
   type StructureProductionStatus,
 } from "../game/structureStatus";
 import {
+  currentResidentFacing,
   currentResidentScenePath,
   currentResidentScenePose,
   hasActiveResidentWalk,
   isResidentInsideHouse,
+  type ResidentScenePath,
   residentTaskStatus,
   residentWork,
   residentVisualCue,
@@ -61,6 +63,7 @@ type Props = {
   movingStructure: StructureSelection | null;
   plantSweep: PlantSweepState;
   harvestSweep: HarvestSweepState;
+  previewResidentPath: ResidentScenePath | null;
   onSelect: (selection: Selection) => void;
   onSelectResident: (residentId: string) => void;
   onOpenFieldMenu: (plotId: string, point: { x: number; y: number }) => void;
@@ -86,6 +89,7 @@ export function FarmScene({
   movingStructure,
   plantSweep,
   harvestSweep,
+  previewResidentPath,
   onSelect,
   onOpenFieldMenu,
   onOpenStructureMenu,
@@ -319,7 +323,7 @@ export function FarmScene({
         {view.farm_shop?.current_sale && view.farm_shop.current_sale.visible_until_ms > nowMs ? (
           <FarmShopSaleCar shopTile={view.farm_shop.tile} />
         ) : null}
-        <ResidentPathOverlay view={view} selection={selection} nowMs={nowMs} />
+        <ResidentPathOverlay view={view} selection={selection} nowMs={nowMs} previewPath={previewResidentPath} />
         <FarmResidents
           catalog={catalog}
           view={view}
@@ -429,6 +433,7 @@ function FarmResidents({
         selected: selection?.type === "resident" && selection.id === resident.id,
         blocked: pose.state === "blocked",
         animationPaused: visualClockPaused,
+        facing: currentResidentFacing(view, resident.id, residentNowMs),
       };
     });
 
@@ -449,14 +454,16 @@ function ResidentPathOverlay({
   view,
   selection,
   nowMs,
+  previewPath,
 }: {
   view: FarmView;
   selection: Selection;
   nowMs: number;
+  previewPath: ResidentScenePath | null;
 }) {
-  const path = selection?.type === "resident"
+  const path = previewPath ?? (selection?.type === "resident"
     ? currentResidentScenePath(view, selection.id, nowMs)
-    : null;
+    : null);
   const linePoints = useMemo(() => {
     if (!path) {
       return new Float32Array();
