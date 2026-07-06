@@ -20,6 +20,10 @@ _Avoid_: Browser-only room state, UI-only house
 The whole-Farmhouse navigation view used to enter individual Rooms or exit back to the Farm.
 _Avoid_: Room picker, house menu
 
+**Upper Floor**:
+The second-story layer in the House Overview that contains the Bedroom House Door and bedroom preview. Players can show or hide the Upper Floor while inspecting the House Overview; this visibility is not saved Farm state.
+_Avoid_: Upstairs mode, second-floor state
+
 **Room**:
 A named area inside the House Interior, such as the Living Room, Kitchen, or Bedroom. Starter Rooms use fixed Room Tile grids.
 _Avoid_: Scene, level, screen

@@ -1,5 +1,17 @@
 import { Html, OrbitControls } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
+import {
+  Eye,
+  EyeOff,
+  Grid2x2,
+  Grid2x2X,
+  House,
+  RotateCcw,
+  RotateCcwSquare,
+  RotateCw,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type MutableRefObject } from "react";
 import * as THREE from "three";
 import {
@@ -150,6 +162,7 @@ export function HouseInteriorScene({
   onBackToFarm,
 }: Props) {
   const [hoverTile, setHoverTile] = useState<RoomTile | null>(null);
+  const [upperFloorVisible, setUpperFloorVisible] = useState(true);
   const cameraApiRef = useRef<HouseCameraApi | null>(null);
   const roomStyle = houseRooms.find((entry) => entry.id === selectedRoom) ?? houseRooms[0];
   const room =
@@ -215,7 +228,11 @@ export function HouseInteriorScene({
         <directionalLight position={[5, 8, 5]} intensity={2.1} castShadow />
         <HouseCameraController frame={cameraFrame} onReady={setCameraApi} />
         {mode === "overview" ? (
-          <HouseOverviewSet onSelectRoom={onSelectRoom} onBackToFarm={onBackToFarm} />
+          <HouseOverviewSet
+            upperFloorVisible={upperFloorVisible}
+            onSelectRoom={onSelectRoom}
+            onBackToFarm={onBackToFarm}
+          />
         ) : (
           <RoomSet
             catalog={catalog}
@@ -249,10 +266,23 @@ export function HouseInteriorScene({
             aria-pressed={gridEnabled}
             onClick={() => onSetGridEnabled(!gridEnabled)}
           >
-            Grid {gridEnabled ? "On" : "Off"}
+            {gridEnabled ? <Grid2x2 aria-hidden="true" focusable="false" /> : <Grid2x2X aria-hidden="true" focusable="false" />}
+            <span>Grid {gridEnabled ? "On" : "Off"}</span>
           </button>
+          {mode === "overview" ? (
+            <button
+              className="house-interior__floor-toggle"
+              type="button"
+              aria-pressed={upperFloorVisible}
+              onClick={() => setUpperFloorVisible((visible) => !visible)}
+            >
+              {upperFloorVisible ? <EyeOff aria-hidden="true" focusable="false" /> : <Eye aria-hidden="true" focusable="false" />}
+              <span>{upperFloorVisible ? "Hide upper floor" : "Show upper floor"}</span>
+            </button>
+          ) : null}
           <button className="house-interior__back" type="button" onClick={onBackToFarm}>
-            Back to Farm
+            <House aria-hidden="true" focusable="false" />
+            <span>Back to Farm</span>
           </button>
         </div>
       </div>
@@ -396,19 +426,19 @@ function HouseCameraToolbar({ cameraApiRef }: { cameraApiRef: MutableRefObject<H
   return (
     <div className="house-camera-controls" aria-label="House camera controls">
       <button type="button" aria-label="Rotate camera left" onClick={() => cameraApiRef.current?.rotateLeft()}>
-        <span aria-hidden="true">&lt;</span>
+        <RotateCcw aria-hidden="true" focusable="false" />
       </button>
       <button type="button" aria-label="Rotate camera right" onClick={() => cameraApiRef.current?.rotateRight()}>
-        <span aria-hidden="true">&gt;</span>
+        <RotateCw aria-hidden="true" focusable="false" />
       </button>
       <button type="button" aria-label="Zoom camera in" onClick={() => cameraApiRef.current?.zoomIn()}>
-        <span aria-hidden="true">+</span>
+        <ZoomIn aria-hidden="true" focusable="false" />
       </button>
       <button type="button" aria-label="Zoom camera out" onClick={() => cameraApiRef.current?.zoomOut()}>
-        <span aria-hidden="true">-</span>
+        <ZoomOut aria-hidden="true" focusable="false" />
       </button>
       <button type="button" aria-label="Reset camera" onClick={() => cameraApiRef.current?.reset()}>
-        Reset
+        <RotateCcwSquare aria-hidden="true" focusable="false" />
       </button>
     </div>
   );
@@ -521,9 +551,11 @@ function FamilyTreeResidentEditor({
 }
 
 function HouseOverviewSet({
+  upperFloorVisible,
   onSelectRoom,
   onBackToFarm,
 }: {
+  upperFloorVisible: boolean;
   onSelectRoom: (room: HouseRoomId) => void;
   onBackToFarm: () => void;
 }) {
@@ -539,19 +571,27 @@ function HouseOverviewSet({
       </mesh>
       <OverviewRoomBlock position={[-1.62, 0.16, -0.95]} size={[2.75, 0.24, 2.25]} color="#d8b06a" wall="#f1dfb6" />
       <OverviewRoomBlock position={[1.46, 0.16, -0.95]} size={[2.75, 0.24, 2.25]} color="#c8d0c4" wall="#f6ead0" />
-      <mesh castShadow receiveShadow position={[0, 1.28, 1.04]}>
-        <boxGeometry args={[5.75, 0.18, 1.85]} />
+      <StairRun />
+      <mesh castShadow receiveShadow position={[-0.62, 1.12, 1.48]}>
+        <boxGeometry args={[1.34, 0.16, 0.9]} />
         <meshStandardMaterial color="#d8cfb3" roughness={0.88} />
       </mesh>
-      <Html position={[0, 1.5, 1.04]} center wrapperClass="farm-scene-marker-wrapper">
-        <div
-          className="farm-scene-marker"
-          data-testid="house-overview-second-floor"
-          aria-label="House Overview second floor"
-        />
-      </Html>
-      <OverviewRoomBlock position={[0, 1.4, 1.04]} size={[5.4, 0.24, 1.55]} color="#bca3be" wall="#ead9cf" />
-      <StairRun />
+      {upperFloorVisible ? (
+        <>
+          <mesh castShadow receiveShadow position={[0.72, 1.12, 1.28]}>
+            <boxGeometry args={[4.72, 0.18, 1.82]} />
+            <meshStandardMaterial color="#d8cfb3" roughness={0.88} />
+          </mesh>
+          <Html position={[0.72, 1.36, 1.28]} center wrapperClass="farm-scene-marker-wrapper">
+            <div
+              className="farm-scene-marker"
+              data-testid="house-overview-second-floor"
+              aria-label="House Overview second floor"
+            />
+          </Html>
+          <OverviewRoomBlock position={[0.72, 1.26, 1.28]} size={[4.38, 0.24, 1.48]} color="#bca3be" wall="#ead9cf" />
+        </>
+      ) : null}
       <mesh castShadow receiveShadow position={[0, 0.96, -2.72]}>
         <boxGeometry args={[6.4, 1.55, 0.18]} />
         <meshStandardMaterial color="#eadfcb" roughness={0.9} />
@@ -590,24 +630,28 @@ function HouseOverviewSet({
         color="#516979"
         onActivate={() => onSelectRoom("kitchen")}
       />
-      <HouseDoor
-        label="Bedroom"
-        ariaLabel="Enter Bedroom"
-        testId="house-door-bedroom"
-        position={[0, 1.76, 1.94]}
-        rotation={[0, 0, 0]}
-        labelOffset={[0.18, 0.86, 0.1]}
-        labelScreenOffset={[0, -58]}
-        color="#795f86"
-        onActivate={() => onSelectRoom("bedroom")}
-      />
-      <Html position={[0, 2.12, 1.2]} center wrapperClass="farm-scene-marker-wrapper">
-        <div
-          className="farm-scene-marker"
-          data-testid="house-overview-bedroom-upstairs"
-          aria-label="Bedroom upstairs"
-        />
-      </Html>
+      {upperFloorVisible ? (
+        <>
+          <HouseDoor
+            label="Bedroom"
+            ariaLabel="Enter Bedroom"
+            testId="house-door-bedroom"
+            position={[0.72, 1.72, 2.08]}
+            rotation={[0, 0, 0]}
+            labelOffset={[0.18, 0.86, 0.1]}
+            labelScreenOffset={[0, -58]}
+            color="#795f86"
+            onActivate={() => onSelectRoom("bedroom")}
+          />
+          <Html position={[0.72, 2.08, 1.45]} center wrapperClass="farm-scene-marker-wrapper">
+            <div
+              className="farm-scene-marker"
+              data-testid="house-overview-bedroom-upstairs"
+              aria-label="Bedroom upstairs"
+            />
+          </Html>
+        </>
+      ) : null}
       <HouseDoor
         label="Front Door"
         ariaLabel="Exit Farmhouse to Farm"
@@ -628,15 +672,15 @@ function HouseOverviewSet({
 
 function StairRun() {
   return (
-    <group position={[-2.45, 0.18, 0.88]} rotation={[0, -0.32, 0]}>
-      {Array.from({ length: 7 }, (_, index) => (
+    <group position={[-2.35, 0.2, 0.6]} rotation={[0, -0.1, 0]}>
+      {Array.from({ length: 8 }, (_, index) => (
         <mesh
           key={index}
           castShadow
           receiveShadow
-          position={[index * 0.25, index * 0.16, index * 0.16]}
+          position={[index * 0.24, index * 0.13, index * 0.14]}
         >
-          <boxGeometry args={[0.72, 0.12, 0.34]} />
+          <boxGeometry args={[0.78, 0.12, 0.34]} />
           <meshStandardMaterial color="#b98762" roughness={0.82} />
         </mesh>
       ))}

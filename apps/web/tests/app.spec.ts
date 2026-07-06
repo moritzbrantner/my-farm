@@ -1703,12 +1703,31 @@ test("enters the Farmhouse interior, switches rooms, and returns to the farm sce
   await expect(page.getByTestId("house-overview")).toBeVisible();
   await expect(page.getByTestId("house-overview-second-floor")).toBeVisible();
   await expect(page.getByTestId("house-overview-bedroom-upstairs")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hide upper floor" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Rooms" })).toHaveCount(0);
+  await expectButtonHasSvgIcon(page.getByRole("button", { name: "Rotate camera right" }));
+  await expectButtonHasSvgIcon(page.getByRole("button", { name: "Reset camera" }));
+  await expectButtonHasSvgIcon(page.getByRole("button", { name: "Grid On" }));
+  await expectButtonHasSvgIcon(page.getByRole("button", { name: "Hide upper floor" }));
+  await expectButtonHasSvgIcon(page.getByRole("button", { name: "Back to Farm" }));
   const beforeRotate = await canvasSnapshot(page);
   await page.getByRole("button", { name: "Rotate camera right" }).click();
   await expect.poll(async () => await canvasSnapshot(page), { timeout: 2_000 }).not.toBe(beforeRotate);
   await page.getByRole("button", { name: "Zoom camera in" }).click();
   await page.getByRole("button", { name: "Reset camera" }).click();
+
+  await page.getByRole("button", { name: "Hide upper floor" }).click();
+  await expect(page.getByRole("button", { name: "Show upper floor" })).toBeVisible();
+  await expect(page.getByTestId("house-overview-second-floor")).toHaveCount(0);
+  await expect(page.getByTestId("house-overview-bedroom-upstairs")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Enter Bedroom" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Enter Kitchen" }).click();
+  await expect(page.getByTestId("house-room-kitchen")).toBeVisible();
+  await page.getByRole("button", { name: "Exit Kitchen to House Overview" }).click();
+  await expect(page.getByRole("button", { name: "Show upper floor" })).toBeVisible();
+  await page.getByRole("button", { name: "Show upper floor" }).click();
+  await expect(page.getByTestId("house-overview-second-floor")).toBeVisible();
+  await expect(page.getByTestId("house-overview-bedroom-upstairs")).toBeVisible();
 
   await page.getByRole("button", { name: "Enter Kitchen" }).click();
   await expect(page.getByTestId("house-room-kitchen")).toBeVisible();
@@ -4543,6 +4562,11 @@ async function expectReadableButtons(buttons: Locator) {
     expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
     expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1);
   }
+}
+
+async function expectButtonHasSvgIcon(button: Locator) {
+  await expect(button).toBeVisible();
+  await expect(button.locator("svg")).toHaveCount(1);
 }
 
 async function elementCenter(target: Locator) {

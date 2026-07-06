@@ -141,7 +141,12 @@ button[aria-disabled="true"] {
 }
 
 .house-interior__grid-toggle,
+.house-interior__floor-toggle,
 .house-interior__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-width: 120px;
   padding: 8px 12px;
   background: #fff7d0;
@@ -149,9 +154,26 @@ button[aria-disabled="true"] {
   box-shadow: 0 10px 24px rgba(32, 49, 43, 0.14);
 }
 
-.house-interior__grid-toggle[aria-pressed="false"] {
+.house-interior__grid-toggle[aria-pressed="false"],
+.house-interior__floor-toggle[aria-pressed="false"] {
   background: #e7ebe3;
   border-color: rgba(32, 49, 43, 0.28);
+}
+
+.house-interior__grid-toggle svg,
+.house-interior__floor-toggle svg,
+.house-interior__back svg {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.5;
+}
+
+.house-interior__grid-toggle span,
+.house-interior__floor-toggle span,
+.house-interior__back span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .house-interior__tabs {
@@ -197,6 +219,8 @@ button[aria-disabled="true"] {
 }
 
 .house-camera-controls button {
+  display: inline-grid;
+  place-items: center;
   min-width: 36px;
   min-height: 34px;
   padding: 6px 8px;
@@ -205,6 +229,12 @@ button[aria-disabled="true"] {
   box-shadow: none;
   font-size: 13px;
   line-height: 1;
+}
+
+.house-camera-controls svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.6;
 }
 
 .house-door-label {
@@ -2616,6 +2646,7 @@ h2 {
   }
 
   .house-interior__grid-toggle,
+  .house-interior__floor-toggle,
   .house-interior__back {
     min-width: 0;
     width: 100%;
