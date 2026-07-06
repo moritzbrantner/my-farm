@@ -29,6 +29,26 @@ fn resident_task_tail_ready_at(farm: &FarmState, resident_id: &str, task_index: 
             .sum::<i64>()
 }
 
+fn resident_task_step_ready_at<F>(
+    farm: &FarmState,
+    resident_id: &str,
+    task_index: usize,
+    predicate: F,
+) -> i64
+where
+    F: Fn(&my_farm_core::ResidentTaskStep) -> bool,
+{
+    let task = &farm.resident_task_queues[resident_id][task_index];
+    let mut ready_at = task.started_at_ms;
+    for step in &task.steps {
+        ready_at += step.duration_ms;
+        if predicate(step) {
+            return ready_at;
+        }
+    }
+    panic!("resident task step not found");
+}
+
 fn expected_path_step_duration(path_len: usize) -> i64 {
     1_000 + path_len as i64 * 750
 }
@@ -95,9 +115,48 @@ fn build_farm_shop(farm: &mut FarmState, catalog: &CatalogDocument, now_ms: i64)
 }
 
 #[test]
-fn planting_fetches_crop_from_silo_before_fetching_tool() {
+fn planting_orders_prerequisite_pickups_by_shortest_route() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
+
+    let planted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+
+    assert!(planted.accepted);
+    let task = &farm.resident_task_queues["woman"][0];
+    assert!(matches!(
+        &task.steps[0].work,
+        my_farm_core::ResidentTaskStepWork::PickupTools {
+            source: ToolSourceRef::Farmhouse,
+            tools
+        } if tools == &[my_farm_core::ToolStack::new(ToolKind::Hoe, 1)]
+    ));
+    assert!(matches!(
+        &task.steps[1].work,
+        my_farm_core::ResidentTaskStepWork::PickupItems {
+            source: my_farm_core::StorageSourceRef::Silo,
+            items
+        } if items == &[ItemStack::new("wheat", 1)]
+    ));
+    assert!(matches!(
+        task.steps[2].work,
+        my_farm_core::ResidentTaskStepWork::PlantCrop { .. }
+    ));
+}
+
+#[test]
+fn planting_can_fetch_crop_before_tool_when_that_route_is_shorter() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.resident_locations
+        .insert("woman".to_owned(), Tile::new(14, 4));
 
     let planted = apply_command(
         &mut farm,
@@ -178,6 +237,80 @@ fn resident_future_tasks_can_be_reordered_authoritatively() {
     assert_eq!(reordered_queue[2].id, original_order[1]);
     assert_ne!(reordered_queue[1].ready_at_ms, old_moved_ready_at);
     assert!(!reordered_queue[1].steps[0].walk_path.is_empty());
+}
+
+#[test]
+fn resident_reorder_replans_future_pickups_with_route_aware_ordering() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+
+    let stocked = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::StockFarmShop {
+            item_id: "wheat".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+    assert!(stocked.accepted, "{:?}", stocked.error);
+    let planted_wheat = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-1".to_owned(),
+            crop_id: "wheat".to_owned(),
+        },
+        0,
+    );
+    assert!(planted_wheat.accepted, "{:?}", planted_wheat.error);
+    let planted_corn = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::PlantCrop {
+            plot_id: "plot-2".to_owned(),
+            crop_id: "corn".to_owned(),
+        },
+        0,
+    );
+    assert!(planted_corn.accepted, "{:?}", planted_corn.error);
+
+    let original_order = farm.resident_task_queues["woman"]
+        .iter()
+        .map(|task| task.id.clone())
+        .collect::<Vec<_>>();
+    let reordered = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::ReorderResidentTask {
+            resident_id: "woman".to_owned(),
+            task_id: original_order[2].clone(),
+            before_task_id: Some(original_order[1].clone()),
+        },
+        0,
+    );
+
+    assert!(reordered.accepted, "{:?}", reordered.error);
+    let moved_task = &farm.resident_task_queues["woman"][1];
+    assert!(matches!(
+        &moved_task.steps[0].work,
+        my_farm_core::ResidentTaskStepWork::PickupTools {
+            source: ToolSourceRef::Farmhouse,
+            tools
+        } if tools == &[my_farm_core::ToolStack::new(ToolKind::Hoe, 1)]
+    ));
+    assert!(matches!(
+        &moved_task.steps[1].work,
+        my_farm_core::ResidentTaskStepWork::PickupItems {
+            source: my_farm_core::StorageSourceRef::Silo,
+            items
+        } if items == &[ItemStack::new("corn", 1)]
+    ));
+    assert!(matches!(
+        moved_task.steps[2].work,
+        my_farm_core::ResidentTaskStepWork::PlantCrop { ref crop_id } if crop_id == "corn"
+    ));
 }
 
 #[test]
@@ -874,12 +1007,74 @@ fn old_save_without_farm_shop_loads_with_none() {
 }
 
 #[test]
-fn field_tools_prefer_tool_shed_and_return_to_original_source() {
+fn field_tools_choose_route_aware_source_and_return_to_original_source() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
     farm.xp = 14;
     farm.level = 3;
     farm.coins = 90;
+    farm.field_plots[0].crop = Some(my_farm_core::PlantedCrop {
+        item_id: "wheat".to_owned(),
+        planted_at_ms: 0,
+        ready_at_ms: 0,
+    });
+
+    let built = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::BuyStructure {
+            structure_kind: StructureKind::ToolShed,
+            tile: Tile::new(3, 2),
+        },
+        0,
+    );
+    assert!(built.accepted);
+
+    let harvested = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::HarvestCrop {
+            plot_id: "plot-1".to_owned(),
+        },
+        0,
+    );
+
+    assert!(harvested.accepted);
+    let task = &farm.resident_task_queues["woman"][0];
+    assert!(matches!(
+        &task.steps[0].work,
+        my_farm_core::ResidentTaskStepWork::PickupTools {
+            source: ToolSourceRef::Farmhouse,
+            tools
+        } if tools == &[my_farm_core::ToolStack::new(ToolKind::Sickle, 1)]
+    ));
+    assert!(matches!(
+        &task.steps.last().unwrap().work,
+        my_farm_core::ResidentTaskStepWork::ReturnTools {
+            source: ToolSourceRef::Farmhouse,
+            tools
+        } if tools == &[my_farm_core::ToolStack::new(ToolKind::Sickle, 1)]
+    ));
+
+    let task_tail_ready_at = resident_task_tail_ready_at(&farm, "woman", 0);
+    apply_elapsed(&mut farm, &catalog, task_tail_ready_at);
+    assert!(farm.resident_task_queues["woman"].is_empty());
+    assert_eq!(
+        farm.tool_shed.as_ref().unwrap().tool_stock[&ToolKind::Sickle],
+        1
+    );
+    assert_eq!(farm.farmhouse_tool_stock[&ToolKind::Sickle], 1);
+}
+
+#[test]
+fn field_tools_can_choose_tool_shed_when_it_is_the_shorter_route() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    farm.xp = 14;
+    farm.level = 3;
+    farm.coins = 90;
+    farm.resident_locations
+        .insert("woman".to_owned(), Tile::new(3, 4));
     farm.field_plots[0].crop = Some(my_farm_core::PlantedCrop {
         item_id: "wheat".to_owned(),
         planted_at_ms: 0,
@@ -923,15 +1118,6 @@ fn field_tools_prefer_tool_shed_and_return_to_original_source() {
             tools
         } if id == &tool_shed_id && tools == &[my_farm_core::ToolStack::new(ToolKind::Sickle, 1)]
     ));
-
-    let task_tail_ready_at = resident_task_tail_ready_at(&farm, "woman", 0);
-    apply_elapsed(&mut farm, &catalog, task_tail_ready_at);
-    assert!(farm.resident_task_queues["woman"].is_empty());
-    assert_eq!(
-        farm.tool_shed.as_ref().unwrap().tool_stock[&ToolKind::Sickle],
-        1
-    );
-    assert_eq!(farm.farmhouse_tool_stock[&ToolKind::Sickle], 1);
 }
 
 #[test]
@@ -1142,7 +1328,15 @@ fn field_plot_tasks_snapshot_closest_tool_source_timing_when_queued() {
     );
     assert!(planted_before_shed.accepted);
     assert!(matches!(
-        farm.resident_task_queues["woman"][0].steps[1].work,
+        farm.resident_task_queues["woman"][0]
+            .steps
+            .iter()
+            .find(|step| matches!(
+                step.work,
+                my_farm_core::ResidentTaskStepWork::PickupTools { .. }
+            ))
+            .unwrap()
+            .work,
         my_farm_core::ResidentTaskStepWork::PickupTools {
             source: ToolSourceRef::Farmhouse,
             ..
@@ -1170,7 +1364,7 @@ fn field_plot_tasks_snapshot_closest_tool_source_timing_when_queued() {
         0,
     );
     assert!(planted_after_shed.accepted);
-    let after_shed_pickup_duration = farm.resident_task_queues["woman"][1].steps[1].duration_ms;
+    let after_shed_work_duration = work_step(&farm.resident_task_queues["woman"][1], 0).duration_ms;
     assert!(
         !farm.resident_task_queues["woman"][1]
             .steps
@@ -1195,8 +1389,8 @@ fn field_plot_tasks_snapshot_closest_tool_source_timing_when_queued() {
     );
     assert!(moved.accepted);
     assert_eq!(
-        farm.resident_task_queues["woman"][1].steps[1].duration_ms,
-        after_shed_pickup_duration
+        work_step(&farm.resident_task_queues["woman"][1], 0).duration_ms,
+        after_shed_work_duration
     );
 
     let planted_after_move = apply_command(
@@ -1597,6 +1791,7 @@ fn completed_harvest_deposits_grain_then_returns_tools_to_tool_shed() {
     );
     assert!(built.accepted);
     let tool_shed_tile = farm.tool_shed.as_ref().unwrap().tile.clone();
+    let tool_shed_id = farm.tool_shed.as_ref().unwrap().id.clone();
 
     let selected = apply_command(
         &mut farm,
@@ -1607,6 +1802,8 @@ fn completed_harvest_deposits_grain_then_returns_tools_to_tool_shed() {
         0,
     );
     assert!(selected.accepted);
+    farm.resident_locations
+        .insert("man".to_owned(), Tile::new(3, 4));
 
     let harvested = apply_command(
         &mut farm,
@@ -1635,7 +1832,10 @@ fn completed_harvest_deposits_grain_then_returns_tools_to_tool_shed() {
     ));
     assert!(matches!(
         task.steps.last().unwrap().work,
-        my_farm_core::ResidentTaskStepWork::ReturnTools { .. }
+        my_farm_core::ResidentTaskStepWork::ReturnTools {
+            source: ToolSourceRef::ToolShed { ref id },
+            ..
+        } if id == &tool_shed_id
     ));
     let task_tail_ready_at = resident_task_tail_ready_at(&farm, "man", 0);
     let harvest_ready_at = resident_task_ready_at(&farm, "man", 0);
@@ -1702,9 +1902,10 @@ fn structure_placement_rejects_reserved_resident_path_tiles() {
         0,
     );
     assert!(planted.accepted);
-    let reserved_path_tile = farm.resident_task_queues["woman"][0].steps[0]
-        .walk_path
+    let reserved_path_tile = farm.resident_task_queues["woman"][0]
+        .steps
         .iter()
+        .flat_map(|step| step.walk_path.iter())
         .find(|tile| !farm.field_plots.iter().any(|plot| plot.tile == **tile))
         .cloned()
         .expect("non-field path tile");
@@ -3794,7 +3995,13 @@ fn crop_unlock_starter_stock_retries_after_silo_space_opens() {
     );
     assert!(planted_corn.accepted);
     assert_eq!(inventory_quantity(&farm, "soybean"), 0);
-    let corn_pickup_ready_at = farm.resident_task_queues["woman"][0].ready_at_ms;
+    let corn_pickup_ready_at = resident_task_step_ready_at(&farm, "woman", 0, |step| {
+        matches!(
+            &step.work,
+            my_farm_core::ResidentTaskStepWork::PickupItems { items, .. }
+                if items == &[ItemStack::new("corn", 1)]
+        )
+    });
     apply_elapsed(&mut farm, &catalog, corn_pickup_ready_at);
     assert_eq!(inventory_quantity(&farm, "soybean"), 2);
 }

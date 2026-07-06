@@ -772,6 +772,7 @@ fn plan_resource_steps(
 ) -> Result<Vec<ResidentTaskStep>, CommandError> {
     let mut projected = projected_resident_inventory(farm, catalog, resident_id);
     let mut planned = Vec::new();
+    let mut previous_tile = projected_resident_start_tile(farm, resident_id);
 
     for index in 0..work_steps.len() {
         let work_step = work_steps[index].clone();
@@ -782,56 +783,266 @@ fn plan_resource_steps(
             > projected.item_capacity
             && !projected.items.is_empty()
         {
-            planned.extend(deposit_all_carried_items(catalog, &mut projected));
-        }
-        let pickups = missing_projected_items(farm, &projected, &pickup_inputs)?;
-        if !pickups.is_empty() {
-            for pickup in pickups {
-                add_projected_items(&mut projected.items, std::slice::from_ref(&pickup));
-                planned.push(resident_task_step(
-                    reserved_target_for_storage_source(&storage_source_for_item(
-                        catalog,
-                        &pickup.item_id,
-                    )),
-                    ResidentTaskStepWork::PickupItems {
-                        source: storage_source_for_item(catalog, &pickup.item_id),
-                        items: vec![pickup],
-                    },
-                ));
-            }
+            append_steps_with_cursor(
+                farm,
+                &mut planned,
+                &mut previous_tile,
+                deposit_all_carried_items(catalog, &mut projected),
+            )?;
         }
 
-        if let Some(tool_kind) = tool_for_work(&work_step.work) {
-            if projected.tools.get(&tool_kind).copied().unwrap_or(0) == 0 {
-                let source = available_tool_source(farm, tool_kind)
-                    .ok_or_else(|| CommandError::new("required tool unavailable"))?;
-                add_projected_tools(&mut projected.tools, &[ToolStack::new(tool_kind, 1)]);
-                planned.push(resident_task_step(
-                    ReservedWorkTarget::ToolSource,
-                    ResidentTaskStepWork::PickupTools {
-                        source,
-                        tools: vec![ToolStack::new(tool_kind, 1)],
-                    },
-                ));
-            }
+        let pickup_requirements = prerequisite_pickup_requirements(
+            farm,
+            catalog,
+            &projected,
+            &work_step,
+            &pickup_inputs,
+        )?;
+        let pickup_steps =
+            best_prerequisite_pickup_order(farm, &previous_tile, &work_step, pickup_requirements)?;
+        for pickup_step in &pickup_steps {
+            apply_projected_step(farm, catalog, &mut projected, pickup_step)?;
         }
+        append_steps_with_cursor(farm, &mut planned, &mut previous_tile, pickup_steps)?;
 
         let outputs = step_inventory_outputs(catalog, &work_step.work);
         if carried_item_quantity(&projected.items) + stack_quantity(&outputs)
             > projected.item_capacity
             && !projected.items.is_empty()
         {
-            planned.extend(deposit_all_carried_items(catalog, &mut projected));
+            append_steps_with_cursor(
+                farm,
+                &mut planned,
+                &mut previous_tile,
+                deposit_all_carried_items(catalog, &mut projected),
+            )?;
         }
         remove_projected_items(&mut projected.items, &inputs)?;
         add_projected_items(&mut projected.items, &outputs);
-        planned.push(work_step);
+        append_steps_with_cursor(farm, &mut planned, &mut previous_tile, vec![work_step])?;
     }
 
-    planned.extend(deposit_all_carried_items(catalog, &mut projected));
-    planned.extend(return_all_carried_tools(farm, &mut projected));
+    append_steps_with_cursor(
+        farm,
+        &mut planned,
+        &mut previous_tile,
+        deposit_all_carried_items(catalog, &mut projected),
+    )?;
+    append_steps_with_cursor(
+        farm,
+        &mut planned,
+        &mut previous_tile,
+        return_all_carried_tools(farm, &mut projected),
+    )?;
 
     Ok(planned)
+}
+
+#[derive(Clone)]
+struct PickupRequirement {
+    alternatives: Vec<PickupCandidate>,
+}
+
+#[derive(Clone)]
+struct PickupCandidate {
+    step: ResidentTaskStep,
+    sort_key: String,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct PickupOrderScore {
+    total_path_len: usize,
+    pickup_keys: Vec<String>,
+    route_tiebreakers: Vec<(i32, i32)>,
+}
+
+fn prerequisite_pickup_requirements(
+    farm: &FarmState,
+    catalog: &CatalogDocument,
+    projected: &ProjectedInventory,
+    work_step: &ResidentTaskStep,
+    pickup_inputs: &[ItemStack],
+) -> Result<Vec<PickupRequirement>, CommandError> {
+    let mut requirements = item_pickup_requirements(
+        catalog,
+        missing_projected_items(farm, projected, pickup_inputs)?,
+    );
+
+    if let Some(tool_kind) = tool_for_work(&work_step.work) {
+        if projected.tools.get(&tool_kind).copied().unwrap_or(0) == 0 {
+            let alternatives = available_tool_sources(farm, tool_kind)
+                .into_iter()
+                .map(|source| PickupCandidate {
+                    sort_key: format!(
+                        "tools:{}:{}",
+                        tool_source_sort_key(&source),
+                        tool_kind_sort_key(tool_kind)
+                    ),
+                    step: resident_task_step(
+                        ReservedWorkTarget::ToolSource,
+                        ResidentTaskStepWork::PickupTools {
+                            source,
+                            tools: vec![ToolStack::new(tool_kind, 1)],
+                        },
+                    ),
+                })
+                .collect::<Vec<_>>();
+            if alternatives.is_empty() {
+                return Err(CommandError::new("required tool unavailable"));
+            }
+            requirements.push(PickupRequirement { alternatives });
+        }
+    }
+
+    Ok(requirements)
+}
+
+fn item_pickup_requirements(
+    catalog: &CatalogDocument,
+    pickups: Vec<ItemStack>,
+) -> Vec<PickupRequirement> {
+    let mut grouped: Vec<(StorageSourceRef, Vec<ItemStack>)> = Vec::new();
+    for pickup in pickups {
+        let source = storage_source_for_item(catalog, &pickup.item_id);
+        if let Some((_, items)) = grouped
+            .iter_mut()
+            .find(|(existing_source, _)| *existing_source == source)
+        {
+            items.push(pickup);
+        } else {
+            grouped.push((source, vec![pickup]));
+        }
+    }
+
+    grouped
+        .into_iter()
+        .map(|(source, mut items)| {
+            items.sort_by(|left, right| left.item_id.cmp(&right.item_id));
+            let sort_key = format!(
+                "items:{}:{}",
+                storage_source_sort_key(&source),
+                items
+                    .iter()
+                    .map(|item| format!("{}:{}", item.item_id, item.quantity))
+                    .collect::<Vec<_>>()
+                    .join("|")
+            );
+            PickupRequirement {
+                alternatives: vec![PickupCandidate {
+                    step: resident_task_step(
+                        reserved_target_for_storage_source(&source),
+                        ResidentTaskStepWork::PickupItems { source, items },
+                    ),
+                    sort_key,
+                }],
+            }
+        })
+        .collect()
+}
+
+fn best_prerequisite_pickup_order(
+    farm: &FarmState,
+    start: &Tile,
+    work_step: &ResidentTaskStep,
+    requirements: Vec<PickupRequirement>,
+) -> Result<Vec<ResidentTaskStep>, CommandError> {
+    if requirements.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut best: Option<(PickupOrderScore, Vec<PickupCandidate>)> = None;
+    visit_pickup_orders(farm, start, work_step, requirements, Vec::new(), &mut best);
+
+    best.map(|(_, candidates)| {
+        candidates
+            .into_iter()
+            .map(|candidate| candidate.step)
+            .collect()
+    })
+    .ok_or_else(|| CommandError::new("work target is unreachable"))
+}
+
+fn visit_pickup_orders(
+    farm: &FarmState,
+    start: &Tile,
+    work_step: &ResidentTaskStep,
+    remaining: Vec<PickupRequirement>,
+    current: Vec<PickupCandidate>,
+    best: &mut Option<(PickupOrderScore, Vec<PickupCandidate>)>,
+) {
+    if remaining.is_empty() {
+        if let Some(score) = score_pickup_order(farm, start, work_step, &current) {
+            if best
+                .as_ref()
+                .is_none_or(|(best_score, _)| score < *best_score)
+            {
+                *best = Some((score, current));
+            }
+        }
+        return;
+    }
+
+    for index in 0..remaining.len() {
+        let mut next_remaining = remaining.clone();
+        let requirement = next_remaining.remove(index);
+        for candidate in requirement.alternatives {
+            let mut next_current = current.clone();
+            next_current.push(candidate);
+            visit_pickup_orders(
+                farm,
+                start,
+                work_step,
+                next_remaining.clone(),
+                next_current,
+                best,
+            );
+        }
+    }
+}
+
+fn score_pickup_order(
+    farm: &FarmState,
+    start: &Tile,
+    work_step: &ResidentTaskStep,
+    order: &[PickupCandidate],
+) -> Option<PickupOrderScore> {
+    let mut cursor = start.clone();
+    let mut total_path_len = 0;
+    let mut pickup_keys = Vec::new();
+    let mut route_tiebreakers = Vec::new();
+
+    for pickup in order {
+        let route = best_work_target_route(farm, &cursor, &pickup.step)?;
+        total_path_len += route.path.len();
+        route_tiebreakers.push((route.approach_tile.y, route.approach_tile.x));
+        pickup_keys.push(pickup.sort_key.clone());
+        cursor = route.approach_tile;
+    }
+
+    let final_route = best_work_target_route(farm, &cursor, work_step)?;
+    total_path_len += final_route.path.len();
+    route_tiebreakers.push((final_route.approach_tile.y, final_route.approach_tile.x));
+
+    Some(PickupOrderScore {
+        total_path_len,
+        pickup_keys,
+        route_tiebreakers,
+    })
+}
+
+fn append_steps_with_cursor(
+    farm: &FarmState,
+    planned: &mut Vec<ResidentTaskStep>,
+    previous_tile: &mut Tile,
+    steps: Vec<ResidentTaskStep>,
+) -> Result<(), CommandError> {
+    for step in steps {
+        let route = best_work_target_route(farm, previous_tile, &step)
+            .ok_or_else(|| CommandError::new("work target is unreachable"))?;
+        *previous_tile = route.approach_tile;
+        planned.push(step);
+    }
+    Ok(())
 }
 
 fn pickup_inputs_for_remaining_work(
@@ -1266,14 +1477,16 @@ fn tool_for_work(work: &ResidentTaskStepWork) -> Option<ToolKind> {
     }
 }
 
-fn available_tool_source(farm: &FarmState, tool_kind: ToolKind) -> Option<ToolSourceRef> {
-    if let Some(source) = available_tool_shed_source(farm, tool_kind) {
-        return Some(source);
-    }
+fn available_tool_sources(farm: &FarmState, tool_kind: ToolKind) -> Vec<ToolSourceRef> {
+    let mut sources = Vec::new();
     if tool_source_available(farm, &ToolSourceRef::Farmhouse, tool_kind) {
-        return Some(ToolSourceRef::Farmhouse);
+        sources.push(ToolSourceRef::Farmhouse);
     }
-    None
+    if let Some(source) = available_tool_shed_source(farm, tool_kind) {
+        sources.push(source);
+    }
+    sources.sort_by_key(tool_source_sort_key);
+    sources
 }
 
 fn is_field_tool(tool_kind: ToolKind) -> bool {
@@ -1292,6 +1505,32 @@ fn tool_source_available(farm: &FarmState, source: &ToolSourceRef, tool_kind: To
     tool_source_quantity(farm, source, tool_kind)
         .saturating_sub(reserved_tool_pickups(farm, source, tool_kind))
         > 0
+}
+
+fn storage_source_sort_key(source: &StorageSourceRef) -> &'static str {
+    match source {
+        StorageSourceRef::Silo => "silo",
+        StorageSourceRef::Barn => "barn",
+    }
+}
+
+fn tool_source_sort_key(source: &ToolSourceRef) -> String {
+    match source {
+        ToolSourceRef::Farmhouse => "farmhouse".to_owned(),
+        ToolSourceRef::ToolShed { id } => format!("tool_shed:{id}"),
+    }
+}
+
+fn tool_kind_sort_key(tool_kind: ToolKind) -> &'static str {
+    match tool_kind {
+        ToolKind::Hoe => "hoe",
+        ToolKind::Sickle => "sickle",
+        ToolKind::MixingBowl => "mixing_bowl",
+        ToolKind::OvenMitt => "oven_mitt",
+        ToolKind::FeedBucket => "feed_bucket",
+        ToolKind::CollectionPail => "collection_pail",
+        ToolKind::Wrench => "wrench",
+    }
 }
 
 fn tool_source_quantity(farm: &FarmState, source: &ToolSourceRef, tool_kind: ToolKind) -> u32 {

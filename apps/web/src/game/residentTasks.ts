@@ -103,8 +103,14 @@ export function currentResidentScenePose(
     };
   }
 
+  const workingTile =
+    work.current_step.target?.tile ??
+    work.target?.tile ??
+    work.scene.path.at(-1) ??
+    work.scene.tile ??
+    currentTile;
   return {
-    tile: work.scene.tile,
+    tile: workingTile,
     label: work.target?.label ?? "Work target",
     state: "working",
   };
