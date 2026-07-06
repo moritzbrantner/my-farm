@@ -2,6 +2,7 @@
 /node_modules/
 /apps/web/node_modules/
 /apps/web/dist/
+/apps/web/storybook-static/
 /apps/web/src/generated/my_farm_wasm/
 /apps/web/test-results/
 /apps/web/playwright-report/

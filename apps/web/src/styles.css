@@ -1072,6 +1072,161 @@ button[aria-disabled="true"] {
   font-weight: 650;
 }
 
+.wiki-panel {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+}
+
+.wiki-panel__tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wiki-panel__tabs button {
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  background: #e5edd4;
+}
+
+.wiki-panel__tabs button[aria-selected="true"] {
+  background: #fff7d0;
+  border-color: #446d38;
+}
+
+.wiki-panel__intro {
+  margin: 0;
+  color: #536a5e;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.wiki-panel__scenarios {
+  display: grid;
+  gap: 10px;
+}
+
+.wiki-panel__scenario-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wiki-panel__scenario-list button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  text-align: left;
+  background: #e5edd4;
+}
+
+.wiki-panel__scenario-list span {
+  font-weight: 900;
+}
+
+.wiki-panel__scenario-list small {
+  color: #536a5e;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.wiki-scenario {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  max-height: min(62vh, 620px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.wiki-scenario__all {
+  justify-self: start;
+  min-height: 38px;
+  padding: 7px 10px;
+  background: #e5edd4;
+}
+
+.wiki-scenario header,
+.wiki-scenario__section {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 6px;
+  background: #e5edd4;
+}
+
+.wiki-scenario header span {
+  color: #536a5e;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.wiki-scenario h3,
+.wiki-scenario h4,
+.wiki-scenario p {
+  margin: 0;
+}
+
+.wiki-scenario h3 {
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.wiki-scenario h4 {
+  font-size: 14px;
+}
+
+.wiki-scenario p,
+.wiki-scenario li {
+  color: #536a5e;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.wiki-scenario ul,
+.wiki-scenario ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.wiki-scenario__terms {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  padding-left: 0 !important;
+  list-style: none;
+}
+
+.wiki-scenario__terms li {
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: #f7f0cd;
+  color: #324f3e;
+  font-weight: 800;
+}
+
+.wiki-scenario__nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wiki-scenario__nav button {
+  min-height: 42px;
+  background: #fff7d0;
+}
+
 .main-menu__account strong {
   font-size: 20px;
 }

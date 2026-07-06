@@ -22,6 +22,7 @@ import { createFarmClient, type FarmConnectionStatus } from "./api";
 import { FarmScene } from "./components/FarmScene";
 import { HouseInteriorScene, type HouseInteriorMode, type HouseRoomId } from "./components/HouseInteriorScene";
 import { ResourceIcon } from "./components/ResourceIcon";
+import { WikiPanel } from "./components/WikiPanel";
 import {
   availableRecipes,
   builtStructureKinds,
@@ -1522,34 +1523,7 @@ function MainMenu({
         ) : null}
         {panel === "wiki" ? (
           <MainMenuSubpanel title="Wiki" onBack={openHome}>
-            <dl className="main-menu__wiki">
-              <div>
-                <dt>Field Plot</dt>
-                <dd>A tile that holds one planted crop job.</dd>
-              </div>
-              <div>
-                <dt>Crop</dt>
-                <dd>A harvestable plant stored in the silo.</dd>
-              </div>
-              <div>
-                <dt>Machine</dt>
-                <dd>A structure with a recipe queue for farm products.</dd>
-              </div>
-              <div>
-                <dt>{demoMode ? "Demo Farm" : "Delivery Order"}</dt>
-                <dd>
-                  {demoMode
-                    ? "A browser-local farm saved on this device."
-                    : "A request that pays coins and XP for goods."}
-                </dd>
-              </div>
-              {!demoMode ? (
-                <div>
-                  <dt>Storage Upgrade</dt>
-                  <dd>A coin purchase that raises Silo or Barn capacity after reaching its unlock level.</dd>
-                </div>
-              ) : null}
-            </dl>
+            <WikiPanel demoMode={demoMode} />
           </MainMenuSubpanel>
         ) : null}
         {panel === "account" ? (

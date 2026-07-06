@@ -177,6 +177,7 @@ async function closeGuidedTutorial(page: Page) {
 
 async function enterHouseRoom(page: Page, roomName: "Living Room" | "Kitchen" | "Bedroom") {
   await page.getByLabel("Farmhouse structure").click({ force: true });
+  await page.getByRole("button", { name: "Enter Farmhouse" }).click();
   await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
   await expect(page.getByTestId("house-overview")).toBeVisible();
   await page.getByRole("button", { name: `Enter ${roomName}` }).click();
