@@ -515,6 +515,10 @@ fn demo_runtime_rejects_farm_shop_stock_commands_before_core_execution() {
             item_id: "wheat".to_owned(),
             quantity: 1,
         },
+        FarmCommand::SetFarmShopPrice {
+            item_id: "wheat".to_owned(),
+            price: 2,
+        },
     ] {
         let response = command_raw(&mut runtime, 0, command, 1_000.0);
 

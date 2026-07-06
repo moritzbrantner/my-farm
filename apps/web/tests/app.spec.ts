@@ -3217,6 +3217,8 @@ test("Farm Shop build tray gates placement to a single road-edge shop", async ({
           tile: { x: 3, y: 17 },
           stock: [],
           stock_capacity: 6,
+          item_type_capacity: 10,
+          prices: [],
           next_customer_visit_at_ms: Date.now() + 60_000,
           visit_count: 0,
         },
@@ -3241,6 +3243,8 @@ test("Farm Shop panel stocks, returns, and shows reserved stock reasons", async 
         { item_id: "wheat", name: "Wheat", quantity: 3, available_quantity: 2, reserved_quantity: 1, kind: "crop" },
       ],
       stock_capacity: 5,
+      item_type_capacity: 10,
+      prices: [{ item_id: "wheat", price: 2, base_price: 2, max_price: 4, sale_chance_bps: 10_000 }],
       next_customer_visit_at_ms: Date.now() + 60_000,
       visit_count: 0,
     },
@@ -3263,7 +3267,10 @@ test("Farm Shop panel stocks, returns, and shows reserved stock reasons", async 
   await expect(selection.getByText("Total stock")).toBeVisible();
   await expect(selection.getByText("Reserved stock")).toBeVisible();
   await expect(selection.getByText("Available stock")).toBeVisible();
+  await expect(selection.getByText("Listed items")).toBeVisible();
   await expect(selection.getByText("2 available, 1 reserved")).toBeVisible();
+  await expect(selection.getByText("2 coins, 100% chance")).toBeVisible();
+  await expect(selection.getByText("Base 2 coins - Max 4 coins - Sale chance 100%")).toBeVisible();
 
   await selection.getByLabel("Farm Shop quantity").fill("3");
   await expect(selection.getByRole("button", { name: "Stock" })).toBeDisabled();
@@ -3275,6 +3282,14 @@ test("Farm Shop panel stocks, returns, and shows reserved stock reasons", async 
     type: "stock_farm_shop",
     item_id: "wheat",
     quantity: 2,
+  });
+
+  await selection.getByLabel("Farm Shop price").fill("4");
+  await selection.getByRole("button", { name: "Set Price" }).click();
+  await expect.poll(() => commands.at(-1)?.command).toEqual({
+    type: "set_farm_shop_price",
+    item_id: "wheat",
+    price: 4,
   });
 
   await selection.getByRole("button", { name: "Return" }).click();
@@ -3302,6 +3317,8 @@ test("Farm Shop move and stock controls respect queued work and sale feedback", 
         tile: { x: 3, y: 17 },
         stock: [{ item_id: "wheat", name: "Wheat", quantity: 3, available_quantity: 3, reserved_quantity: 0, kind: "crop" }],
         stock_capacity: 4,
+        item_type_capacity: 10,
+        prices: [{ item_id: "wheat", price: 2, base_price: 2, max_price: 4, sale_chance_bps: 10_000 }],
         next_customer_visit_at_ms: now + 60_000,
         visit_count: 1,
         current_sale: {
@@ -3355,6 +3372,41 @@ test("Farm Shop move and stock controls respect queued work and sale feedback", 
   await menu.getByRole("menuitem", { name: "Move Reserved for Mara's task" }).click({ force: true });
   await expect(page.getByText("Moving Farm Shop")).toHaveCount(0);
   expect(commands).toHaveLength(0);
+});
+
+test("Farm Shop panel shows customer rejection feedback", async ({ page }) => {
+  const now = Date.now();
+  const view = farmShopView({
+    farm_shop: {
+      id: "farm-shop-1",
+      tile: { x: 3, y: 17 },
+      stock: [{ item_id: "wheat", name: "Wheat", quantity: 1, available_quantity: 1, reserved_quantity: 0, kind: "crop" }],
+      stock_capacity: 30,
+      item_type_capacity: 10,
+      prices: [{ item_id: "wheat", price: 4, base_price: 2, max_price: 4, sale_chance_bps: 2_500 }],
+      next_customer_visit_at_ms: now + 60_000,
+      visit_count: 2,
+      current_rejection: {
+        id: "rejection-1",
+        item_id: "wheat",
+        shop_price: 4,
+        base_price: 2,
+        sale_chance_bps: 2_500,
+        visited_at_ms: now - 500,
+        visible_until_ms: now + 60_000,
+      },
+    },
+  });
+  await mockFarmApi(page, view, catalog);
+  await openFarm(page);
+
+  await expect(page.getByTestId("farm-shop-sale-car")).toBeVisible();
+  await page.getByLabel("Farm Shop structure").click();
+  const selection = page.locator(".panel-section").filter({
+    has: page.getByRole("heading", { name: "Selection" }),
+  });
+  await expect(selection.getByText("Customer passed on Wheat at 4 coins")).toBeVisible();
+  await expect(selection.getByText("4 coins, 25% chance")).toBeVisible();
 });
 
 test("farmhouse does not expose move and blocks moved structures", async ({ page }, testInfo) => {
@@ -3720,6 +3772,8 @@ function farmShopView(overrides: Partial<FarmView>): FarmView {
       tile: { x: 3, y: 17 },
       stock: [],
       stock_capacity: 6,
+      item_type_capacity: 10,
+      prices: [],
       next_customer_visit_at_ms: Date.now() + 60_000,
       visit_count: 0,
       ...overrides.farm_shop,

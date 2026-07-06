@@ -485,10 +485,12 @@ fn farm_shop_must_be_built_by_the_road_after_unlock() {
     assert!(built.accepted, "{:?}", built.error);
     let shop = farm.farm_shop.as_ref().unwrap();
     assert_eq!(shop.tile, Tile::new(3, 17));
-    assert_eq!(shop.stock_capacity, 8);
+    assert_eq!(shop.stock_capacity, 30);
     assert_eq!(shop.stock, Vec::<ItemStack>::new());
+    assert!(shop.prices.is_empty());
     assert_eq!(shop.visit_count, 0);
     assert!(shop.current_sale.is_none());
+    assert!(shop.current_rejection.is_none());
 }
 
 #[test]
@@ -710,13 +712,13 @@ fn farm_shop_stocking_and_unstocking_validate_command_boundaries() {
         "item is not available to sell"
     );
 
-    add_inventory(&mut farm, "wheat", 10);
+    add_inventory(&mut farm, "wheat", 40);
     let too_much_stock = apply_command(
         &mut farm,
         &catalog,
         FarmCommand::StockFarmShop {
             item_id: "wheat".to_owned(),
-            quantity: 9,
+            quantity: 31,
         },
         0,
     );
@@ -777,6 +779,43 @@ fn farm_shop_stocking_and_unstocking_validate_command_boundaries() {
 }
 
 #[test]
+fn farm_shop_limits_stock_to_ten_item_types() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    unlock_level(&mut farm, &catalog, 7);
+    farm.farm_shop.as_mut().unwrap().stock = vec![
+        ItemStack::new("bread", 1),
+        ItemStack::new("carrot", 1),
+        ItemStack::new("corn", 1),
+        ItemStack::new("corn_bread", 1),
+        ItemStack::new("egg", 1),
+        ItemStack::new("milk", 1),
+        ItemStack::new("potato", 1),
+        ItemStack::new("soybean", 1),
+        ItemStack::new("tomato", 1),
+        ItemStack::new("wheat", 1),
+    ];
+    add_inventory(&mut farm, "potato_bread", 1);
+
+    let too_many_types = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::StockFarmShop {
+            item_id: "potato_bread".to_owned(),
+            quantity: 1,
+        },
+        0,
+    );
+
+    assert!(!too_many_types.accepted);
+    assert_eq!(
+        too_many_types.error.unwrap().message,
+        "farm shop item type limit reached"
+    );
+}
+
+#[test]
 fn farm_view_exposes_reserved_and_available_shop_stock() {
     let catalog = CatalogDocument::default_catalog();
     let mut farm = new_farm(0, &catalog);
@@ -805,6 +844,128 @@ fn farm_view_exposes_reserved_and_available_shop_stock() {
     assert_eq!(wheat.quantity, 3);
     assert_eq!(wheat.reserved_quantity, Some(2));
     assert_eq!(wheat.available_quantity, Some(1));
+    assert_eq!(shop.item_type_capacity, 10);
+    assert_eq!(shop.prices[0].item_id, "wheat");
+    assert_eq!(shop.prices[0].price, 2);
+    assert_eq!(shop.prices[0].base_price, 2);
+    assert_eq!(shop.prices[0].max_price, 4);
+    assert_eq!(shop.prices[0].sale_chance_bps, 10_000);
+}
+
+#[test]
+fn farm_shop_price_can_be_set_for_listed_items() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    farm.farm_shop.as_mut().unwrap().stock = vec![ItemStack::new("wheat", 2)];
+
+    let priced = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SetFarmShopPrice {
+            item_id: "wheat".to_owned(),
+            price: 4,
+        },
+        0,
+    );
+
+    assert!(priced.accepted, "{:?}", priced.error);
+    assert!(priced.events.iter().any(|event| matches!(
+        event,
+        FarmEvent::FarmShopPriceSet { item_id, price }
+            if item_id == "wheat" && *price == 4
+    )));
+    assert_eq!(farm.farm_shop.as_ref().unwrap().prices["wheat"], 4);
+    let view = farm_view(&farm, &catalog);
+    let price = &view.farm_shop.unwrap().prices[0];
+    assert_eq!(price.item_id, "wheat");
+    assert_eq!(price.price, 4);
+    assert_eq!(price.base_price, 2);
+    assert_eq!(price.max_price, 4);
+    assert_eq!(price.sale_chance_bps, 2_500);
+}
+
+#[test]
+fn farm_shop_price_commands_validate_boundaries() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+
+    let no_shop = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SetFarmShopPrice {
+            item_id: "wheat".to_owned(),
+            price: 2,
+        },
+        0,
+    );
+    assert!(!no_shop.accepted);
+    assert_eq!(no_shop.error.unwrap().message, "farm shop not built");
+
+    build_farm_shop(&mut farm, &catalog, 0);
+    let unlisted = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SetFarmShopPrice {
+            item_id: "wheat".to_owned(),
+            price: 2,
+        },
+        0,
+    );
+    assert!(!unlisted.accepted);
+    assert_eq!(
+        unlisted.error.unwrap().message,
+        "item is not listed in the farm shop"
+    );
+
+    farm.farm_shop.as_mut().unwrap().stock = vec![ItemStack::new("wheat", 1)];
+    let zero = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SetFarmShopPrice {
+            item_id: "wheat".to_owned(),
+            price: 0,
+        },
+        0,
+    );
+    assert!(!zero.accepted);
+    assert_eq!(
+        zero.error.unwrap().message,
+        "price must be greater than zero"
+    );
+
+    let too_high = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SetFarmShopPrice {
+            item_id: "wheat".to_owned(),
+            price: 5,
+        },
+        0,
+    );
+    assert!(!too_high.accepted);
+    assert_eq!(
+        too_high.error.unwrap().message,
+        "price cannot exceed twice the base price"
+    );
+
+    unlock_level(&mut farm, &catalog, 3);
+    add_inventory(&mut farm, "chicken_feed", 1);
+    farm.farm_shop.as_mut().unwrap().stock = vec![ItemStack::new("chicken_feed", 1)];
+    let not_sellable = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SetFarmShopPrice {
+            item_id: "chicken_feed".to_owned(),
+            price: 1,
+        },
+        0,
+    );
+    assert!(!not_sellable.accepted);
+    assert_eq!(
+        not_sellable.error.unwrap().message,
+        "item is not available to sell"
+    );
 }
 
 #[test]
@@ -839,6 +1000,106 @@ fn farm_shop_customer_sale_uses_market_sell_price_without_xp() {
             .farm_shop
             .unwrap()
             .current_sale
+            .is_none()
+    );
+}
+
+#[test]
+fn farm_shop_customer_sale_uses_shop_price_without_xp() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    farm.farm_shop.as_mut().unwrap().stock = vec![ItemStack::new("wheat", 1)];
+    let priced = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SetFarmShopPrice {
+            item_id: "wheat".to_owned(),
+            price: 1,
+        },
+        0,
+    );
+    assert!(priced.accepted, "{:?}", priced.error);
+    let visit_at = farm.farm_shop.as_ref().unwrap().next_customer_visit_at_ms;
+    let starting_coins = farm.coins;
+    let starting_xp = farm.xp;
+
+    let events = apply_elapsed(&mut farm, &catalog, visit_at);
+
+    assert!(events.iter().any(|event| matches!(
+        event,
+        FarmEvent::FarmShopSaleCompleted { item_id, quantity, coins_gained }
+            if item_id == "wheat" && *quantity == 1 && *coins_gained == 1
+    )));
+    assert_eq!(farm.coins, starting_coins + 1);
+    assert_eq!(farm.xp, starting_xp);
+    assert!(farm.farm_shop.as_ref().unwrap().stock.is_empty());
+    assert!(
+        !farm
+            .farm_shop
+            .as_ref()
+            .unwrap()
+            .prices
+            .contains_key("wheat")
+    );
+}
+
+#[test]
+fn farm_shop_customer_rejection_preserves_stock_and_shows_feedback() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    farm.farm_shop.as_mut().unwrap().stock = vec![ItemStack::new("wheat", 1)];
+    let priced = apply_command(
+        &mut farm,
+        &catalog,
+        FarmCommand::SetFarmShopPrice {
+            item_id: "wheat".to_owned(),
+            price: 4,
+        },
+        0,
+    );
+    assert!(priced.accepted, "{:?}", priced.error);
+    let rejection_visit_at = (0..100_000)
+        .find(|visit_at| {
+            let mut candidate = farm.clone();
+            candidate
+                .farm_shop
+                .as_mut()
+                .unwrap()
+                .next_customer_visit_at_ms = *visit_at;
+            apply_elapsed(&mut candidate, &catalog, *visit_at)
+                .iter()
+                .any(|event| matches!(event, FarmEvent::FarmShopVisitRejected { .. }))
+        })
+        .unwrap();
+    farm.farm_shop.as_mut().unwrap().next_customer_visit_at_ms = rejection_visit_at;
+    let starting_coins = farm.coins;
+
+    let events = apply_elapsed(&mut farm, &catalog, rejection_visit_at);
+
+    assert!(events.iter().any(|event| matches!(
+        event,
+        FarmEvent::FarmShopVisitRejected { item_id, shop_price, base_price, sale_chance_bps }
+            if item_id == "wheat" && *shop_price == 4 && *base_price == 2 && *sale_chance_bps == 2_500
+    )));
+    assert_eq!(farm.coins, starting_coins);
+    assert_eq!(
+        farm.farm_shop.as_ref().unwrap().stock[0],
+        ItemStack::new("wheat", 1)
+    );
+    let view = farm_view(&farm, &catalog);
+    let rejection = view.farm_shop.unwrap().current_rejection.unwrap();
+    assert_eq!(rejection.item_id, "wheat");
+    assert_eq!(rejection.shop_price, 4);
+    assert_eq!(rejection.sale_chance_bps, 2_500);
+
+    apply_elapsed(&mut farm, &catalog, rejection.visible_until_ms);
+    assert!(
+        farm_view(&farm, &catalog)
+            .farm_shop
+            .unwrap()
+            .current_rejection
             .is_none()
     );
 }
@@ -1004,6 +1265,38 @@ fn old_save_without_farm_shop_loads_with_none() {
     let loaded: FarmState = serde_json::from_value(value).unwrap();
 
     assert!(loaded.farm_shop.is_none());
+}
+
+#[test]
+fn old_farm_shop_save_defaults_prices_and_rejection_window() {
+    let catalog = CatalogDocument::default_catalog();
+    let mut farm = new_farm(0, &catalog);
+    build_farm_shop(&mut farm, &catalog, 0);
+    farm.farm_shop.as_mut().unwrap().stock = vec![ItemStack::new("wheat", 1)];
+    let mut value = serde_json::to_value(&farm).unwrap();
+    let shop = value
+        .as_object_mut()
+        .unwrap()
+        .get_mut("farm_shop")
+        .unwrap()
+        .as_object_mut()
+        .unwrap();
+    shop.remove("prices");
+    shop.remove("current_rejection");
+
+    let loaded: FarmState = serde_json::from_value(value).unwrap();
+
+    assert!(loaded.farm_shop.as_ref().unwrap().prices.is_empty());
+    assert!(
+        loaded
+            .farm_shop
+            .as_ref()
+            .unwrap()
+            .current_rejection
+            .is_none()
+    );
+    let view = farm_view(&loaded, &catalog);
+    assert_eq!(view.farm_shop.unwrap().prices[0].price, 2);
 }
 
 #[test]

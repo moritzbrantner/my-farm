@@ -168,12 +168,20 @@ _Avoid_: Market, delivery board, roadside decoration
 Saved sellable Item stacks held by the Farm Shop, separate from Silo and Barn inventory. Shop Stock is moved in and out by Resident Tasks and can be bought by Customer Visits unless reserved.
 _Avoid_: Market listing, storage inventory, offer
 
+**Shop Price**:
+The saved coin price a Customer Visit pays for one unit of a listed Shop Stock item if the visit buys it.
+_Avoid_: Market price, delivery reward, item value
+
 **Customer Visit**:
 A scheduled elapsed-time opportunity for a roadside car to stop at the Farm Shop and buy one available unit from Shop Stock.
 _Avoid_: Delivery order, market trade, visual-only car
 
+**Customer Rejection**:
+A Customer Visit that considers one listed Shop Stock item but buys nothing because the Shop Price demand roll fails.
+_Avoid_: Failed delivery, customer cancellation, stock error
+
 **Shop Sale**:
-A successful Customer Visit that removes one unreserved Shop Stock unit, pays coins at the catalog market sell price, and exposes a short-lived sale window for the client.
+A successful Customer Visit that removes one unreserved Shop Stock unit, pays coins at the current Shop Price, and exposes a short-lived sale window for the client.
 _Avoid_: Delivery fulfillment, manual sale
 
 **Tool Source**:

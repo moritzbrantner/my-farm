@@ -320,7 +320,9 @@ export function FarmScene({
             }}
           />
         ) : null}
-        {view.farm_shop?.current_sale && view.farm_shop.current_sale.visible_until_ms > nowMs ? (
+        {view.farm_shop &&
+        ((view.farm_shop.current_sale && view.farm_shop.current_sale.visible_until_ms > nowMs) ||
+          (view.farm_shop.current_rejection && view.farm_shop.current_rejection.visible_until_ms > nowMs)) ? (
           <FarmShopSaleCar shopTile={view.farm_shop.tile} />
         ) : null}
         <ResidentPathOverlay view={view} selection={selection} nowMs={nowMs} previewPath={previewResidentPath} />

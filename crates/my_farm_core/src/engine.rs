@@ -1,11 +1,11 @@
 use crate::{
     AnimalShelterState, AnimalState, CatalogDocument, DecorationDef, DecorationPlacement,
-    DeliveryOrder, FarmShopSaleWindow, FarmShopState, FarmState, FarmhouseUpgradeKind, FieldPlot,
-    ItemKind, ItemStack, MachineJob, MachineKind, MachineState, OvenJob, OvenJobStatus,
-    RecipeTarget, ReservedWorkTarget, ResidentTask, ResidentTaskKind, ResidentTaskStep,
-    ResidentTaskStepWork, Room, RoomTile, ShelterKind, StorageKind, StorageSourceRef,
-    StructureKind, Tile, ToolKind, ToolShedState, ToolSourceRef, ToolStack, add_inventory,
-    add_shelter_animals, barn_storage_used, crop_storage_used,
+    DeliveryOrder, FarmShopRejectionWindow, FarmShopSaleWindow, FarmShopState, FarmState,
+    FarmhouseUpgradeKind, FieldPlot, ItemKind, ItemStack, MachineJob, MachineKind, MachineState,
+    OvenJob, OvenJobStatus, RecipeTarget, ReservedWorkTarget, ResidentTask, ResidentTaskKind,
+    ResidentTaskStep, ResidentTaskStepWork, Room, RoomTile, ShelterKind, StorageKind,
+    StorageSourceRef, StructureKind, Tile, ToolKind, ToolShedState, ToolSourceRef, ToolStack,
+    add_inventory, add_shelter_animals, barn_storage_used, crop_storage_used,
     default_resident_task_step_duration_ms, default_tool_stock, gain_xp, inventory_quantity,
     next_id, remove_inventory, scaled_duration_ms, update_level,
 };
@@ -27,7 +27,8 @@ const TOOL_SHED_COST: u32 = 45;
 const TOOL_SHED_UNLOCK_LEVEL: u32 = 3;
 const FARM_SHOP_COST: u32 = 25;
 const FARM_SHOP_UNLOCK_LEVEL: u32 = 2;
-const FARM_SHOP_STOCK_CAPACITY: u32 = 8;
+const FARM_SHOP_STOCK_CAPACITY: u32 = 30;
+pub const FARM_SHOP_ITEM_TYPE_CAPACITY: u32 = 10;
 const FARM_SHOP_SALE_VISIBLE_MS: i64 = 8_000;
 const DECORATION_EDITING_UNLOCK_LEVEL: u32 = 5;
 const RESIDENT_FIELD_WORK_BASE_DURATION_MS: i64 = 1_000;
@@ -139,6 +140,10 @@ pub enum FarmCommand {
     UnstockFarmShop {
         item_id: String,
         quantity: u32,
+    },
+    SetFarmShopPrice {
+        item_id: String,
+        price: u32,
     },
     PlaceDecoration {
         room_id: String,
@@ -262,6 +267,16 @@ pub enum FarmEvent {
         item_id: String,
         quantity: u32,
         coins_gained: u32,
+    },
+    FarmShopPriceSet {
+        item_id: String,
+        price: u32,
+    },
+    FarmShopVisitRejected {
+        item_id: String,
+        shop_price: u32,
+        base_price: u32,
+        sale_chance_bps: u32,
     },
     DecorationPlaced {
         room_id: String,
@@ -425,6 +440,9 @@ pub fn apply_command(
         }
         FarmCommand::UnstockFarmShop { item_id, quantity } => {
             unstock_farm_shop(farm, catalog, now_ms, &item_id, quantity)
+        }
+        FarmCommand::SetFarmShopPrice { item_id, price } => {
+            set_farm_shop_price(farm, catalog, &item_id, price)
         }
         FarmCommand::PlaceDecoration {
             room_id,
@@ -2059,6 +2077,7 @@ fn complete_resident_task_step(
             remove_farm_shop_stock(shop, &items)
                 .map_err(|error| ResidentTaskBlock::new("missing_shop_stock", error.message))?;
             add_resident_items(farm, resident_id, &items);
+            cleanup_farm_shop_prices(farm);
             Ok(items
                 .iter()
                 .map(|item| FarmEvent::FarmShopUnstocked {
@@ -2346,6 +2365,13 @@ fn complete_resident_task_step(
                 ));
             };
             add_farm_shop_stock(shop, &items);
+            for item in &items {
+                if let Ok(base_price) =
+                    ensure_farm_shop_item_is_sellable(farm, catalog, &item.item_id)
+                {
+                    ensure_farm_shop_price(farm, &item.item_id, base_price);
+                }
+            }
             Ok(items
                 .iter()
                 .map(|item| FarmEvent::FarmShopStocked {
@@ -2849,9 +2875,11 @@ fn buy_structure(
                 tile,
                 stock: Vec::new(),
                 stock_capacity: FARM_SHOP_STOCK_CAPACITY,
+                prices: BTreeMap::new(),
                 next_customer_visit_at_ms: farm.last_update_ms + farm_shop_visit_interval_ms(0),
                 visit_count: 0,
                 current_sale: None,
+                current_rejection: None,
             });
         }
     }
@@ -3619,12 +3647,17 @@ fn stock_farm_shop(
         .as_ref()
         .map(|shop| shop.id.clone())
         .ok_or_else(|| CommandError::new("farm shop not built"))?;
-    ensure_farm_shop_item_is_sellable(farm, catalog, item_id)?;
+    let base_price = ensure_farm_shop_item_is_sellable(farm, catalog, item_id)?;
     if quantity == 0 {
         return Err(CommandError::new("quantity must be greater than zero"));
     }
     if available_stored_quantity(farm, item_id) < quantity {
         return Err(CommandError::new(format!("not enough available {item_id}")));
+    }
+    if projected_farm_shop_item_quantity(farm, item_id) == 0
+        && projected_farm_shop_item_type_count(farm) >= FARM_SHOP_ITEM_TYPE_CAPACITY
+    {
+        return Err(CommandError::new("farm shop item type limit reached"));
     }
     let stack = ItemStack::new(item_id, quantity);
     if projected_farm_shop_stock_used(farm) + quantity > farm_shop_capacity(farm)? {
@@ -3641,6 +3674,7 @@ fn stock_farm_shop(
         )],
     )?;
     push_planned_resident_work(farm, planned);
+    ensure_farm_shop_price(farm, item_id, base_price);
     Ok(Vec::new())
 }
 
@@ -3679,6 +3713,7 @@ fn unstock_farm_shop(
         )],
     )?;
     push_planned_resident_work(farm, planned);
+    cleanup_farm_shop_prices(farm);
     Ok(Vec::new())
 }
 
@@ -3686,7 +3721,7 @@ fn ensure_farm_shop_item_is_sellable(
     farm: &FarmState,
     catalog: &CatalogDocument,
     item_id: &str,
-) -> Result<(), CommandError> {
+) -> Result<u32, CommandError> {
     catalog
         .item(item_id)
         .ok_or_else(|| CommandError::new("unknown item"))?;
@@ -3694,10 +3729,42 @@ fn ensure_farm_shop_item_is_sellable(
         .market_item(item_id)
         .ok_or_else(|| CommandError::new("unknown market item"))?;
     require_level(farm, market_item.unlock_level)?;
-    if market_item.sell_price.is_none() {
-        return Err(CommandError::new("item is not available to sell"));
+    market_item
+        .sell_price
+        .ok_or_else(|| CommandError::new("item is not available to sell"))
+}
+
+fn set_farm_shop_price(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    item_id: &str,
+    price: u32,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    if farm.farm_shop.is_none() {
+        return Err(CommandError::new("farm shop not built"));
     }
-    Ok(())
+    let base_price = ensure_farm_shop_item_is_sellable(farm, catalog, item_id)?;
+    if projected_farm_shop_item_quantity(farm, item_id) == 0 {
+        return Err(CommandError::new("item is not listed in the farm shop"));
+    }
+    if price == 0 {
+        return Err(CommandError::new("price must be greater than zero"));
+    }
+    let max_price = base_price
+        .checked_mul(2)
+        .ok_or_else(|| CommandError::new("farm shop price overflow"))?;
+    if price > max_price {
+        return Err(CommandError::new(
+            "price cannot exceed twice the base price",
+        ));
+    }
+    if let Some(shop) = farm.farm_shop.as_mut() {
+        shop.prices.insert(item_id.to_owned(), price);
+    }
+    Ok(vec![FarmEvent::FarmShopPriceSet {
+        item_id: item_id.to_owned(),
+        price,
+    }])
 }
 
 fn advance_farm_shop_visits(
@@ -3714,6 +3781,13 @@ fn advance_farm_shop_visits(
         .is_some_and(|sale| sale.visible_until_ms <= now_ms)
     {
         shop.current_sale = None;
+    }
+    if shop
+        .current_rejection
+        .as_ref()
+        .is_some_and(|rejection| rejection.visible_until_ms <= now_ms)
+    {
+        shop.current_rejection = None;
     }
     if now_ms < shop.next_customer_visit_at_ms {
         return Vec::new();
@@ -3744,6 +3818,16 @@ fn advance_farm_shop_visits(
             shop.current_sale = None;
         }
     }
+    if farm
+        .farm_shop
+        .as_ref()
+        .and_then(|shop| shop.current_rejection.as_ref())
+        .is_some_and(|rejection| rejection.visible_until_ms <= now_ms)
+    {
+        if let Some(shop) = farm.farm_shop.as_mut() {
+            shop.current_rejection = None;
+        }
+    }
     events
 }
 
@@ -3752,22 +3836,46 @@ fn complete_one_farm_shop_visit(
     catalog: &CatalogDocument,
 ) -> Option<FarmEvent> {
     let item_id = next_farm_shop_sale_item_id(farm)?;
-    let market_item = catalog.market_item(&item_id)?;
-    let coins_gained = market_item.sell_price?;
-    let sold_at_ms = farm.farm_shop.as_ref()?.next_customer_visit_at_ms;
+    let (shop_price, base_price) = farm_shop_price_for_item(farm, catalog, &item_id)?;
+    let sale_chance_bps = farm_shop_sale_chance_bps(shop_price, base_price);
+    let visited_at_ms = farm.farm_shop.as_ref()?.next_customer_visit_at_ms;
+    if farm_shop_visit_roll_bps(farm, &item_id, visited_at_ms) >= sale_chance_bps {
+        let rejection_id = next_id(farm, "shop-rejection");
+        if let Some(shop) = farm.farm_shop.as_mut() {
+            shop.current_sale = None;
+            shop.current_rejection = Some(FarmShopRejectionWindow {
+                id: rejection_id,
+                item_id: item_id.clone(),
+                shop_price,
+                base_price,
+                sale_chance_bps,
+                visited_at_ms,
+                visible_until_ms: visited_at_ms + FARM_SHOP_SALE_VISIBLE_MS,
+            });
+        }
+        return Some(FarmEvent::FarmShopVisitRejected {
+            item_id,
+            shop_price,
+            base_price,
+            sale_chance_bps,
+        });
+    }
+    let coins_gained = shop_price;
     let sale_id = next_id(farm, "shop-sale");
     {
         let shop = farm.farm_shop.as_mut()?;
         remove_farm_shop_stock_item(shop, &item_id, 1).ok()?;
+        shop.current_rejection = None;
         shop.current_sale = Some(FarmShopSaleWindow {
             id: sale_id,
             item_id: item_id.clone(),
             quantity: 1,
             coins_gained,
-            sold_at_ms,
-            visible_until_ms: sold_at_ms + FARM_SHOP_SALE_VISIBLE_MS,
+            sold_at_ms: visited_at_ms,
+            visible_until_ms: visited_at_ms + FARM_SHOP_SALE_VISIBLE_MS,
         });
     }
+    cleanup_farm_shop_prices(farm);
     farm.coins += coins_gained;
     Some(FarmEvent::FarmShopSaleCompleted {
         item_id,
@@ -3793,6 +3901,52 @@ fn next_farm_shop_sale_item_id(farm: &FarmState) -> Option<String> {
     available.get(index).cloned()
 }
 
+fn farm_shop_price_for_item(
+    farm: &FarmState,
+    catalog: &CatalogDocument,
+    item_id: &str,
+) -> Option<(u32, u32)> {
+    let base_price = catalog.market_item(item_id)?.sell_price?;
+    let price = farm
+        .farm_shop
+        .as_ref()?
+        .prices
+        .get(item_id)
+        .copied()
+        .unwrap_or(base_price);
+    Some((price, base_price))
+}
+
+pub fn farm_shop_sale_chance_bps(price: u32, base_price: u32) -> u32 {
+    if base_price == 0 || price <= base_price {
+        return 10_000;
+    }
+    let max_price = base_price.saturating_mul(2);
+    if price >= max_price {
+        return 2_500;
+    }
+    let markup = price - base_price;
+    10_000 - ((markup as u64 * 7_500) / base_price as u64) as u32
+}
+
+fn farm_shop_visit_roll_bps(farm: &FarmState, item_id: &str, visited_at_ms: i64) -> u32 {
+    let Some(shop) = farm.farm_shop.as_ref() else {
+        return 0;
+    };
+    let mut hash = 14_695_981_039_346_656_037_u64;
+    fn mix(hash: &mut u64, bytes: &[u8]) {
+        for byte in bytes {
+            *hash ^= u64::from(*byte);
+            *hash = hash.wrapping_mul(1_099_511_628_211);
+        }
+    }
+    mix(&mut hash, shop.id.as_bytes());
+    mix(&mut hash, &shop.visit_count.to_le_bytes());
+    mix(&mut hash, &visited_at_ms.to_le_bytes());
+    mix(&mut hash, item_id.as_bytes());
+    (hash % 10_000) as u32
+}
+
 fn farm_shop_visit_interval_ms(visit_count: u64) -> i64 {
     60_000 + ((visit_count % 7) as i64 * 10_000)
 }
@@ -3811,6 +3965,82 @@ fn projected_farm_shop_stock_used(farm: &FarmState) -> u32 {
         .map(|shop| shop.stock.iter().map(|stock| stock.quantity).sum())
         .unwrap_or(0);
     base + reserved_farm_shop_stock_deposits(farm) - reserved_farm_shop_stock_pickups_total(farm)
+}
+
+fn projected_farm_shop_item_type_count(farm: &FarmState) -> u32 {
+    projected_farm_shop_item_quantities(farm)
+        .values()
+        .filter(|quantity| **quantity > 0)
+        .count() as u32
+}
+
+pub fn projected_farm_shop_item_ids(farm: &FarmState) -> Vec<String> {
+    projected_farm_shop_item_quantities(farm)
+        .into_keys()
+        .collect()
+}
+
+fn projected_farm_shop_item_quantity(farm: &FarmState, item_id: &str) -> u32 {
+    projected_farm_shop_item_quantities(farm)
+        .get(item_id)
+        .copied()
+        .unwrap_or(0)
+}
+
+fn projected_farm_shop_item_quantities(farm: &FarmState) -> BTreeMap<String, u32> {
+    let mut quantities = BTreeMap::<String, i64>::new();
+    if let Some(shop) = farm.farm_shop.as_ref() {
+        for stock in &shop.stock {
+            *quantities.entry(stock.item_id.clone()).or_insert(0) += i64::from(stock.quantity);
+        }
+    }
+    for task in farm
+        .resident_task_queues
+        .values()
+        .flat_map(|queue| queue.iter())
+    {
+        for step in &task.steps {
+            match &step.work {
+                ResidentTaskStepWork::DepositShopStock { items } => {
+                    for item in items {
+                        *quantities.entry(item.item_id.clone()).or_insert(0) +=
+                            i64::from(item.quantity);
+                    }
+                }
+                ResidentTaskStepWork::PickupShopStock { items } => {
+                    for item in items {
+                        *quantities.entry(item.item_id.clone()).or_insert(0) -=
+                            i64::from(item.quantity);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    quantities
+        .into_iter()
+        .filter_map(|(item_id, quantity)| {
+            if quantity > 0 {
+                Some((item_id, quantity as u32))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn ensure_farm_shop_price(farm: &mut FarmState, item_id: &str, base_price: u32) {
+    if let Some(shop) = farm.farm_shop.as_mut() {
+        shop.prices.entry(item_id.to_owned()).or_insert(base_price);
+    }
+}
+
+fn cleanup_farm_shop_prices(farm: &mut FarmState) {
+    let projected = projected_farm_shop_item_quantities(farm);
+    if let Some(shop) = farm.farm_shop.as_mut() {
+        shop.prices
+            .retain(|item_id, _| projected.get(item_id).copied().unwrap_or(0) > 0);
+    }
 }
 
 fn farm_shop_stock_quantity(farm: &FarmState, item_id: &str) -> u32 {

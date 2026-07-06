@@ -6,6 +6,8 @@ export type {
   CommandResponse,
   DeliveryOrder,
   FarmCommand,
+  FarmShopPriceView,
+  FarmShopRejectionWindow,
   FarmShopSaleWindow,
   FarmShopState,
   FarmhouseUpgradeDef,

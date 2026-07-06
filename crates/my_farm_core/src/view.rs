@@ -70,6 +70,8 @@ pub struct FarmShopView {
     pub tile: crate::Tile,
     pub stock: Vec<InventoryItemView>,
     pub stock_capacity: u32,
+    pub item_type_capacity: u32,
+    pub prices: Vec<FarmShopPriceView>,
     #[ts(type = "number")]
     pub next_customer_visit_at_ms: i64,
     #[ts(type = "number")]
@@ -77,6 +79,18 @@ pub struct FarmShopView {
     #[serde(default)]
     #[ts(optional)]
     pub current_sale: Option<crate::FarmShopSaleWindow>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub current_rejection: Option<crate::FarmShopRejectionWindow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
+pub struct FarmShopPriceView {
+    pub item_id: String,
+    pub price: u32,
+    pub base_price: u32,
+    pub max_price: u32,
+    pub sale_chance_bps: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -403,14 +417,34 @@ fn farm_shop_view(farm: &FarmState, catalog: &CatalogDocument) -> Option<FarmSho
         })
         .collect::<Vec<_>>();
     stock.sort_by(|left, right| left.item_id.cmp(&right.item_id));
+    let mut price_item_ids = crate::projected_farm_shop_item_ids(farm);
+    price_item_ids.sort();
+    price_item_ids.dedup();
+    let prices = price_item_ids
+        .into_iter()
+        .filter_map(|item_id| {
+            let base_price = catalog.market_item(&item_id)?.sell_price?;
+            let price = shop.prices.get(&item_id).copied().unwrap_or(base_price);
+            Some(FarmShopPriceView {
+                item_id,
+                price,
+                base_price,
+                max_price: base_price.saturating_mul(2),
+                sale_chance_bps: crate::farm_shop_sale_chance_bps(price, base_price),
+            })
+        })
+        .collect::<Vec<_>>();
     Some(FarmShopView {
         id: shop.id.clone(),
         tile: shop.tile.clone(),
         stock,
         stock_capacity: shop.stock_capacity,
+        item_type_capacity: crate::FARM_SHOP_ITEM_TYPE_CAPACITY,
+        prices,
         next_customer_visit_at_ms: shop.next_customer_visit_at_ms,
         visit_count: shop.visit_count,
         current_sale: shop.current_sale.clone(),
+        current_rejection: shop.current_rejection.clone(),
     })
 }
 

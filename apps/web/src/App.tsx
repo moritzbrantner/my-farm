@@ -3781,6 +3781,7 @@ function FarmShopActions({
   const shop = view.farm_shop;
   const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [price, setPrice] = useState(1);
   const inventory = useMemo(
     () => new Map(view.inventory.map((item) => [item.item_id, item])),
     [view.inventory],
@@ -3790,8 +3791,11 @@ function FarmShopActions({
   );
   const selectedMarketItem = sellableItems.find((marketItem) => marketItem.item_id === itemId) ?? sellableItems[0];
   const selectedItemId = selectedMarketItem?.item_id ?? "";
+  const selectedPrice = shop?.prices.find((entry) => entry.item_id === selectedItemId) ?? null;
   const stockUsed = shop?.stock.reduce((sum, stock) => sum + stock.quantity, 0) ?? 0;
   const stockCapacity = shop?.stock_capacity ?? 0;
+  const listedItemTypes = shop?.prices.length ?? 0;
+  const itemTypeCapacity = shop?.item_type_capacity ?? 0;
   const selectedInventory = selectedItemId ? inventory.get(selectedItemId) : null;
   const availableInventory = selectedInventory?.available_quantity ?? selectedInventory?.quantity ?? 0;
   const selectedStock = shop?.stock.find((stock) => stock.item_id === selectedItemId)?.quantity ?? 0;
@@ -3803,6 +3807,9 @@ function FarmShopActions({
   const projectedStockUsed = shop ? projectedFarmShopStockUsed(view, shop.id, stockUsed) : 0;
   const projectedStockRoom = Math.max(0, stockCapacity - projectedStockUsed);
   const commandQuantity = Math.max(1, Math.floor(quantity));
+  const requestedPrice = Number.isFinite(price) ? Math.floor(price) : 0;
+  const commandPrice = Math.max(1, requestedPrice);
+  const priceChance = selectedPrice ? `${Math.round(selectedPrice.sale_chance_bps / 100)}%` : "0%";
   const stockReason = !shop
     ? "Farm Shop not built"
     : !selectedMarketItem
@@ -3811,6 +3818,8 @@ function FarmShopActions({
         ? `Need ${commandQuantity - availableInventory} more in storage`
         : commandQuantity > projectedStockRoom
           ? "Projected Shop Stock capacity is full"
+          : !selectedPrice && listedItemTypes >= itemTypeCapacity
+            ? "Shop item type limit reached"
           : undefined;
   const returnReason = !shop
     ? "Farm Shop not built"
@@ -3821,6 +3830,17 @@ function FarmShopActions({
         : !storageHasRoomForReturn(catalog, view, selectedItemId, commandQuantity)
           ? "Destination storage is full"
           : undefined;
+  const priceReason = !shop
+    ? "Farm Shop not built"
+    : !selectedMarketItem
+      ? "Item is unavailable"
+      : !selectedPrice
+        ? "Stock item to set a Shop Price"
+        : requestedPrice < 1
+          ? "Price must be at least 1"
+          : requestedPrice > selectedPrice.max_price
+            ? `Max Shop Price is ${selectedPrice.max_price} coins`
+            : undefined;
 
   useEffect(() => {
     if (!selectedItemId || selectedItemId === itemId) {
@@ -3828,6 +3848,10 @@ function FarmShopActions({
     }
     setItemId(selectedItemId);
   }, [itemId, selectedItemId]);
+
+  useEffect(() => {
+    setPrice(selectedPrice?.price ?? 1);
+  }, [selectedItemId, selectedPrice?.price]);
 
   if (!shop) {
     return <p>Build the Farm Shop by the road.</p>;
@@ -3839,6 +3863,11 @@ function FarmShopActions({
       {shop.current_sale && shop.current_sale.visible_until_ms > nowMs ? (
         <p className="farm-shop-panel__sale">
           Sold {itemName(catalog, shop.current_sale.item_id)} for {shop.current_sale.coins_gained} coins
+        </p>
+      ) : null}
+      {shop.current_rejection && shop.current_rejection.visible_until_ms > nowMs ? (
+        <p className="farm-shop-panel__sale">
+          Customer passed on {itemName(catalog, shop.current_rejection.item_id)} at {shop.current_rejection.shop_price} coins
         </p>
       ) : null}
       <dl className="farm-shop-panel__summary">
@@ -3854,16 +3883,24 @@ function FarmShopActions({
           <dt>Available stock</dt>
           <dd>{availableStock}</dd>
         </div>
+        <div>
+          <dt>Listed items</dt>
+          <dd>{listedItemTypes}/{itemTypeCapacity}</dd>
+        </div>
       </dl>
       <div className="farm-shop-panel__stock-list">
         {shop.stock.length === 0 ? <p>No Shop Stock</p> : null}
         {shop.stock.map((stock) => {
           const reserved = view.reservations.farm_shop_stock[stock.item_id] ?? 0;
           const available = Math.max(0, stock.quantity - reserved);
+          const stockPrice = shop.prices.find((entry) => entry.item_id === stock.item_id);
           return (
             <div className="farm-shop-stock-row" key={stock.item_id}>
               <ResourceAmount item={resourceItem(catalog, stock.item_id, stock.quantity)} amount={`x${stock.quantity}`} />
-              <small>{available} available{reserved > 0 ? `, ${reserved} reserved` : ""}</small>
+              <small>
+                {available} available{reserved > 0 ? `, ${reserved} reserved` : ""}
+                {stockPrice ? ` - ${stockPrice.price} coins, ${Math.round(stockPrice.sale_chance_bps / 100)}% chance` : ""}
+              </small>
             </div>
           );
         })}
@@ -3889,6 +3926,23 @@ function FarmShopActions({
           onChange={(event) => setQuantity(Number(event.target.value))}
         />
       </label>
+      <label className="farm-shop-panel__field">
+        <span>Shop Price</span>
+        <input
+          aria-label="Farm Shop price"
+          type="number"
+          min={1}
+          max={selectedPrice?.max_price ?? 1}
+          value={price}
+          disabled={!selectedPrice}
+          onChange={(event) => setPrice(Number(event.target.value))}
+        />
+      </label>
+      <small className="farm-shop-panel__status">
+        {selectedPrice
+          ? `Base ${selectedPrice.base_price} coins - Max ${selectedPrice.max_price} coins - Sale chance ${priceChance}`
+          : "Stock item to set a Shop Price"}
+      </small>
       <div className="farm-shop-panel__actions">
         <button
           type="button"
@@ -3904,9 +3958,16 @@ function FarmShopActions({
         >
           Return
         </button>
+        <button
+          type="button"
+          disabled={Boolean(priceReason)}
+          onClick={() => send({ type: "set_farm_shop_price", item_id: selectedItemId, price: commandPrice })}
+        >
+          Set Price
+        </button>
       </div>
       <small className="farm-shop-panel__status">
-        {[stockReason, returnReason].filter(Boolean).join(" - ") || "Ready"}
+        {[stockReason, returnReason, priceReason].filter(Boolean).join(" - ") || "Ready"}
       </small>
     </section>
   );

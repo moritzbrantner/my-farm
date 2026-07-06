@@ -39,6 +39,7 @@ type LegacyFarmView = Omit<
   | "resident_locations"
   | "resident_work"
   | "reservations"
+  | "farm_shop"
 > & {
   silo_tile?: Tile | null;
   barn_tile?: Tile | null;
@@ -48,7 +49,11 @@ type LegacyFarmView = Omit<
   resident_locations?: FarmView["resident_locations"] | null;
   resident_work?: FarmView["resident_work"] | null;
   reservations?: FarmView["reservations"] | null;
+  farm_shop?: LegacyFarmShopView | null;
 };
+
+type LegacyFarmShopView = Omit<NonNullable<FarmView["farm_shop"]>, "item_type_capacity" | "prices"> &
+  Partial<Pick<NonNullable<FarmView["farm_shop"]>, "item_type_capacity" | "prices">>;
 
 type LegacyFarmResponse = Omit<FarmResponse, "view"> & {
   view: LegacyFarmView;
@@ -380,6 +385,20 @@ function normalizeFarmView(view: LegacyFarmView): FarmView {
     resident_locations: residentLocations,
     resident_work: residentWork,
     reservations: normalizeReservations(view.reservations),
+    farm_shop: normalizeFarmShop(view.farm_shop),
+  };
+}
+
+function normalizeFarmShop(shop: LegacyFarmView["farm_shop"]): FarmView["farm_shop"] {
+  if (!shop) {
+    return undefined;
+  }
+  return {
+    ...shop,
+    item_type_capacity: typeof shop.item_type_capacity === "number" && Number.isFinite(shop.item_type_capacity)
+      ? shop.item_type_capacity
+      : 10,
+    prices: Array.isArray(shop.prices) ? shop.prices : [],
   };
 }
 

@@ -558,6 +558,30 @@
         {
           "type": "object",
           "required": [
+            "item_id",
+            "price",
+            "type"
+          ],
+          "properties": {
+            "item_id": {
+              "type": "string"
+            },
+            "price": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "set_farm_shop_price"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "decoration_id",
             "room_id",
             "tile",

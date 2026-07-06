@@ -1152,6 +1152,49 @@
         }
       }
     },
+    "FarmShopRejectionWindow": {
+      "type": "object",
+      "required": [
+        "base_price",
+        "id",
+        "item_id",
+        "sale_chance_bps",
+        "shop_price",
+        "visible_until_ms",
+        "visited_at_ms"
+      ],
+      "properties": {
+        "base_price": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "id": {
+          "type": "string"
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "sale_chance_bps": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "shop_price": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "visible_until_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "visited_at_ms": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
     "FarmShopSaleWindow": {
       "type": "object",
       "required": [
@@ -1200,6 +1243,17 @@
         "visit_count"
       ],
       "properties": {
+        "current_rejection": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FarmShopRejectionWindow"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "current_sale": {
           "default": null,
           "anyOf": [
@@ -1217,6 +1271,15 @@
         "next_customer_visit_at_ms": {
           "type": "integer",
           "format": "int64"
+        },
+        "prices": {
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
         },
         "stock": {
           "type": "array",

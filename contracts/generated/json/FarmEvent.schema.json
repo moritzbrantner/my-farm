@@ -492,6 +492,66 @@
     {
       "type": "object",
       "required": [
+        "item_id",
+        "price",
+        "type"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "price": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "farm_shop_price_set"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "base_price",
+        "item_id",
+        "sale_chance_bps",
+        "shop_price",
+        "type"
+      ],
+      "properties": {
+        "base_price": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "sale_chance_bps": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "shop_price": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "farm_shop_visit_rejected"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "decoration_id",
         "placement_id",
         "room_id",
