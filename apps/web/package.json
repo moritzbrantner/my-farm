@@ -15,6 +15,9 @@
     "test:storybook": "NODE_BIN=\"$(dirname \"$(command -v npm)\")/node\"; \"$NODE_BIN\" ./node_modules/vitest/vitest.mjs --project=storybook --run"
   },
   "dependencies": {
+    "@my-farm/contracts": "workspace:*",
+    "@my-farm/game-client": "workspace:*",
+    "@my-farm/game-model": "workspace:*",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.17.10",
     "@vitejs/plugin-react": "^4.4.1",

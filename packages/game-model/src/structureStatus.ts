@@ -5,7 +5,7 @@ import type {
   ItemKind,
   ItemStack,
   MachineState,
-} from "../types";
+} from "@my-farm/contracts";
 
 export type StructureProductionStatus =
   | { type: "idle" }

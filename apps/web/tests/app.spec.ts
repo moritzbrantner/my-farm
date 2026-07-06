@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import type { CatalogDocument, CommandRequest, FarmView, ResidentTask, ResidentWorkView } from "../src/types";
+import type { CatalogDocument, CommandRequest, FarmView, ResidentTask, ResidentWorkView } from "@my-farm/contracts";
 
 test("renders the playable farm shell", async ({ page }, testInfo) => {
   await page.goto("/");

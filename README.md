@@ -16,6 +16,18 @@ Open `http://127.0.0.1:5176` on this machine, or `http://castle:5176` from anoth
 
 The server listens on `http://0.0.0.0:8081` by default so it is reachable over the local network at `http://castle:8081`. Set `MY_FARM_HOST=127.0.0.1` to restrict it to this machine. It stores `my-farm.sqlite` in the project directory unless `MY_FARM_DATABASE_URL` is set.
 
+## Expo Mobile Client
+
+The native mobile client lives in `apps/mobile`. It is an Expo development-build app that connects to the existing Rust server over the same gameplay WebSocket protocol as the web client.
+
+```sh
+bun install
+cargo run
+bun run dev:mobile
+```
+
+Use the in-app server URL field to point a device or simulator at the Rust server, such as `http://castle:8081` on the local network. The first mobile slice includes the native connection flow, main menu, farm HUD, diagnostics, and a native GL farm scene shell. Full web behavior parity is tracked in GitHub issue #103.
+
 ## GitHub Pages Demo
 
 Build the static Pages demo locally:
@@ -36,6 +48,7 @@ cargo run -p contract_codegen
 cargo run -p contract_codegen -- --check
 bun run build:web
 bun run build:pages
+bun run test:mobile
 bun run test:e2e:pages-demo
 ```
 

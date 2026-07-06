@@ -5,7 +5,7 @@ import {
   nextBasicFarmScenarioId,
   previousBasicFarmScenarioId,
   type BasicFarmScenarioId,
-} from "../scenarios/basicFarmScenarios";
+} from "@my-farm/game-model/basicFarmScenarios";
 
 type WikiTab = "scenarios" | "glossary";
 

@@ -1,7 +1,7 @@
 /// <reference types="bun-types/test" />
 
 import { expect, test } from "bun:test";
-import type { FarmView, ResidentTask } from "../types";
+import type { FarmView, ResidentTask } from "@my-farm/contracts";
 import { selectedResident } from "./selectors";
 import {
   currentResidentScenePath,

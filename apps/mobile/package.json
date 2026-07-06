@@ -1,0 +1,38 @@
+{
+  "name": "my-farm-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:e2e": "maestro test e2e"
+  },
+  "dependencies": {
+    "@expo/metro-config": "^57.0.3",
+    "@my-farm/contracts": "workspace:*",
+    "@my-farm/game-client": "workspace:*",
+    "@my-farm/game-model": "workspace:*",
+    "@react-native-async-storage/async-storage": "^3.1.1",
+    "@react-three/fiber": "^8.17.10",
+    "expo": "^57.0.2",
+    "expo-constants": "^57.0.3",
+    "expo-gl": "^57.0.1",
+    "react": "^18.3.1",
+    "react-native": "^0.86.0",
+    "react-native-gesture-handler": "^3.0.2",
+    "react-native-reanimated": "^4.5.1",
+    "react-native-safe-area-context": "^5.8.0",
+    "three": "^0.165.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.27",
+    "@types/three": "^0.180.0",
+    "eas-cli": "^20.5.1",
+    "typescript": "^5.9.3"
+  }
+}

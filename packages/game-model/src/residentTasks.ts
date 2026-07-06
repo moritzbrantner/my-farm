@@ -6,7 +6,7 @@ import type {
   ResidentVisualActivity,
   ResidentVisualProp,
   ResidentWorkView,
-} from "../types";
+} from "@my-farm/contracts";
 
 export type { ResidentVisualActivity, ResidentVisualProp };
 

@@ -1,4 +1,4 @@
-import type { ItemKind } from "../types";
+import type { ItemKind } from "@my-farm/contracts";
 
 type ResourceIconProps =
   | {
