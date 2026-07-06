@@ -23,7 +23,7 @@ import {
 import { buildStructureMenuModel, type StructureMenuItem } from "@my-farm/game-model/structureMenu";
 import { ovenProductionStatus, productionStatusLabel } from "@my-farm/game-model/structureStatus";
 import { recipeName } from "@my-farm/game-model/selectors";
-import { isResidentInsideHouse, residentVisualCue } from "@my-farm/game-model/residentTasks";
+import { isResidentInsideHouse, residentVisualPresentation } from "@my-farm/game-model/residentTasks";
 import type { CatalogDocument, FarmCommand, FarmView } from "@my-farm/contracts";
 import { ResidentModel } from "./farmScene/residents";
 
@@ -987,7 +987,7 @@ function InteriorOvenResidents({ view, nowMs, room }: { view: FarmView; nowMs: n
   return (
     <group>
       {residentsAtOven.map((resident, index) => {
-        const visualCue = residentVisualCue(view, resident.id, nowMs);
+        const presentation = residentVisualPresentation(view, resident.id, nowMs);
         return (
           <group
             key={resident.id}
@@ -995,16 +995,19 @@ function InteriorOvenResidents({ view, nowMs, room }: { view: FarmView; nowMs: n
           >
             <ResidentModel
               variant={resident.id === "man" ? "man" : "woman"}
-              activity={visualCue.activity}
-              prop={visualCue.prop}
+              activity={presentation.activity}
+              prop={presentation.prop}
+              heldTool={presentation.heldTool}
+              motion={presentation.motion}
               compact
             />
             <Html position={[0, 0.52, 0]} center wrapperClass="farm-scene-marker-wrapper">
               <div
                 className="farm-scene-marker"
                 data-testid={`house-resident-${resident.id}`}
-                data-resident-activity={visualCue.activity}
-                data-resident-prop={visualCue.prop}
+                data-resident-activity={presentation.activity}
+                data-resident-prop={presentation.prop}
+                data-resident-tool={presentation.heldTool}
                 aria-label={`${resident.display_name} at Kitchen Oven`}
               />
             </Html>

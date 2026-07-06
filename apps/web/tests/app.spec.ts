@@ -912,6 +912,7 @@ test("renders resident as working after walking to the approach tile", async ({ 
   await expect(resident).toHaveAttribute("data-resident-target", "Field Plot plot-1");
   await expect(resident).toHaveAttribute("data-resident-activity", "planting");
   await expect(resident).toHaveAttribute("data-resident-prop", "seed_pouch");
+  await expect(resident).toHaveAttribute("data-resident-tool", "hoe");
 });
 
 test("renders task-specific resident harvest visual cue", async ({ page }) => {
@@ -942,6 +943,143 @@ test("renders task-specific resident harvest visual cue", async ({ page }) => {
   await expect(resident).toHaveAttribute("data-resident-state", "working");
   await expect(resident).toHaveAttribute("data-resident-activity", "harvesting");
   await expect(resident).toHaveAttribute("data-resident-prop", "basket");
+  await expect(resident).toHaveAttribute("data-resident-tool", "sickle");
+});
+
+test("renders task-specific resident tools for machine and animal work", async ({ page }) => {
+  const now = Date.now();
+  const machineView = withResidentTaskQueues(farmView, {
+      woman: [
+        {
+          id: "task-machine",
+          kind: { type: "production_work" },
+          started_at_ms: now - 500,
+          ready_at_ms: now + 500,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "machine", machine_id: "machine-1" },
+              work: { type: "collect_machine_job", job_id: "job-1", recipe_id: "chicken_feed" },
+              approach_tile: { x: 8, y: 3 },
+              duration_ms: 1_000,
+            }),
+          ],
+        },
+      ],
+      man: [
+        {
+          id: "task-animal",
+          kind: { type: "production_work" },
+          started_at_ms: now - 500,
+          ready_at_ms: now + 500,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "animal", shelter_id: "shelter-1", animal_slot: "animal-1" },
+              work: { type: "feed_animal" },
+              approach_tile: { x: 5, y: 8 },
+              duration_ms: 1_000,
+            }),
+          ],
+        },
+      ],
+  });
+  await mockFarmApi(page, machineView);
+  await openFarm(page);
+
+  await expect(page.getByTestId("farm-scene-resident-woman")).toHaveAttribute("data-resident-tool", "wrench");
+  await expect(page.getByTestId("farm-scene-resident-woman")).toHaveAttribute("data-resident-activity", "collecting_machine");
+  await expect(page.getByTestId("farm-scene-resident-man")).toHaveAttribute("data-resident-tool", "feed_bucket");
+  await expect(page.getByTestId("farm-scene-resident-man")).toHaveAttribute("data-resident-activity", "feeding_animal");
+});
+
+test("renders task-specific resident tool for collecting animal products", async ({ page }) => {
+  const now = Date.now();
+  const view = withResidentTaskQueues(farmView, {
+      woman: [
+        {
+          id: "task-animal-product",
+          kind: { type: "production_work" },
+          started_at_ms: now - 500,
+          ready_at_ms: now + 500,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "animal", shelter_id: "shelter-1", animal_slot: "animal-2" },
+              work: { type: "collect_animal_product", item_id: "egg", quantity: 1 },
+              approach_tile: { x: 5, y: 8 },
+              duration_ms: 1_000,
+            }),
+          ],
+        },
+      ],
+      man: [],
+  });
+  await mockFarmApi(page, view);
+  await openFarm(page);
+
+  const resident = page.getByTestId("farm-scene-resident-woman");
+  await expect(resident).toHaveAttribute("data-resident-activity", "collecting_animal_product");
+  await expect(resident).toHaveAttribute("data-resident-prop", "basket");
+  await expect(resident).toHaveAttribute("data-resident-tool", "collection_pail");
+});
+
+test("keeps resident work visuals stable when reduced motion is requested", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const now = Date.now();
+  const view = withResidentTaskQueues(farmView, {
+      woman: [
+        {
+          id: "task-plant",
+          kind: { type: "field_work" },
+          started_at_ms: now - 500,
+          ready_at_ms: now + 500,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "plant_crop", crop_id: "wheat" },
+              approach_tile: { x: 0, y: 0 },
+              duration_ms: 1_000,
+            }),
+          ],
+        },
+      ],
+      man: [],
+  });
+  await mockFarmApi(page, view);
+  await openFarm(page);
+
+  await expectCanvasToRenderNonBlank(page);
+  await expect(page.getByTestId("farm-scene-resident-woman")).toHaveAttribute("data-resident-tool", "hoe");
+  const before = await canvasSnapshot(page);
+  await page.waitForTimeout(350);
+  await expect(canvasSnapshot(page)).resolves.toBe(before);
+});
+
+test("animates active resident work in normal motion mode", async ({ page }) => {
+  const now = Date.now();
+  const view = withResidentTaskQueues(farmView, {
+      woman: [
+        {
+          id: "task-harvest",
+          kind: { type: "field_work" },
+          started_at_ms: now - 500,
+          ready_at_ms: now + 2_500,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "harvest_crop", crop_id: "wheat", quantity: 2 },
+              approach_tile: { x: 0, y: 0 },
+              duration_ms: 3_000,
+            }),
+          ],
+        },
+      ],
+      man: [],
+  });
+  await mockFarmApi(page, view);
+  await openFarm(page);
+
+  await expect(page.getByTestId("farm-scene-resident-woman")).toHaveAttribute("data-resident-tool", "sickle");
+  const before = await canvasSnapshot(page);
+  await expect.poll(async () => await canvasSnapshot(page), { timeout: 2_000 }).not.toBe(before);
 });
 
 test("uses the first remaining batch task step as the scene movement target", async ({ page }) => {
@@ -1967,6 +2105,7 @@ test("Kitchen Oven Workstation sends oven commands and shows pending resident wo
   await expect(page.getByTestId("house-resident-woman")).toBeVisible();
   await expect(page.getByTestId("house-resident-woman")).toHaveAttribute("data-resident-activity", "starting_oven");
   await expect(page.getByTestId("house-resident-woman")).toHaveAttribute("data-resident-prop", "oven_tray");
+  await expect(page.getByTestId("house-resident-woman")).toHaveAttribute("data-resident-tool", "mixing_bowl");
   await expect(page.getByTestId("house-resident-man")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Bread", exact: true }).click();
@@ -2003,6 +2142,42 @@ test("Kitchen Oven Workstation sends collect command for ready output", async ({
   await expect(page.getByTestId("kitchen-oven-status")).toContainText("Ready Bread");
   await page.getByRole("button", { name: "Collect Bread" }).click();
   await expect.poll(() => commands.at(-1)?.command).toEqual({ type: "collect_oven_job" });
+});
+
+test("Kitchen Oven Workstation shows collecting resident with oven mitts", async ({ page }) => {
+  const now = Date.now();
+  const collectTask: ResidentTask = {
+    id: "task-oven-collect",
+    kind: { type: "production_work" },
+    started_at_ms: now - 500,
+    ready_at_ms: now + 500,
+    steps: [
+      taskStep({
+        reserved_work_target: { type: "oven" },
+        work: { type: "collect_oven_job", job_id: "job-ready", recipe_id: "bread" },
+        duration_ms: 1_000,
+      }),
+    ],
+  };
+  const view = withResidentTaskQueues({
+    ...farmView,
+    level: 2,
+    owned_farmhouse_upgrades: ["oven"],
+    oven: {
+      id: "oven",
+      queue: [{ id: "job-ready", recipe_id: "bread", status: "producing", started_at_ms: now - 10_000, ready_at_ms: now - 1_000 }],
+    },
+  }, {
+      man: [],
+      woman: [collectTask],
+  });
+  await mockFarmApi(page, view);
+  await openFarm(page);
+
+  await enterHouseRoom(page, "Kitchen");
+  await expect(page.getByTestId("house-resident-woman")).toHaveAttribute("data-resident-activity", "collecting_oven");
+  await expect(page.getByTestId("house-resident-woman")).toHaveAttribute("data-resident-prop", "oven_tray");
+  await expect(page.getByTestId("house-resident-woman")).toHaveAttribute("data-resident-tool", "oven_mitt");
 });
 
 test("places multiple copies of a selected house Decoration through the command path", async ({

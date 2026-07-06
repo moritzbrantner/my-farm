@@ -6,6 +6,7 @@ import type {
   ResidentVisualActivity,
   ResidentVisualProp,
   ResidentWorkView,
+  ToolKind,
 } from "@my-farm/contracts";
 
 export type { ResidentVisualActivity, ResidentVisualProp };
@@ -36,6 +37,26 @@ export type ResidentFacing = "north" | "east" | "south" | "west";
 export type ResidentVisualCue = {
   activity: ResidentVisualActivity;
   prop: ResidentVisualProp;
+};
+
+export type ResidentMotionState = "idle" | "walking" | "working" | "blocked";
+
+export type ResidentHeldTool =
+  | "none"
+  | "hoe"
+  | "sickle"
+  | "mixing_bowl"
+  | "oven_mitt"
+  | "feed_bucket"
+  | "collection_pail"
+  | "wrench"
+  | "tool_bundle";
+
+export type ResidentVisualPresentation = {
+  activity: ResidentVisualActivity;
+  prop: ResidentVisualProp;
+  heldTool: ResidentHeldTool;
+  motion: ResidentMotionState;
 };
 
 export function residentWork(view: FarmView, residentId: string): ResidentWorkView | null {
@@ -72,6 +93,47 @@ export function residentVisualCue(
   }
   const step = residentWork(view, residentId)?.current_step;
   return step ? { activity: step.activity, prop: step.prop } : { activity: "idle", prop: "none" };
+}
+
+export function residentVisualPresentation(
+  view: FarmView,
+  residentId: string,
+  nowMs: number,
+): ResidentVisualPresentation {
+  const pose = currentResidentScenePose(view, residentId, nowMs);
+  const work = residentWork(view, residentId);
+  const carriedTool = carriedHeldTool(work);
+  const carriedProp = carriedVisualProp(work);
+
+  if (pose.state === "idle") {
+    return { activity: "idle", prop: "none", heldTool: "none", motion: "idle" };
+  }
+
+  if (pose.state === "blocked") {
+    return {
+      activity: "idle",
+      prop: carriedTool === "none" ? carriedProp : "none",
+      heldTool: carriedTool,
+      motion: "blocked",
+    };
+  }
+
+  if (pose.state === "walking") {
+    return {
+      activity: "walking",
+      prop: carriedTool === "none" ? carriedProp : "none",
+      heldTool: carriedTool,
+      motion: "walking",
+    };
+  }
+
+  const cue = residentVisualCue(view, residentId, nowMs);
+  return {
+    activity: cue.activity,
+    prop: cue.prop,
+    heldTool: heldToolForActivity(cue.activity),
+    motion: "working",
+  };
 }
 
 export function currentResidentScenePose(
@@ -199,6 +261,68 @@ export function residentTaskStepLabel(_catalog: unknown, step: { label: string }
 
 function reservationReason(reservation: ReservationReasonView | null | undefined) {
   return reservation?.reason ?? null;
+}
+
+function carriedHeldTool(work: ResidentWorkView | null): ResidentHeldTool {
+  const tool = work?.carry.tools[0];
+  if (!tool) {
+    return "none";
+  }
+  return heldToolForToolKind(tool.tool_kind);
+}
+
+function carriedVisualProp(work: ResidentWorkView | null): ResidentVisualProp {
+  const item = work?.carry.items[0];
+  if (!item) {
+    return "none";
+  }
+  return item.kind === "crop" || item.kind === "animal_product" ? "basket" : "crate";
+}
+
+function heldToolForToolKind(toolKind: ToolKind): ResidentHeldTool {
+  switch (toolKind) {
+    case "hoe":
+      return "hoe";
+    case "sickle":
+      return "sickle";
+    case "mixing_bowl":
+      return "mixing_bowl";
+    case "oven_mitt":
+      return "oven_mitt";
+    case "feed_bucket":
+      return "feed_bucket";
+    case "collection_pail":
+      return "collection_pail";
+    case "wrench":
+      return "wrench";
+  }
+}
+
+function heldToolForActivity(activity: ResidentVisualActivity): ResidentHeldTool {
+  switch (activity) {
+    case "planting":
+      return "hoe";
+    case "harvesting":
+      return "sickle";
+    case "collecting_machine":
+      return "wrench";
+    case "starting_oven":
+      return "mixing_bowl";
+    case "collecting_oven":
+      return "oven_mitt";
+    case "feeding_animal":
+      return "feed_bucket";
+    case "collecting_animal_product":
+      return "collection_pail";
+    case "picking_up_tools":
+    case "returning_tools":
+      return "tool_bundle";
+    case "idle":
+    case "walking":
+    case "picking_up_items":
+    case "depositing_inventory":
+      return "none";
+  }
 }
 
 function progressBetween(startMs: number, readyAtMs: number, nowMs: number) {

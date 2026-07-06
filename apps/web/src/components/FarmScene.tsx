@@ -38,10 +38,10 @@ import {
   currentResidentScenePose,
   hasActiveResidentWalk,
   isResidentInsideHouse,
+  residentVisualPresentation,
   type ResidentScenePath,
   residentTaskStatus,
   residentWork,
-  residentVisualCue,
 } from "@my-farm/game-model/residentTasks";
 
 const MOVE_TILE_BLOCKED_COLOR = "#a9333f";
@@ -409,7 +409,7 @@ function FarmResidents({
     .filter((resident) => !isResidentInsideHouse(view, resident.id, residentNowMs))
     .map((resident, index): FarmResidentPresentation => {
       const pose = currentResidentScenePose(view, resident.id, residentNowMs);
-      const visualCue = residentVisualCue(view, resident.id, residentNowMs);
+      const presentation = residentVisualPresentation(view, resident.id, residentNowMs);
       const work = residentWork(view, resident.id);
       const status = residentTaskStatus(catalog, view, resident.id, residentNowMs);
       const offset = residentVisualOffset(index, pose.state);
@@ -425,8 +425,10 @@ function FarmResidents({
         variant: resident.id === "man" ? "man" : "woman",
         position,
         state: pose.state,
-        activity: visualCue.activity,
-        prop: visualCue.prop,
+        activity: presentation.activity,
+        prop: presentation.prop,
+        heldTool: presentation.heldTool,
+        motion: presentation.motion,
         taskLabel: work?.current_step?.label ?? status.currentTask?.label ?? status.label,
         targetLabel: pose.label,
         selected: selection?.type === "resident" && selection.id === resident.id,
