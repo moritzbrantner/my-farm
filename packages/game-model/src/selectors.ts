@@ -8,7 +8,7 @@ import type {
   RecipeDef,
   StructureKind,
   Tile,
-} from "../types";
+} from "@my-farm/contracts";
 
 export type Selection =
   | { type: "plot"; id: string }

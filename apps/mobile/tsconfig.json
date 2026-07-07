@@ -1,0 +1,16 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@my-farm/contracts": ["../../packages/contracts/src/index.ts"],
+      "@my-farm/game-client": ["../../packages/game-client/src/index.ts"],
+      "@my-farm/game-model": ["../../packages/game-model/src/index.ts"],
+      "@my-farm/game-model/*": ["../../packages/game-model/src/*"]
+    },
+    "types": ["bun-types"]
+  },
+  "include": ["index.ts", "src", "../../packages", "../../contracts/generated/ts"]
+}

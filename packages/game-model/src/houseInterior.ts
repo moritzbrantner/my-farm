@@ -1,4 +1,4 @@
-import type { CatalogDocument, FarmView } from "../types";
+import type { CatalogDocument, FarmView } from "@my-farm/contracts";
 
 export type HouseInteriorRoom = FarmView["house_interior"]["rooms"][number];
 export type DecorationDefinition = CatalogDocument["decorations"][number];

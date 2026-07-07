@@ -2,13 +2,23 @@
   "name": "my-farm",
   "private": true,
   "workspaces": [
-    "apps/web"
+    "apps/web",
+    "apps/mobile",
+    "packages/contracts",
+    "packages/game-client",
+    "packages/game-model"
   ],
   "scripts": {
     "dev": "cd apps/web && bun run dev",
     "build:web": "cd apps/web && bun run build",
     "build:wasm-demo": "cd crates/my_farm_wasm && wasm-pack build --target web --out-dir ../../apps/web/src/generated/my_farm_wasm --out-name my_farm_wasm",
     "build:pages": "cd apps/web && VITE_MY_FARM_RUNTIME=wasm_demo VITE_BASE_PATH=/my-farm/ bun run build",
+    "dev:mobile": "cd apps/mobile && bunx expo start --dev-client",
+    "mobile:ios": "cd apps/mobile && bunx expo run:ios",
+    "mobile:android": "cd apps/mobile && bunx expo run:android",
+    "build:mobile:preview": "cd apps/mobile && bunx eas build --profile preview --platform all",
+    "test:mobile": "cd apps/mobile && bun test",
+    "test:e2e:mobile": "cd apps/mobile && maestro test e2e",
     "dev:web": "cd apps/web && bun run dev",
     "test:e2e": "cd apps/web && bun run test:e2e",
     "test:e2e:pages-demo": "cd apps/web && bun run test:e2e:pages-demo",

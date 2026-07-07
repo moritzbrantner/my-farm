@@ -31,7 +31,7 @@ import {
   type StructureContextMenuState,
   type StructureSelection,
   type Selection,
-} from "./game/selectors";
+} from "@my-farm/game-model/selectors";
 import {
   buildFieldMenuModel,
   buildStructureMenuModel,
@@ -40,7 +40,7 @@ import {
   isStructureTargetPresent,
   type StructureMenuItem,
   type StructureMenuModel,
-} from "./game/structureMenu";
+} from "@my-farm/game-model/structureMenu";
 import {
   currentResidentScenePath,
   currentResidentScenePose,
@@ -52,8 +52,8 @@ import {
   residentTaskStatus,
   residentTaskStepLabel,
   taskLabel,
-} from "./game/residentTasks";
-import { decorationPlacementStatus, type RoomTile } from "./game/houseInterior";
+} from "@my-farm/game-model/residentTasks";
+import { decorationPlacementStatus, type RoomTile } from "@my-farm/game-model/houseInterior";
 import type {
   AnimalShelterState,
   CatalogDocument,
@@ -69,7 +69,7 @@ import type {
   ResidentTaskSummaryView,
   StructureKind,
   SweepHarvestMode,
-} from "./types";
+} from "@my-farm/contracts";
 
 type BuildableStructureKind = Exclude<StructureKind, "silo" | "barn">;
 type BuildableKind = "field_plot" | BuildableStructureKind;

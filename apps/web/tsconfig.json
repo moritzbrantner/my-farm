@@ -11,11 +11,18 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@my-farm/contracts": ["../../packages/contracts/src/index.ts"],
+      "@my-farm/game-client": ["../../packages/game-client/src/index.ts"],
+      "@my-farm/game-model": ["../../packages/game-model/src/index.ts"],
+      "@my-farm/game-model/*": ["../../packages/game-model/src/*"]
+    },
+    "typeRoots": ["./node_modules/@types"],
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src", "tests", "../../contracts/generated/ts"]
+  "include": ["src", "tests", "../../contracts/generated/ts", "../../packages"]
 }
-

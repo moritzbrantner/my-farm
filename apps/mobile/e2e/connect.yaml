@@ -1,0 +1,5 @@
+appId: dev.moritzbrantner.myfarm
+---
+- launchApp
+- assertVisible: "My Farm"
+- assertVisible: "Connect"

@@ -3,7 +3,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ElementRef } from "react";
 import * as THREE from "three";
-import type { CatalogDocument, FarmView, FieldPlot, MachineState, StructureKind, SweepHarvestMode, Tile } from "../types";
+import type { CatalogDocument, FarmView, FieldPlot, MachineState, StructureKind, SweepHarvestMode, Tile } from "@my-farm/contracts";
 import {
   FARM_GRID_SIZE,
   FARM_HOUSE_FOOTPRINT,
@@ -17,7 +17,7 @@ import {
   type Selection,
   type StructureFootprint,
   type StructureSelection,
-} from "../game/selectors";
+} from "@my-farm/game-model/selectors";
 import { FarmArrivalEnvironment, FarmAsset, type FarmAssetKind } from "./farmScene/assets";
 import { FarmResidentFigure, type FarmResidentPresentation } from "./farmScene/residents";
 import {
@@ -31,7 +31,7 @@ import {
   productionStatusLabel,
   shelterProductionStatus,
   type StructureProductionStatus,
-} from "../game/structureStatus";
+} from "@my-farm/game-model/structureStatus";
 import {
   currentResidentScenePath,
   currentResidentScenePose,
@@ -40,7 +40,7 @@ import {
   residentTaskStatus,
   residentWork,
   residentVisualCue,
-} from "../game/residentTasks";
+} from "@my-farm/game-model/residentTasks";
 
 const MOVE_TILE_BLOCKED_COLOR = "#a9333f";
 const BOARD_ORIGIN = -(FARM_GRID_SIZE - 1) / 2;

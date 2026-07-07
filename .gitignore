@@ -1,5 +1,6 @@
 /target/
 /node_modules/
+**/node_modules/
 /apps/web/node_modules/
 /apps/web/dist/
 /apps/web/src/generated/my_farm_wasm/

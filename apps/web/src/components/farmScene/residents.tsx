@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import type { ResidentVisualActivity, ResidentVisualProp } from "../../game/residentTasks";
+import type { ResidentVisualActivity, ResidentVisualProp } from "@my-farm/game-model/residentTasks";
 
 export type FarmResidentPresentation = {
   id: string;

@@ -2,8 +2,8 @@ import { Billboard, Html, Text } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import * as THREE from "three";
-import type { StructureFootprint } from "../../game/selectors";
-import type { StructureProductionStatus } from "../../game/structureStatus";
+import type { StructureFootprint } from "@my-farm/game-model/selectors";
+import type { StructureProductionStatus } from "@my-farm/game-model/structureStatus";
 import { colorForItem } from "../../assets/sprites";
 
 export type FarmAssetKind =

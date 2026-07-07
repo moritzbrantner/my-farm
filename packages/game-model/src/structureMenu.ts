@@ -10,7 +10,7 @@ import type {
   ItemStack,
   MachineState,
   StorageKind,
-} from "../types";
+} from "@my-farm/contracts";
 import type { StructureSelection } from "./selectors";
 
 export type StructureMenuItem = {

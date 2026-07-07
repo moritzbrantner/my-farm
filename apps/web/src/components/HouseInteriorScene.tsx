@@ -6,12 +6,12 @@ import {
   type DecorationDefinition,
   type HouseInteriorRoom,
   type RoomTile,
-} from "../game/houseInterior";
-import { buildStructureMenuModel, type StructureMenuItem } from "../game/structureMenu";
-import { ovenProductionStatus, productionStatusLabel } from "../game/structureStatus";
-import { recipeName } from "../game/selectors";
-import { isResidentInsideHouse, residentVisualCue } from "../game/residentTasks";
-import type { CatalogDocument, FarmCommand, FarmView } from "../types";
+} from "@my-farm/game-model/houseInterior";
+import { buildStructureMenuModel, type StructureMenuItem } from "@my-farm/game-model/structureMenu";
+import { ovenProductionStatus, productionStatusLabel } from "@my-farm/game-model/structureStatus";
+import { recipeName } from "@my-farm/game-model/selectors";
+import { isResidentInsideHouse, residentVisualCue } from "@my-farm/game-model/residentTasks";
+import type { CatalogDocument, FarmCommand, FarmView } from "@my-farm/contracts";
 import { ResidentModel } from "./farmScene/residents";
 
 export type HouseRoomId = "living_room" | "kitchen" | "bedroom";
