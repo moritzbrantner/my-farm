@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
   type Ref,
 } from "react";
@@ -13,7 +14,6 @@ import {
   Hammer,
   MousePointer2,
   Scissors,
-  Store,
   UserRound,
   Wheat,
   X,
@@ -1307,6 +1307,7 @@ export function App() {
           playScene === "farm" ? (
             <>
               <TopBar
+                catalog={catalog}
                 view={view}
                 message={message}
                 connectionStatus={connectionStatus}
@@ -1315,27 +1316,12 @@ export function App() {
               {initialScenarioId ? <ScenarioBanner scenarioId={initialScenarioId} /> : null}
               {!mobileLayout ? (
                 <aside className="side-panel">
-                  <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
-                  <ResidentSelector
+                  <CompactResidentSelector
                     catalog={catalog}
                     view={view}
                     nowMs={nowMs}
                     onSelectResident={selectResidentForWork}
                   />
-                  <SelectionPanel
-                    catalog={catalog}
-                    view={view}
-                    selection={selection}
-                    nowMs={nowMs}
-                    send={send}
-                    demoMode={demoMode}
-                    selectedTaskPreview={selectedTaskPreview}
-                    onPreviewTask={setSelectedTaskPreview}
-                    onClearSelection={() => setSelection(null)}
-                    onEnterHouseInterior={enterHouseInterior}
-                  />
-                  <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
-                  {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
                   <InteractionToolSelector
                     catalog={catalog}
                     view={view}
@@ -1350,6 +1336,20 @@ export function App() {
                     onHarvestMode={selectHarvestMode}
                     onBuild={selectBuildTool}
                   />
+                  {selection ? (
+                    <SelectionPanel
+                      catalog={catalog}
+                      view={view}
+                      selection={selection}
+                      nowMs={nowMs}
+                      send={send}
+                      demoMode={demoMode}
+                      selectedTaskPreview={selectedTaskPreview}
+                      onPreviewTask={setSelectedTaskPreview}
+                      onClearSelection={() => setSelection(null)}
+                      onEnterHouseInterior={enterHouseInterior}
+                    />
+                  ) : null}
                   {!demoMode && selection?.type === "delivery_board" ? (
                     <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
                   ) : null}
@@ -1367,14 +1367,12 @@ export function App() {
                   harvestMode={harvestMode}
                   plantSweep={plantSweep}
                   selectedTaskPreview={selectedTaskPreview}
-                  marketOpen={marketOpen}
                   onDefault={selectDefaultFieldTool}
                   onPlant={selectPlantFieldTool}
                   onHarvest={selectHarvestFieldTool}
                   onHarvestMode={selectHarvestMode}
                   onBuild={selectBuildTool}
                   onSelectResident={selectResidentForWork}
-                  onOpenMarket={openMarket}
                   onPreviewTask={setSelectedTaskPreview}
                   onClearSelection={() => setSelection(null)}
                   onEnterHouseInterior={enterHouseInterior}
@@ -1408,6 +1406,10 @@ export function App() {
             demoMode={demoMode}
             onContinue={() => setScreen("playing")}
             onNewFarm={startNewFarm}
+            onOpenMarket={() => {
+              setScreen("playing");
+              openMarket();
+            }}
           />
         )}
         {screen === "playing" && menuPoint && menuModel ? (
@@ -1523,12 +1525,14 @@ function MainMenu({
   demoMode,
   onContinue,
   onNewFarm,
+  onOpenMarket,
 }: {
   view: FarmView;
   message: string;
   demoMode: boolean;
   onContinue: () => void;
   onNewFarm: () => void;
+  onOpenMarket: () => void;
 }) {
   const [panel, setPanel] = useState<MainMenuPanel>("home");
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -1570,6 +1574,11 @@ function MainMenu({
               <button type="button" onClick={() => window.location.assign(wikiPageHref())}>
                 Wiki
               </button>
+              {!demoMode ? (
+                <button type="button" onClick={onOpenMarket}>
+                  Farmers Market
+                </button>
+              ) : null}
               <button type="button" onClick={() => setPanel("account")}>
                 Account
               </button>
@@ -1667,14 +1676,12 @@ type MobileFarmHudProps = {
   harvestMode: SweepHarvestMode;
   plantSweep: PlantSweepState;
   selectedTaskPreview: ResidentTaskPreviewSelection;
-  marketOpen: boolean;
   onDefault: () => void;
   onPlant: (cropId: string) => void;
   onHarvest: () => void;
   onHarvestMode: (mode: SweepHarvestMode) => void;
   onBuild: () => void;
   onSelectResident: (residentId: string) => void;
-  onOpenMarket: () => void;
   onPreviewTask: (selection: ResidentTaskPreviewSelection) => void;
   onClearSelection: () => void;
   onEnterHouseInterior: () => void;
@@ -1692,14 +1699,12 @@ function MobileFarmHud({
   harvestMode,
   plantSweep,
   selectedTaskPreview,
-  marketOpen,
   onDefault,
   onPlant,
   onHarvest,
   onHarvestMode,
   onBuild,
   onSelectResident,
-  onOpenMarket,
   onPreviewTask,
   onClearSelection,
   onEnterHouseInterior,
@@ -1774,19 +1779,20 @@ function MobileFarmHud({
           </div>
           {selectionExpanded ? (
             <div className="mobile-context-sheet__details">
-              <SelectionPanel
-                catalog={catalog}
-                view={view}
-                selection={selection}
-                nowMs={nowMs}
-                send={send}
-                demoMode={demoMode}
-                selectedTaskPreview={selectedTaskPreview}
-                onPreviewTask={onPreviewTask}
-                onClearSelection={onClearSelection}
-                onEnterHouseInterior={onEnterHouseInterior}
-              />
-              <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
+              {selection ? (
+                <SelectionPanel
+                  catalog={catalog}
+                  view={view}
+                  selection={selection}
+                  nowMs={nowMs}
+                  send={send}
+                  demoMode={demoMode}
+                  selectedTaskPreview={selectedTaskPreview}
+                  onPreviewTask={onPreviewTask}
+                  onClearSelection={onClearSelection}
+                  onEnterHouseInterior={onEnterHouseInterior}
+                />
+              ) : null}
             </div>
           ) : null}
         </section>
@@ -1938,17 +1944,6 @@ function MobileFarmHud({
             onBuild();
           }}
         />
-        {!demoMode ? (
-          <MobileActionButton
-            label="Market"
-            active={marketOpen}
-            icon={<Store aria-hidden="true" />}
-            onClick={() => {
-              closeTransientMenus();
-              onOpenMarket();
-            }}
-          />
-        ) : null}
       </nav>
     </div>
   );
@@ -2096,31 +2091,126 @@ function MainMenuSubpanel({
 }
 
 function TopBar({
+  catalog,
   view,
   message,
   connectionStatus,
   onOpenMenu,
 }: {
+  catalog: CatalogDocument;
   view: FarmView;
   message: string;
   connectionStatus: FarmConnectionStatus;
   onOpenMenu: () => void;
 }) {
+  const notice = hudNoticeMessage(message);
   return (
     <header className="top-bar">
-      <strong>My Farm</strong>
-      <Metric type="level" label={`Level ${view.level}`} />
-      <Metric type="xp" label={`${view.xp} XP`} />
-      <Metric type="coins" label={`${view.coins} coins`} />
-      <Metric type="silo" label={`Silo ${view.silo_used}/${view.silo_capacity}`} />
-      <Metric type="barn" label={`Barn ${view.barn_used}/${view.barn_capacity}`} />
+      <strong className="top-bar__brand">My Farm</strong>
+      <LevelProgressBadge catalog={catalog} view={view} />
+      <span className="hud-chip hud-chip--coins">
+        <ResourceIcon type="coins" />
+        <span>{view.coins} coins</span>
+      </span>
+      <StorageSummaryChip view={view} />
       <ConnectionStatus status={connectionStatus} />
-      <small>{message}</small>
+      <HudNotice message={notice} />
       <button className="top-bar__menu-button" type="button" onClick={onOpenMenu}>
         Menu
       </button>
     </header>
   );
+}
+
+function levelProgress(catalog: CatalogDocument, view: FarmView) {
+  const thresholds = catalog.level_xp;
+  const currentThreshold = thresholds[view.level] ?? 0;
+  const nextThreshold = thresholds[view.level + 1] ?? null;
+  if (nextThreshold === null || nextThreshold <= currentThreshold) {
+    return {
+      percent: 100,
+      label: `Level ${view.level}, ${view.xp} XP, max level progress`,
+    };
+  }
+
+  const earnedThisLevel = Math.max(0, view.xp - currentThreshold);
+  const xpThisLevel = nextThreshold - currentThreshold;
+  const percent = Math.min(100, Math.max(0, (earnedThisLevel / xpThisLevel) * 100));
+  const remaining = Math.max(0, nextThreshold - view.xp);
+  return {
+    percent,
+    label: `Level ${view.level}, ${view.xp} XP, ${remaining} XP to level ${view.level + 1}`,
+  };
+}
+
+function LevelProgressBadge({ catalog, view }: { catalog: CatalogDocument; view: FarmView }) {
+  const progress = levelProgress(catalog, view);
+  return (
+    <span
+      className="level-progress-badge"
+      style={{ "--level-progress": `${progress.percent}%` } as CSSProperties}
+      aria-label={progress.label}
+      title={progress.label}
+      data-testid="level-progress-badge"
+    >
+      <span>{view.level}</span>
+    </span>
+  );
+}
+
+function StorageSummaryChip({ view }: { view: FarmView }) {
+  const siloRatio = view.silo_capacity > 0 ? view.silo_used / view.silo_capacity : 1;
+  const barnRatio = view.barn_capacity > 0 ? view.barn_used / view.barn_capacity : 1;
+  const full = view.silo_used >= view.silo_capacity || view.barn_used >= view.barn_capacity;
+  const warning = full || siloRatio >= 0.8 || barnRatio >= 0.8;
+  const className = full
+    ? "hud-chip storage-summary-chip storage-summary-chip--full"
+    : warning
+      ? "hud-chip storage-summary-chip storage-summary-chip--warning"
+      : "hud-chip storage-summary-chip";
+
+  return (
+    <span
+      className={className}
+      aria-label={`Storage Silo ${view.silo_used} of ${view.silo_capacity}, Barn ${view.barn_used} of ${view.barn_capacity}`}
+      data-testid="storage-summary-chip"
+    >
+      <span className="storage-summary-chip__item">
+        <ResourceIcon type="silo" />
+        <span className="storage-summary-chip__label">Silo</span>
+        <span>{view.silo_used}/{view.silo_capacity}</span>
+      </span>
+      <span className="storage-summary-chip__item">
+        <ResourceIcon type="barn" />
+        <span className="storage-summary-chip__label">Barn</span>
+        <span>{view.barn_used}/{view.barn_capacity}</span>
+      </span>
+    </span>
+  );
+}
+
+function HudNotice({ message }: { message: string | null }) {
+  return (
+    <small className={message ? "hud-notice" : "hud-notice hud-notice--empty"} aria-live="polite">
+      {message ?? ""}
+    </small>
+  );
+}
+
+function hudNoticeMessage(message: string) {
+  const passiveMessages = new Set([
+    "Demo farm loaded",
+    "Local farm synced",
+    "Default tool",
+  ]);
+  if (
+    passiveMessages.has(message) ||
+    message.startsWith("Loading ") ||
+    message.startsWith("Scenario ")
+  ) {
+    return null;
+  }
+  return message;
 }
 
 function ConnectionStatus({ status }: { status: FarmConnectionStatus }) {
@@ -2153,58 +2243,6 @@ function Metric({
   );
 }
 
-function PanelHeader({
-  view,
-  version,
-  onReset,
-  demoMode,
-}: {
-  view: FarmView;
-  version: number;
-  onReset: () => void;
-  demoMode: boolean;
-}) {
-  return (
-    <section className="panel-section compact">
-      <div>
-        <h1>Farm Control</h1>
-        <p>
-          Save v{version}
-          {demoMode ? " - browser demo" : ` - ${view.delivery_orders.length} orders`}
-        </p>
-      </div>
-      <button type="button" onClick={onReset}>
-        Reset
-      </button>
-    </section>
-  );
-}
-
-function MarketLauncher({
-  marketOpen,
-  onOpenMarket,
-}: {
-  marketOpen: boolean;
-  onOpenMarket: () => void;
-}) {
-  return (
-    <section className="panel-section compact market-launcher">
-      <div>
-        <h2>Farmers Market</h2>
-        <p>Buy and sell unlocked goods.</p>
-      </div>
-      <button
-        type="button"
-        onClick={onOpenMarket}
-        aria-pressed={marketOpen}
-        aria-label="Open Farmers Market"
-      >
-        Open
-      </button>
-    </section>
-  );
-}
-
 function ResidentSelector({
   catalog,
   view,
@@ -2234,6 +2272,52 @@ function ResidentSelector({
           />
         ))}
       </div>
+    </section>
+  );
+}
+
+function CompactResidentSelector({
+  catalog,
+  view,
+  nowMs,
+  onSelectResident,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  nowMs: number;
+  onSelectResident: (residentId: string) => void;
+}) {
+  const residents = view.residents.slice(0, 2);
+
+  return (
+    <section className="resident-compact-selector" aria-label="Farm Residents">
+      {residents.map((resident) => {
+        const selected = resident.id === view.selected_resident_id;
+        const status = residentTaskStatus(catalog, view, resident.id, nowMs);
+        const pose = currentResidentScenePose(view, resident.id, nowMs);
+        return (
+          <button
+            key={resident.id}
+            type="button"
+            className={
+              selected
+                ? "resident-compact-selector__button resident-compact-selector__button--selected"
+                : "resident-compact-selector__button"
+            }
+            aria-pressed={selected}
+            onClick={() => void onSelectResident(resident.id)}
+          >
+            <span className="resident-compact-selector__name">{resident.display_name}</span>
+            <span className="resident-compact-selector__meta">
+              <span>{selected ? "Selected" : sceneStateLabel(pose.state)}</span>
+              <strong>{status.queuedCount}</strong>
+            </span>
+            {status.currentTask ? (
+              <progress value={status.progress} max={1} aria-label={`${resident.display_name} task progress`} />
+            ) : null}
+          </button>
+        );
+      })}
     </section>
   );
 }
@@ -2578,7 +2662,7 @@ function sellMarketDisabledReason(
   return null;
 }
 
-function Inventory({
+function SelectionInventory({
   catalog,
   view,
   selection,
@@ -2591,29 +2675,34 @@ function Inventory({
   send: SendCommand;
   demoMode: boolean;
 }) {
-  const items = relevantInventoryItems(catalog, view, selection);
-  if (selection?.type === "silo" || selection?.type === "barn") {
-    return (
-      <section className="panel-section">
-        <h2>Inventory</h2>
+  if (!selection || !relevantItemIdsForSelection(catalog, view, selection)) {
+    return null;
+  }
+  const storageSelection = selection.type === "silo" || selection.type === "barn";
+  const items = relevantInventoryItems(catalog, view, selection).filter(
+    (item) => !storageSelection || item.quantity > 0,
+  );
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="selection-inventory" aria-label="Relevant inventory">
+      <h3>Inventory</h3>
+      {storageSelection ? (
         <div className="storage-inventory-list">
           {items.map((item) => (
             <StorageInventoryItem key={item.item_id} item={item} send={send} demoMode={demoMode} />
           ))}
         </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="panel-section">
-      <h2>Inventory</h2>
-      <div className="inventory-grid">
-        {items.map((item) => (
-          <ResourceAmount key={item.item_id} item={item} amount={String(item.quantity)} />
-        ))}
-      </div>
-    </section>
+      ) : (
+        <div className="inventory-grid">
+          {items.map((item) => (
+            <ResourceAmount key={item.item_id} item={item} amount={String(item.quantity)} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2699,6 +2788,18 @@ function relevantItemIdsForSelection(
   view: FarmView,
   selection: Selection,
 ): Set<string> | null {
+  const plot = selectedPlot(view, selection);
+  if (plot) {
+    if (plot.crop) {
+      return new Set([plot.crop.item_id]);
+    }
+    return new Set(
+      catalog.crops
+        .filter((crop) => crop.unlock_level <= view.level)
+        .map((crop) => crop.item_id),
+    );
+  }
+
   const machine = selectedMachine(view, selection);
   if (machine) {
     const itemIds = new Set<string>();
@@ -2790,18 +2891,16 @@ function SelectionPanel({
     <section className={resident ? "panel-section resident-details-panel" : "panel-section"}>
       <div className="selection-panel__header">
         <h2>{resident ? "Resident Details" : "Selection"}</h2>
-        {resident ? (
-          <button
-            type="button"
-            aria-label="Close Resident Details"
-            onClick={() => {
-              onPreviewTask(null);
-              onClearSelection();
-            }}
-          >
-            Close
-          </button>
-        ) : null}
+        <button
+          type="button"
+          aria-label={resident ? "Close Resident Details" : "Clear Selection"}
+          onClick={() => {
+            onPreviewTask(null);
+            onClearSelection();
+          }}
+        >
+          Close
+        </button>
       </div>
       {isSilo ? (
         demoMode ? (
@@ -2869,22 +2968,13 @@ function SelectionPanel({
         <FarmShopActions catalog={catalog} view={view} nowMs={nowMs} send={send} />
       ) : null}
       {isToolShed ? <p>Tool Shed</p> : null}
-      {!plot &&
-      !machine &&
-      !shelter &&
-      !resident &&
-      !isFarmhouse &&
-      !isSilo &&
-      !isBarn &&
-      !isToolShed &&
-      !isFarmShop &&
-      selection?.type !== "delivery_board" ? (
-        <p>
-          {demoMode
-            ? "Select a field, Farmhouse, or storage."
-            : "Select a field, machine, shelter, storage, or order board."}
-        </p>
-      ) : null}
+      <SelectionInventory
+        catalog={catalog}
+        view={view}
+        selection={selection}
+        send={send}
+        demoMode={demoMode}
+      />
     </section>
   );
 }

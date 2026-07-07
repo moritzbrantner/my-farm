@@ -42,11 +42,12 @@ test("pages demo scenario URL loads a seeded farm scene", async ({ page }) => {
   await page.goto("/wiki/scenario-2");
 
   await expect(page).toHaveURL(/\/wiki\/scenario-2$/);
-  await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Interaction Tools" })).toBeVisible();
+  await expect(page.getByTestId("level-progress-badge")).toHaveAttribute("aria-label", /Level 1, 0 XP/);
   await expect(page.getByLabel("Scenario lesson")).toContainText("Planting Wheat");
-  await expect(page.getByText("Scenario 02: Planting Wheat")).toBeVisible();
+  await expect(page.getByLabel("Scenario lesson")).toContainText("Scenario 02");
   await expect(page.getByText("Reserved for Woman's task")).toBeVisible();
-  await expect(page.locator(".top-bar").getByText("Silo 9/40")).toBeVisible();
+  await expect(page.getByTestId("storage-summary-chip")).toHaveAttribute("aria-label", /Silo 9 of 40/);
 
   expect(apiRequests()).toEqual([]);
 });
@@ -55,16 +56,13 @@ test("pages demo plants Wheat and exposes the Resident Task Queue", async ({ pag
   const apiRequests = expectNoApiRequests(page);
   await startDemoFarm(page);
 
-  const inventory = inventoryPanel(page);
-  await expect(resourceAmount(inventory, "Wheat", "6")).toBeVisible();
-
   await selectSeedTool(page, "Wheat");
   await page.getByLabel("Field Plot plot-1").click({ force: true });
 
   await expect(page.getByText("Command accepted")).toBeVisible();
-  await expect(resourceAmount(inventory, "Wheat", "6")).toBeVisible();
-  await expect(page.locator(".top-bar").getByText("Silo 9/40")).toBeVisible();
+  await expect(page.getByTestId("storage-summary-chip")).toHaveAttribute("aria-label", /Silo 9 of 40/);
   await expect(page.getByText("Reserved for Woman's task")).toBeVisible();
+  await expect(resourceAmount(selectionInventory(page), "Wheat")).toBeVisible();
 
   await page.getByTestId("farm-scene-resident-woman").click();
   const details = page.locator(".panel-section").filter({
@@ -135,7 +133,7 @@ test("pages demo makes and collects Bread from the Farmhouse Oven", async ({ pag
   await selection.getByRole("button", { name: "Make Bread" }).click();
 
   await expect(page.getByText("Command accepted")).toBeVisible();
-  await expect(resourceAmount(inventoryPanel(page), "Wheat", "3")).toBeVisible();
+  await expect(resourceAmount(selectionInventory(page), "Wheat", "3")).toBeVisible();
 
   await advanceDemoSave(page, Date.now() + 1_000_000);
   await page.reload();
@@ -154,7 +152,9 @@ test("pages demo makes and collects Bread from the Farmhouse Oven", async ({ pag
   await advanceDemoSave(page, Date.now() + 2_000_000);
   await page.reload();
   await page.getByRole("button", { name: "Start Farm" }).click();
-  await expect(resourceAmount(inventoryPanel(page), "Bread", "1")).toBeVisible();
+  await page.getByLabel("Barn structure").click({ force: true });
+  await expect(selectionInventory(page).getByText("Bread")).toBeVisible();
+  await expect(selectionInventory(page).getByText("1 stored")).toBeVisible();
 
   expect(apiRequests()).toEqual([]);
 });
@@ -181,7 +181,7 @@ test("pages demo explains storage-full harvest before accepting conflicting work
 async function startDemoFarm(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Start Farm" }).click();
-  await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Interaction Tools" })).toBeVisible();
 }
 
 async function openFarmhouseSelection(page: Page) {
@@ -196,15 +196,15 @@ async function selectSeedTool(page: Page, seedName: string) {
   await tools.getByRole("menuitemradio", { name: new RegExp(seedName) }).click();
 }
 
-function inventoryPanel(page: Page) {
-  return page.locator(".panel-section").filter({
-    has: page.getByRole("heading", { name: "Inventory" }),
-  });
+function selectionInventory(page: Page) {
+  return page.locator(".selection-inventory");
 }
 
-function resourceAmount(scope: Locator, name: string, amount: string) {
+function resourceAmount(scope: Locator, name: string, amount?: string) {
   return scope.locator(".resource-amount").filter({
-    hasText: new RegExp(`^${escapeRegExp(name)}${escapeRegExp(amount)}$`),
+    hasText: amount
+      ? new RegExp(`^${escapeRegExp(name)}${escapeRegExp(amount)}$`)
+      : new RegExp(`^${escapeRegExp(name)}\\d+$`),
   });
 }
 

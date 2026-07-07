@@ -14,7 +14,7 @@ test("renders the playable farm shell", async ({ page }, testInfo) => {
 
   await expect(page.getByRole("dialog", { name: "Guided Tutorial" })).toHaveCount(0);
   await expect(page.getByText("My Farm")).toBeVisible();
-  await expect(page.getByText(/Level 1/)).toBeVisible();
+  await expect(page.getByTestId("level-progress-badge")).toHaveAttribute("aria-label", /Level 1/);
 
   if (testInfo.project.name === "mobile") {
     const mobileActions = page.getByRole("navigation", { name: "Farm actions" });
@@ -22,7 +22,7 @@ test("renders the playable farm shell", async ({ page }, testInfo) => {
     await expect(mobileActions.getByRole("button", { name: "Plant" })).toBeVisible();
     await expect(mobileActions.getByRole("button", { name: "Build" })).toBeVisible();
   } else {
-    await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
+    await expect(page.getByRole("toolbar", { name: "Interaction Tools" })).toBeVisible();
     await expect(page.locator(".interaction-tools").getByRole("button", { name: "Seed" })).toBeVisible();
     await expect(page.locator(".interaction-tools").getByRole("button", { name: "Build" })).toBeVisible();
   }
@@ -57,7 +57,6 @@ test("bootstraps from the gameplay websocket without polling farm snapshots", as
     await expect(page.getByLabel("Connection Synced")).toHaveText("Synced");
   } else {
     await expect(page.getByLabel("Connection Synced")).toBeVisible();
-    await expect(page.getByText("Local farm synced")).toBeVisible();
   }
   await expect(page.getByLabel("Feed Mill structure")).toBeVisible();
   await page.waitForTimeout(2800);
@@ -162,16 +161,13 @@ test("sends commands and reset over the gameplay websocket without REST gameplay
   await selectSeedTool(page, "Wheat");
   await page.getByLabel("Field Plot plot-1").click({ force: true });
 
-  const inventoryPanel = page.locator(".panel-section").filter({
-    has: page.getByRole("heading", { name: "Inventory" }),
-  });
   if (testInfo.project.name === "mobile") {
     await expect(page.getByText("Command accepted")).toHaveText("Command accepted");
   } else {
     await expect(page.getByText("Command accepted")).toBeVisible();
   }
   if (testInfo.project.name !== "mobile") {
-    await expect(resourceAmount(inventoryPanel, "Wheat", "5")).toBeVisible();
+    await expect(resourceAmount(page.locator(".selection-inventory"), "Wheat", "5")).toBeVisible();
   }
 
   await page.getByRole("button", { name: "Menu" }).click();
@@ -187,7 +183,9 @@ test("sends commands and reset over the gameplay websocket without REST gameplay
   await expect(dialog.getByText("Step 1 of 5")).toBeVisible();
   await expect(dialog.getByText("Welcome to your fresh Farm")).toBeVisible();
   if (testInfo.project.name !== "mobile") {
-    await expect(resourceAmount(inventoryPanel, "Wheat", "6")).toBeVisible();
+    await closeGuidedTutorial(page);
+    await page.getByLabel("Field Plot plot-1").click({ force: true });
+    await expect(resourceAmount(page.locator(".selection-inventory"), "Wheat", "6")).toBeVisible();
   }
   const websocketMessages = await page.evaluate(
     () => (window as unknown as { __gameplayWebSocketMessages: unknown[] }).__gameplayWebSocketMessages,
@@ -229,7 +227,7 @@ test("reconnect reloads catalog and farm snapshot from the gameplay websocket", 
     await expect(page.getByLabel("Connection Reconnecting")).toBeVisible({ timeout: 2_000 });
     await expect(page.getByLabel("Connection Synced")).toBeVisible();
   }
-  await expect(page.locator(".top-bar").getByText("Level 2")).toBeVisible();
+  await expect(page.getByTestId("level-progress-badge")).toHaveAttribute("aria-label", /Level 2/);
 });
 
 test("resident selector shows both residents and sends selected resident commands", async ({ page }, testInfo) => {
@@ -249,7 +247,9 @@ test("resident selector shows both residents and sends selected resident command
   await expect(residents.getByText("Selected")).toBeVisible();
   await expect(residents.getByText("Mara")).toBeVisible();
   await expect(residents.getByText("Jon")).toBeVisible();
-  await expect(residents.locator(".resident-picker-row")).toHaveCount(2);
+  await expect(
+    residents.locator(testInfo.project.name === "mobile" ? ".resident-picker-row" : ".resident-compact-selector__button"),
+  ).toHaveCount(2);
   await expect(residents.getByRole("textbox")).toHaveCount(0);
   await expect(residents.getByRole("button", { name: "Rename" })).toHaveCount(0);
 
@@ -373,7 +373,9 @@ test("resident selector shows queue counts and live task progress", async ({ pag
     testInfo.project.name === "mobile"
       ? page.locator(".mobile-resident-switcher").getByLabel("Farm Residents")
       : page.locator("aside").getByLabel("Farm Residents");
-  const maraRow = residents.locator(".resident-picker-row").first();
+  const maraRow = residents
+    .locator(testInfo.project.name === "mobile" ? ".resident-picker-row" : ".resident-compact-selector__button")
+    .first();
   await expect(maraRow.getByText("Mara")).toBeVisible();
   await expect(maraRow.getByText("Selected")).toBeVisible();
   await expect(maraRow.getByText("2", { exact: true })).toBeVisible();
@@ -1348,7 +1350,7 @@ test("main menu opens settings wiki and account panels", async ({ page }, testIn
   if (testInfo.project.name === "mobile") {
     await expect(page.getByRole("navigation", { name: "Farm actions" })).toBeVisible();
   } else {
-    await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
+    await expect(page.getByRole("toolbar", { name: "Interaction Tools" })).toBeVisible();
   }
 });
 
@@ -1364,7 +1366,7 @@ test("top bar menu returns to the main menu", async ({ page }, testInfo) => {
     await expect(page.getByRole("navigation", { name: "Farm actions" })).toBeVisible();
     await expect(page.getByText("Farm reset")).toHaveText("Farm reset");
   } else {
-    await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
+    await expect(page.getByRole("toolbar", { name: "Interaction Tools" })).toBeVisible();
     await expect(page.getByText("Farm reset")).toBeVisible();
   }
 });
@@ -1429,11 +1431,8 @@ test("reset clears transient gameplay UI before showing the guided tutorial", as
     await expect(page.getByTestId("build-detail-strip")).toContainText("Place Field Plot");
   }
 
-  if (testInfo.project.name === "mobile") {
-    await page.getByRole("navigation", { name: "Farm actions" }).getByRole("button", { name: "Market" }).click();
-  } else {
-    await page.getByRole("button", { name: "Open Farmers Market" }).click();
-  }
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByRole("button", { name: "Farmers Market" }).click();
   await expect(page.getByRole("region", { name: "Farmers Market" })).toBeVisible();
 
   await resetFarmFromPlaying(page, testInfo.project.name);
@@ -1501,7 +1500,7 @@ test("guided tutorial pauses the client clock until gameplay resumes", async ({ 
     element instanceof HTMLElement ? element.style.getPropertyValue("--progress") : "",
   );
 
-  await page.getByRole("button", { name: "Reset" }).click();
+  await resetFarmFromPlaying(page, testInfo.project.name);
   const dialog = page.getByRole("dialog", { name: "Guided Tutorial" });
   await expect(dialog).toBeVisible();
   const pausedProgress = await progress.evaluate((element) =>
@@ -1727,18 +1726,15 @@ test("storage selection can discard one item from the inventory list", async ({ 
   await openFarm(page);
 
   await page.getByLabel("Barn structure").click();
-  const inventory = page.locator(".panel-section").filter({
-    has: page.getByRole("heading", { name: "Inventory" }),
-  });
+  const inventory = page.locator(".selection-inventory");
   const selection = page.locator(".panel-section").filter({
     has: page.getByRole("heading", { name: "Selection" }),
   });
   await expect(selection.getByText("Barn storage - 3/30 goods")).toBeVisible();
-  await expect(selection.getByRole("button", { name: /Throw away/ })).toHaveCount(0);
   await expect(inventory.getByText("Bread", { exact: true })).toBeVisible();
   await expect(inventory.getByText("3 stored")).toBeVisible();
   await expect(inventory.getByRole("button", { name: "Throw away 1 Bread" })).toBeVisible();
-  await expect(selection.getByRole("button", { name: /Throw away Wheat/ })).toHaveCount(0);
+  await expect(selection.getByRole("button", { name: "Throw away 1 Wheat" })).toHaveCount(0);
 
   await inventory.getByRole("button", { name: "Throw away 1 Bread" }).click();
 
@@ -1752,7 +1748,6 @@ test("storage selection can discard one item from the inventory list", async ({ 
   commands.length = 0;
   await page.getByLabel("Silo structure").click();
   await expect(selection.getByText("Silo storage - 2/40 crops")).toBeVisible();
-  await expect(selection.getByRole("button", { name: /Throw away/ })).toHaveCount(0);
   await expect(inventory.getByText("Wheat", { exact: true })).toBeVisible();
   await expect(inventory.getByText("2 stored")).toBeVisible();
 
@@ -3200,13 +3195,8 @@ test("farmers market buys and sells items through commands", async ({ page }, te
   });
   await openFarm(page);
 
-  if (testInfo.project.name === "mobile") {
-    await page.getByRole("navigation", { name: "Farm actions" }).getByRole("button", { name: "Market" }).click();
-  } else {
-    const marketLauncher = page.locator(".market-launcher");
-    await expect(marketLauncher.getByRole("button", { name: "Open Farmers Market" })).toBeVisible();
-    await marketLauncher.getByRole("button", { name: "Open Farmers Market" }).click();
-  }
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByRole("button", { name: "Farmers Market" }).click();
 
   const market = page.getByRole("region", { name: "Farmers Market" });
   await expect(market).toBeVisible();
@@ -3253,11 +3243,8 @@ test("filters inventory to the selected structure materials", async ({ page }, t
   });
   await openFarm(page);
 
-  const inventory = page.locator(".panel-section").filter({
-    has: page.getByRole("heading", { name: "Inventory" }),
-  });
-
   await openFarmhouseSelection(page);
+  let inventory = page.locator(".selection-inventory");
   await expect(resourceAmount(inventory, "Wheat", "2")).toBeVisible();
   await expect(resourceAmount(inventory, "Bread", "0")).toBeVisible();
   await expect(resourceAmount(inventory, "Corn Bread", "0")).toBeVisible();
@@ -3266,6 +3253,7 @@ test("filters inventory to the selected structure materials", async ({ page }, t
   test.skip(testInfo.project.name === "mobile", "Desktop covers direct scene structure selection for inventory filtering.");
 
   await page.getByLabel("Chicken Coop structure").click({ force: true });
+  inventory = page.locator(".selection-inventory");
   await expect(resourceAmount(inventory, "Chicken Feed", "0")).toBeVisible();
   await expect(resourceAmount(inventory, "Egg", "0")).toBeVisible();
   await expect(inventory).not.toContainText("Wheat");
@@ -4566,17 +4554,12 @@ async function openBuildMenu(page: Page) {
 }
 
 async function resetFarmFromPlaying(page: Page, projectName: string) {
-  if (projectName === "mobile") {
-    const closeMarket = page.getByRole("button", { name: "Close Farmers Market" });
-    if (await closeMarket.isVisible().catch(() => false)) {
-      await closeMarket.click();
-    }
-    await page.getByRole("button", { name: "Menu" }).click();
-    await page.getByRole("button", { name: "New Farm" }).click();
-    return;
+  const closeMarket = page.getByRole("button", { name: "Close Farmers Market" });
+  if (await closeMarket.isVisible().catch(() => false)) {
+    await closeMarket.click();
   }
-
-  await page.getByRole("button", { name: "Reset" }).click();
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByRole("button", { name: "New Farm" }).click();
 }
 
 async function openFarmhouseSelection(page: Page) {
@@ -4666,7 +4649,7 @@ async function fieldTargetPoint(page: Page, plotId: string) {
 
 async function findFreeCanvasPoint(page: Page) {
   const canvas = page.locator("canvas").first();
-  const emptySelection = page.getByText("Select a field, machine, shelter, storage, or order board.");
+  const selectionPanel = page.locator(".panel-section").filter({ has: page.getByRole("heading", { name: "Selection" }) });
   const mobileHud = page.getByRole("navigation", { name: "Farm actions" });
   await expect(canvas).toBeVisible();
   const box = await canvas.boundingBox();
@@ -4682,7 +4665,7 @@ async function findFreeCanvasPoint(page: Page) {
         continue;
       }
       await page.mouse.click(x, y);
-      if (await emptySelection.isVisible().catch(() => false)) {
+      if ((await selectionPanel.count()) === 0 && !(await mobileHud.isVisible().catch(() => false))) {
         return { x, y };
       }
       if (await mobileHud.isVisible().catch(() => false)) {

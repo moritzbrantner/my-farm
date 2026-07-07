@@ -16,10 +16,14 @@ test("pages demo runs from WASM without server API calls", async ({ page }) => {
   await expect(page.getByText("Browser Demo")).toBeVisible();
   await page.getByRole("button", { name: "Start Farm" }).click();
 
-  await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Interaction Tools" })).toBeVisible();
+  await expect(page.getByTestId("level-progress-badge")).toHaveAttribute("aria-label", /Level 1, 0 XP/);
+  await expect(page.getByTestId("storage-summary-chip")).toBeVisible();
   const residents = page.getByLabel("Farm Residents");
   await expect(residents.getByText("Selected")).toBeVisible();
-  await expect(residents.locator(".resident-picker-row")).toHaveCount(2);
+  await expect(residents.locator(".resident-compact-selector__button")).toHaveCount(2);
+  await expect(page.getByRole("heading", { name: "Selection" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Inventory" })).toHaveCount(0);
   await expect(page.getByTestId("farm-scene-resident-woman")).toBeVisible();
   await expect(page.getByTestId("farm-scene-resident-man")).toBeVisible();
   await expect(page.getByText("Farmers Market")).toHaveCount(0);
@@ -88,8 +92,9 @@ test("pages demo persists a Farmhouse Oven production save in localStorage", asy
   await expect(page.getByRole("region", { name: "Main menu" })).toBeVisible();
   await page.getByRole("button", { name: "Start Farm" }).click();
 
-  await expect(page.locator(".top-bar").getByText(/Level \d+/)).toBeVisible();
-  await expect(page.getByText("Bread")).toBeVisible();
+  await expect(page.getByTestId("level-progress-badge")).toHaveAttribute("aria-label", /Level \d+/);
+  await page.getByLabel("Barn structure").click({ force: true });
+  await expect(page.locator(".selection-inventory").getByText("Bread")).toBeVisible();
   await expect(page.getByLabel("Farmhouse structure")).toBeVisible();
 
   await page.getByRole("button", { name: "Menu" }).click();

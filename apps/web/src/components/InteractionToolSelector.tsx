@@ -85,8 +85,7 @@ export function InteractionToolSelector({
   };
 
   return (
-    <section className="panel-section interaction-tools" aria-label="Interaction Tools">
-      <h2>Interaction Tools</h2>
+    <section className="interaction-tools" aria-label="Interaction Tools">
       <div className="interaction-tools__toolbar" role="toolbar" aria-label="Interaction Tools">
         <button
           type="button"
