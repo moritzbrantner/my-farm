@@ -10,6 +10,10 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
   path.resolve(workspaceRoot, "node_modules"),
 ];
+config.resolver.extraNodeModules = {
+  ...(config.resolver.extraNodeModules ?? {}),
+  punycode: require.resolve("punycode/"),
+};
 config.resolver.disableHierarchicalLookup = true;
 
 module.exports = config;

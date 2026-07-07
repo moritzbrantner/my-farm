@@ -7,6 +7,7 @@
 /apps/web/src/generated/my_farm_wasm/
 /apps/web/test-results/
 /apps/web/playwright-report/
+/apps/mobile/.expo/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal

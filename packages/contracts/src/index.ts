@@ -43,6 +43,7 @@ export type {
   ResidentVisualProp,
   ResidentWorkView,
   ReservedWorkTarget,
+  RoomTile,
   ShelterKind,
   StorageKind,
   StorageSourceRef,

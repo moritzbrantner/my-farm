@@ -3,3 +3,14 @@ appId: dev.moritzbrantner.myfarm
 - launchApp
 - assertVisible: "My Farm"
 - assertVisible: "Connect"
+- tapOn: "http://.*:8081"
+- eraseText
+- inputText: "http://10.0.2.2:8081"
+- tapOn: "Connect"
+- assertVisible: "Start Farm"
+- tapOn: "New Farm"
+- assertVisible: "Farm"
+- assertVisible: "Level"
+- assertVisible: "Wheat"
+- tapOn: "Wheat"
+- assertVisible: "Queue: 1"

@@ -28,6 +28,25 @@ bun run dev:mobile
 
 Use the in-app server URL field to point a simulator or device at the Rust server, such as `http://castle:8081` on the local network. This mobile slice includes the native connection flow, main menu, farm scene shell, HUD, diagnostics, and native screens for residents, market/shop, delivery orders, farmhouse actions, wiki, and settings.
 
+For an Android emulator running on this machine, use `http://10.0.2.2:8081` as the Farm server URL. The local Android toolchain expects an AVD to exist before running the development build:
+
+```sh
+$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager list avd
+$ANDROID_HOME/emulator/emulator -avd my_farm_pixel_api_35
+bun run mobile:android
+```
+
+Mobile verification commands:
+
+```sh
+cd apps/mobile && bun run typecheck
+curl -fsSL "https://get.maestro.mobile.dev" | bash
+bun run test:mobile
+bun run test:e2e:mobile
+```
+
+`bun run test:e2e:mobile` uses Maestro and expects a running Android emulator, the development build installed with app id `dev.moritzbrantner.myfarm`, and the Rust server listening on `0.0.0.0:8081`. iOS simulator validation requires macOS; from Linux, keep iOS coverage to EAS configuration and documented preview build commands.
+
 ## GitHub Pages Demo
 
 Build the static Pages demo locally:

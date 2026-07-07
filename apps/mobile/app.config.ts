@@ -8,6 +8,9 @@ const config: ExpoConfig = {
   orientation: "portrait",
   userInterfaceStyle: "light",
   newArchEnabled: false,
+  splash: {
+    backgroundColor: "#9fd3d1",
+  },
   ios: {
     supportsTablet: true,
     bundleIdentifier: "dev.moritzbrantner.myfarm",
