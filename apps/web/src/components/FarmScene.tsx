@@ -33,13 +33,15 @@ import {
   type StructureProductionStatus,
 } from "@my-farm/game-model/structureStatus";
 import {
+  currentResidentFacing,
   currentResidentScenePath,
   currentResidentScenePose,
   hasActiveResidentWalk,
   isResidentInsideHouse,
+  residentVisualPresentation,
+  type ResidentScenePath,
   residentTaskStatus,
   residentWork,
-  residentVisualCue,
 } from "@my-farm/game-model/residentTasks";
 
 const MOVE_TILE_BLOCKED_COLOR = "#a9333f";
@@ -61,6 +63,7 @@ type Props = {
   movingStructure: StructureSelection | null;
   plantSweep: PlantSweepState;
   harvestSweep: HarvestSweepState;
+  previewResidentPath: ResidentScenePath | null;
   onSelect: (selection: Selection) => void;
   onSelectResident: (residentId: string) => void;
   onOpenFieldMenu: (plotId: string, point: { x: number; y: number }) => void;
@@ -72,7 +75,6 @@ type Props = {
   onStartHarvestSweep: (plotId: string, pointerId: number) => void;
   onEnterHarvestSweepPlot: (plotId: string) => void;
   onCancelFieldToolAction: () => void;
-  onEnterHouseInterior: () => void;
 };
 
 export function FarmScene({
@@ -86,6 +88,7 @@ export function FarmScene({
   movingStructure,
   plantSweep,
   harvestSweep,
+  previewResidentPath,
   onSelect,
   onOpenFieldMenu,
   onOpenStructureMenu,
@@ -96,7 +99,6 @@ export function FarmScene({
   onStartHarvestSweep,
   onEnterHarvestSweepPlot,
   onCancelFieldToolAction,
-  onEnterHouseInterior,
   onSelectResident,
 }: Props) {
   const [hoverTile, setHoverTile] = useState<Tile | null>(null);
@@ -171,7 +173,6 @@ export function FarmScene({
           buildPlacement={buildPlacement}
           movingStructure={movingStructure}
           onSelect={() => onSelect({ type: "farmhouse" })}
-          onEnterHouseInterior={onEnterHouseInterior}
           onOpenStructureMenu={onOpenStructureMenu}
           onPlaceNewStructure={onPlaceNewStructure}
           onPlaceStructure={onPlaceStructure}
@@ -316,10 +317,12 @@ export function FarmScene({
             }}
           />
         ) : null}
-        {view.farm_shop?.current_sale && view.farm_shop.current_sale.visible_until_ms > nowMs ? (
+        {view.farm_shop &&
+        ((view.farm_shop.current_sale && view.farm_shop.current_sale.visible_until_ms > nowMs) ||
+          (view.farm_shop.current_rejection && view.farm_shop.current_rejection.visible_until_ms > nowMs)) ? (
           <FarmShopSaleCar shopTile={view.farm_shop.tile} />
         ) : null}
-        <ResidentPathOverlay view={view} selection={selection} nowMs={nowMs} />
+        <ResidentPathOverlay view={view} selection={selection} nowMs={nowMs} previewPath={previewResidentPath} />
         <FarmResidents
           catalog={catalog}
           view={view}
@@ -406,7 +409,7 @@ function FarmResidents({
     .filter((resident) => !isResidentInsideHouse(view, resident.id, residentNowMs))
     .map((resident, index): FarmResidentPresentation => {
       const pose = currentResidentScenePose(view, resident.id, residentNowMs);
-      const visualCue = residentVisualCue(view, resident.id, residentNowMs);
+      const presentation = residentVisualPresentation(view, resident.id, residentNowMs);
       const work = residentWork(view, resident.id);
       const status = residentTaskStatus(catalog, view, resident.id, residentNowMs);
       const offset = residentVisualOffset(index, pose.state);
@@ -422,13 +425,16 @@ function FarmResidents({
         variant: resident.id === "man" ? "man" : "woman",
         position,
         state: pose.state,
-        activity: visualCue.activity,
-        prop: visualCue.prop,
+        activity: presentation.activity,
+        prop: presentation.prop,
+        heldTool: presentation.heldTool,
+        motion: presentation.motion,
         taskLabel: work?.current_step?.label ?? status.currentTask?.label ?? status.label,
         targetLabel: pose.label,
         selected: selection?.type === "resident" && selection.id === resident.id,
         blocked: pose.state === "blocked",
         animationPaused: visualClockPaused,
+        facing: currentResidentFacing(view, resident.id, residentNowMs),
       };
     });
 
@@ -449,14 +455,16 @@ function ResidentPathOverlay({
   view,
   selection,
   nowMs,
+  previewPath,
 }: {
   view: FarmView;
   selection: Selection;
   nowMs: number;
+  previewPath: ResidentScenePath | null;
 }) {
-  const path = selection?.type === "resident"
+  const path = previewPath ?? (selection?.type === "resident"
     ? currentResidentScenePath(view, selection.id, nowMs)
-    : null;
+    : null);
   const linePoints = useMemo(() => {
     if (!path) {
       return new Float32Array();
@@ -539,7 +547,6 @@ function StaticFarmHouse({
   buildPlacement,
   movingStructure,
   onSelect,
-  onEnterHouseInterior,
   onOpenStructureMenu,
   onPlaceNewStructure,
   onPlaceStructure,
@@ -551,7 +558,6 @@ function StaticFarmHouse({
   buildPlacement: BuildPlacementState;
   movingStructure: StructureSelection | null;
   onSelect: () => void;
-  onEnterHouseInterior: () => void;
   onOpenStructureMenu: (target: StructureSelection, point: { x: number; y: number }) => void;
   onPlaceNewStructure: (tile: Tile) => void;
   onPlaceStructure: (tile: Tile) => void;
@@ -576,7 +582,6 @@ function StaticFarmHouse({
       return;
     }
     onSelect();
-    onEnterHouseInterior();
   };
 
   const handleFixedContextMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -606,8 +611,8 @@ function StaticFarmHouse({
           tabIndex={-1}
           aria-label="Farmhouse structure"
           style={{
-            width: `${structureHitTargetWidth(FARM_HOUSE_FOOTPRINT)}px`,
-            height: `${structureHitTargetHeight(FARM_HOUSE_FOOTPRINT)}px`,
+            width: `${farmhouseHitTargetWidth(FARM_HOUSE_FOOTPRINT)}px`,
+            height: `${farmhouseHitTargetHeight(FARM_HOUSE_FOOTPRINT)}px`,
           }}
           onClick={handleFixedClick}
           onContextMenu={handleFixedContextMenu}
@@ -679,38 +684,43 @@ function FarmCameraController({
     }
     let activePointer: { id: number; x: number; y: number } | null = null;
 
-    const startTouchPan = (event: PointerEvent) => {
-      if (event.pointerType !== "touch") {
+    const isManualPanPointer = (event: PointerEvent) =>
+      event.pointerType === "touch" || (event.pointerType === "mouse" && event.button === 2);
+
+    const startManualPan = (event: PointerEvent) => {
+      if (!isManualPanPointer(event)) {
         return;
       }
+      event.preventDefault();
       activePointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
     };
-    const moveTouchPan = (event: PointerEvent) => {
+    const moveManualPan = (event: PointerEvent) => {
       if (!activePointer || event.pointerId !== activePointer.id) {
         return;
       }
+      event.preventDefault();
       const dx = event.clientX - activePointer.x;
       const dy = event.clientY - activePointer.y;
       activePointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
       panCamera(camera, controlsRef.current, dx, dy);
       invalidate();
     };
-    const stopTouchPan = (event: PointerEvent) => {
+    const stopManualPan = (event: PointerEvent) => {
       if (activePointer?.id === event.pointerId) {
         activePointer = null;
       }
     };
 
     const canvas = gl.domElement;
-    canvas.addEventListener("pointerdown", startTouchPan);
-    canvas.addEventListener("pointermove", moveTouchPan);
-    canvas.addEventListener("pointerup", stopTouchPan);
-    canvas.addEventListener("pointercancel", stopTouchPan);
+    canvas.addEventListener("pointerdown", startManualPan);
+    canvas.addEventListener("pointermove", moveManualPan);
+    canvas.addEventListener("pointerup", stopManualPan);
+    canvas.addEventListener("pointercancel", stopManualPan);
     return () => {
-      canvas.removeEventListener("pointerdown", startTouchPan);
-      canvas.removeEventListener("pointermove", moveTouchPan);
-      canvas.removeEventListener("pointerup", stopTouchPan);
-      canvas.removeEventListener("pointercancel", stopTouchPan);
+      canvas.removeEventListener("pointerdown", startManualPan);
+      canvas.removeEventListener("pointermove", moveManualPan);
+      canvas.removeEventListener("pointerup", stopManualPan);
+      canvas.removeEventListener("pointercancel", stopManualPan);
     };
   }, [camera, controlsEnabled, gl.domElement, invalidate]);
 
@@ -1831,6 +1841,14 @@ function structureHitTargetWidth(footprint: StructureFootprint) {
 
 function structureHitTargetHeight(footprint: StructureFootprint) {
   return 14 + (footprint.height - 1) * 8;
+}
+
+function farmhouseHitTargetWidth(footprint: StructureFootprint) {
+  return Math.max(72, structureHitTargetWidth(footprint));
+}
+
+function farmhouseHitTargetHeight(footprint: StructureFootprint) {
+  return Math.max(56, structureHitTargetHeight(footprint));
 }
 
 function assetKindForTarget(target: StructureSelection, label: string): Exclude<FarmAssetKind, "ground_tile" | "field_plot"> {

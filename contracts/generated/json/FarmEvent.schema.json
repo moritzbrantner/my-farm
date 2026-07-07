@@ -303,6 +303,35 @@
     {
       "type": "object",
       "required": [
+        "resident_id",
+        "task_id",
+        "type"
+      ],
+      "properties": {
+        "before_task_id": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resident_id": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "resident_task_reordered"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "display_name",
         "resident_id",
         "type"
@@ -456,6 +485,66 @@
           "type": "string",
           "enum": [
             "farm_shop_sale_completed"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "item_id",
+        "price",
+        "type"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "price": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "farm_shop_price_set"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "base_price",
+        "item_id",
+        "sale_chance_bps",
+        "shop_price",
+        "type"
+      ],
+      "properties": {
+        "base_price": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "sale_chance_bps": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "shop_price": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "farm_shop_visit_rejected"
           ]
         }
       }

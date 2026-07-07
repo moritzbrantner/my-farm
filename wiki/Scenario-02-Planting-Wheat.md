@@ -21,7 +21,7 @@ A Field Plot holds one planted Crop job. Planting Wheat consumes an existing Whe
 
 ## What changes on the farm
 
-- Wheat inventory decreases by 1 when the planting Command is accepted.
+- One Wheat becomes reserved for the planting task when the planting Command is accepted.
 - The Selected Resident receives a Resident Task.
 - The Field Plot is reserved while the Resident Task is pending or in progress.
 - The Field Plot becomes planted with Wheat once the resident reaches the plot and finishes the planting step.

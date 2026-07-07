@@ -20,13 +20,17 @@ _Avoid_: Browser-only room state, UI-only house
 The whole-Farmhouse navigation view used to enter individual Rooms or exit back to the Farm.
 _Avoid_: Room picker, house menu
 
+**Upper Floor**:
+The second-story layer in the House Overview that contains the Bedroom House Door and bedroom preview. Players can show or hide the Upper Floor while inspecting the House Overview; this visibility is not saved Farm state.
+_Avoid_: Upstairs mode, second-floor state
+
 **Room**:
 A named area inside the House Interior, such as the Living Room, Kitchen, or Bedroom. Starter Rooms use fixed Room Tile grids.
 _Avoid_: Scene, level, screen
 
-**Room Door**:
-A fixed Room exit affordance that returns the player from a Room to the House Overview.
-_Avoid_: Back button, tab
+**House Door**:
+A visible House Interior navigation affordance that enters a Room, returns from a Room to the House Overview, or exits through the Front Door to the Farm. House Doors are navigation affordances, not Decoration Placements or saved Room state.
+_Avoid_: Door button, room tab, back button
 
 **Room Tile**:
 A discrete coordinate inside a Room grid used to place Decorations.
@@ -56,6 +60,10 @@ _Avoid_: Structure upgrade, house building
 The Farmhouse Upgrade that unlocks bread-family production from the Farmhouse kitchen. It keeps the prior bread-production balance but is not a placed or movable Structure.
 _Avoid_: placed kitchen Structure
 
+**Farmhouse Baking Surface**:
+The exterior Farmhouse management surface where the player can buy the Oven, start Oven recipes, and collect Oven output before entering the House Interior. It is a player Command surface, not the Resident Task work target.
+_Avoid_: Bakery, placed baking station, outside Oven Workstation
+
 **Oven Workstation**:
 The fixed Kitchen surface for starting and collecting Oven recipes. It is derived from the Oven Farmhouse Upgrade and is not a Decoration.
 _Avoid_: Oven decoration, kitchen machine
@@ -83,6 +91,14 @@ _Avoid_: Instant oven queueing, make cake
 **Resident Task Queue**:
 The per-resident FIFO list of Resident Tasks saved on the Farm. Later work may enqueue physical production tasks here; empty queues still exist for each Farm Resident.
 _Avoid_: Local queue, animation queue
+
+**Resident Task Preview**:
+A browser-facing inspection of a Resident Task's planned path, target, and steps. It is derived from authoritative Resident Task Queue state and does not change Farm state by itself.
+_Avoid_: Client-only route, speculative task
+
+**Resident Task Reordering**:
+A player Command that changes the order of future queued Resident Tasks for one Farm Resident. The current Resident Task stays fixed, future tasks are replanned atomically, and unsafe reorder attempts are rejected without changing the queue.
+_Avoid_: Drag-only UI order, task cancellation
 
 **Resident Details**:
 The selected-Farm Resident UI surface that shows current Resident Task state, current step, target, progress, carried Resident Inventory, blocked reason, and expandable Resident Task Queue.
@@ -156,12 +172,20 @@ _Avoid_: Market, delivery board, roadside decoration
 Saved sellable Item stacks held by the Farm Shop, separate from Silo and Barn inventory. Shop Stock is moved in and out by Resident Tasks and can be bought by Customer Visits unless reserved.
 _Avoid_: Market listing, storage inventory, offer
 
+**Shop Price**:
+The saved coin price a Customer Visit pays for one unit of a listed Shop Stock item if the visit buys it.
+_Avoid_: Market price, delivery reward, item value
+
 **Customer Visit**:
 A scheduled elapsed-time opportunity for a roadside car to stop at the Farm Shop and buy one available unit from Shop Stock.
 _Avoid_: Delivery order, market trade, visual-only car
 
+**Customer Rejection**:
+A Customer Visit that considers one listed Shop Stock item but buys nothing because the Shop Price demand roll fails.
+_Avoid_: Failed delivery, customer cancellation, stock error
+
 **Shop Sale**:
-A successful Customer Visit that removes one unreserved Shop Stock unit, pays coins at the catalog market sell price, and exposes a short-lived sale window for the client.
+A successful Customer Visit that removes one unreserved Shop Stock unit, pays coins at the current Shop Price, and exposes a short-lived sale window for the client.
 _Avoid_: Delivery fulfillment, manual sale
 
 **Tool Source**:

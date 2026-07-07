@@ -8,16 +8,21 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import {
+  ChevronUp,
+  Hammer,
+  MousePointer2,
+  Scissors,
+  Store,
+  UserRound,
+  Wheat,
+  X,
+} from "lucide-react";
 import { createFarmClient, type FarmConnectionStatus } from "./api";
 import { FarmScene } from "./components/FarmScene";
 import { HouseInteriorScene, type HouseInteriorMode, type HouseRoomId } from "./components/HouseInteriorScene";
-import {
-  InteractionToolSelector,
-  type ActiveFieldTool,
-  type HarvestSweepState,
-  type PlantSweepState,
-} from "./components/InteractionToolSelector";
 import { ResourceIcon } from "./components/ResourceIcon";
+import { WikiPanel } from "./components/WikiPanel";
 import {
   availableRecipes,
   builtStructureKinds,
@@ -48,12 +53,18 @@ import {
   type StructureMenuModel,
 } from "@my-farm/game-model/structureMenu";
 import {
+  machineProductionStatus,
+  productionStatusLabel,
+  shelterProductionStatus,
+} from "@my-farm/game-model/structureStatus";
+import {
   currentResidentScenePath,
   currentResidentScenePose,
   reservedAnimalReason,
   reservedFieldReason,
   reservedMachineReason,
   reservedOvenReason,
+  type ResidentScenePath,
   residentWork,
   residentTaskStatus,
   residentTaskStepLabel,
@@ -103,10 +114,26 @@ type StructureBuildCardMeta = {
   role: string;
   accentClass: string;
 };
+type ActiveFieldTool = { type: "default" } | { type: "plant"; cropId: string } | { type: "harvest" };
 type GameScreen = "main_menu" | "playing";
 type PlayScene = "farm" | "house_interior";
 type MainMenuPanel = "home" | "settings" | "wiki" | "account";
 type MarketTradeMode = "buy" | "sell";
+type PlantSweepState = {
+  cropId: string;
+  plotIds: string[];
+  pointerId: number;
+} | null;
+type HarvestSweepState = {
+  cropId: string;
+  harvestMode: SweepHarvestMode;
+  plotIds: string[];
+  pointerId: number;
+} | null;
+type ResidentTaskPreviewSelection = {
+  residentId: string;
+  taskId: string;
+} | null;
 
 const structureBuildCardMetas: Record<BuildableKind, StructureBuildCardMeta> = {
   field_plot: {
@@ -169,6 +196,22 @@ const guidedTutorialCards = [
   },
 ] as const;
 
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() =>
+    typeof window === "undefined" ? false : window.matchMedia(query).matches,
+  );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(query);
+    setMatches(mediaQuery.matches);
+    const handleChange = () => setMatches(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, [query]);
+
+  return matches;
+}
+
 export function App() {
   const [catalog, setCatalog] = useState<CatalogDocument | null>(null);
   const [view, setView] = useState<FarmView | null>(null);
@@ -191,6 +234,7 @@ export function App() {
   const [selectedHouseRoom, setSelectedHouseRoom] = useState<HouseRoomId>("living_room");
   const [selectedDecorationId, setSelectedDecorationId] = useState<string | null>(null);
   const [selectedDecorationPlacementId, setSelectedDecorationPlacementId] = useState<string | null>(null);
+  const [selectedTaskPreview, setSelectedTaskPreview] = useState<ResidentTaskPreviewSelection>(null);
   const [guidedTutorialStep, setGuidedTutorialStep] = useState<number | null>(null);
   const [marketOpen, setMarketOpen] = useState(false);
   const [message, setMessage] = useState(
@@ -200,6 +244,7 @@ export function App() {
     demoMode ? "synced" : "disconnected",
   );
   const [nowMs, setNowMs] = useState(Date.now());
+  const mobileLayout = useMediaQuery("(max-width: 760px)");
   const ordersRef = useRef<HTMLElement | null>(null);
   const versionRef = useRef(0);
   const plantSweepRef = useRef<PlantSweepState>(null);
@@ -332,6 +377,18 @@ export function App() {
   }, [selectedDecorationPlacementId, view]);
 
   useEffect(() => {
+    if (!view || !selectedTaskPreview) {
+      return;
+    }
+    const taskExists = residentWork(view, selectedTaskPreview.residentId)?.queue.some(
+      (task) => task.id === selectedTaskPreview.taskId,
+    );
+    if (!taskExists) {
+      setSelectedTaskPreview(null);
+    }
+  }, [selectedTaskPreview, view]);
+
+  useEffect(() => {
     if (
       !fieldMenu &&
       !structureMenu &&
@@ -393,6 +450,7 @@ export function App() {
     setMovingStructure(null);
     setSelectedDecorationId(null);
     setSelectedDecorationPlacementId(null);
+    setSelectedTaskPreview(null);
     setMarketOpen(false);
     plantSweepRef.current = null;
     harvestSweepRef.current = null;
@@ -402,6 +460,7 @@ export function App() {
 
   const select = useCallback((nextSelection: Selection) => {
     setSelection(nextSelection);
+    setSelectedTaskPreview(null);
     setFieldMenu(null);
     setStructureMenu(null);
     setBuildPlacement(null);
@@ -486,6 +545,7 @@ export function App() {
   const selectResidentForWork = useCallback(
     async (residentId: string) => {
       setSelection({ type: "resident", id: residentId });
+      setSelectedTaskPreview(null);
       setFieldMenu(null);
       setStructureMenu(null);
       setBuildPlacement(null);
@@ -1095,7 +1155,7 @@ export function App() {
       }
     };
     const cancelOnContextMenu = (event: MouseEvent) => {
-      if (event.target instanceof Element && event.target.closest(".interaction-tools")) {
+      if (event.target instanceof Element && event.target.closest(".field-tools")) {
         return;
       }
       if (
@@ -1157,6 +1217,8 @@ export function App() {
   const selectedPath = selection?.type === "resident"
     ? currentResidentScenePath(view, selection.id, nowMs)
     : null;
+  const selectedPreviewPath = selectedResidentTaskPreviewPath(view, selectedTaskPreview);
+  const visibleResidentPath = selectedPreviewPath ?? selectedPath;
 
   return (
     <main className={`app ${appToolClass}`}>
@@ -1195,6 +1257,7 @@ export function App() {
             movingStructure={movingStructure}
             plantSweep={plantSweep}
             harvestSweep={harvestSweep}
+            previewResidentPath={selectedPreviewPath}
             onSelect={select}
             onSelectResident={selectResidentForWork}
             onOpenFieldMenu={openFieldMenu}
@@ -1206,14 +1269,13 @@ export function App() {
             onStartHarvestSweep={startHarvestSweep}
             onEnterHarvestSweepPlot={enterHarvestSweepPlot}
             onCancelFieldToolAction={cancelFieldToolAction}
-            onEnterHouseInterior={enterHouseInterior}
           />
         )}
-        {screen === "playing" && playScene === "farm" && selectedPath ? (
+        {screen === "playing" && playScene === "farm" && visibleResidentPath ? (
           <div
             className="resident-path-marker"
-            data-testid={`resident-path-${selectedPath.residentId}`}
-            data-path-tile-count={selectedPath.tiles.length}
+            data-testid={`resident-path-${visibleResidentPath.residentId}`}
+            data-path-tile-count={visibleResidentPath.tiles.length}
             aria-hidden="true"
           />
         ) : null}
@@ -1226,43 +1288,72 @@ export function App() {
                 connectionStatus={connectionStatus}
                 onOpenMenu={openMainMenu}
               />
-              <aside className="side-panel">
-                <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
-                <ResidentSelector
-                  catalog={catalog}
-                  view={view}
-                  nowMs={nowMs}
-                  onSelectResident={selectResidentForWork}
-                />
-                <SelectionPanel
+              {!mobileLayout ? (
+                <aside className="side-panel">
+                  <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
+                  <ResidentSelector
+                    catalog={catalog}
+                    view={view}
+                    nowMs={nowMs}
+                    onSelectResident={selectResidentForWork}
+                  />
+                  <SelectionPanel
+                    catalog={catalog}
+                    view={view}
+                    selection={selection}
+                    nowMs={nowMs}
+                    send={send}
+                    demoMode={demoMode}
+                    selectedTaskPreview={selectedTaskPreview}
+                    onPreviewTask={setSelectedTaskPreview}
+                    onClearSelection={() => setSelection(null)}
+                    onEnterHouseInterior={enterHouseInterior}
+                  />
+                  <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
+                  {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
+                  <FieldTools
+                    catalog={catalog}
+                    view={view}
+                    activeFieldTool={activeFieldTool}
+                    buildToolSelected={buildToolSelected}
+                    harvestMode={harvestMode}
+                    plantSweep={plantSweep}
+                    onDefault={selectDefaultFieldTool}
+                    onPlant={selectPlantFieldTool}
+                    onHarvest={selectHarvestFieldTool}
+                    onHarvestMode={selectHarvestMode}
+                    onBuild={selectBuildTool}
+                  />
+                  {!demoMode && selection?.type === "delivery_board" ? (
+                    <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
+                  ) : null}
+                </aside>
+              ) : (
+                <MobileFarmHud
                   catalog={catalog}
                   view={view}
                   selection={selection}
                   nowMs={nowMs}
                   send={send}
                   demoMode={demoMode}
-                  onClearSelection={() => setSelection(null)}
-                />
-                <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
-                {!demoMode ? <MarketLauncher marketOpen={marketOpen} onOpenMarket={openMarket} /> : null}
-                <InteractionToolSelector
-                  catalog={catalog}
-                  view={view}
                   activeFieldTool={activeFieldTool}
                   buildToolSelected={buildToolSelected}
                   harvestMode={harvestMode}
                   plantSweep={plantSweep}
-                  harvestSweep={harvestSweep}
+                  selectedTaskPreview={selectedTaskPreview}
+                  marketOpen={marketOpen}
                   onDefault={selectDefaultFieldTool}
                   onPlant={selectPlantFieldTool}
                   onHarvest={selectHarvestFieldTool}
                   onHarvestMode={selectHarvestMode}
                   onBuild={selectBuildTool}
+                  onSelectResident={selectResidentForWork}
+                  onOpenMarket={openMarket}
+                  onPreviewTask={setSelectedTaskPreview}
+                  onClearSelection={() => setSelection(null)}
+                  onEnterHouseInterior={enterHouseInterior}
                 />
-                {!demoMode && selection?.type === "delivery_board" ? (
-                  <Orders catalog={catalog} view={view} send={send} ordersRef={ordersRef} />
-                ) : null}
-              </aside>
+              )}
               {!demoMode && marketOpen ? (
                 <FarmersMarket
                   catalog={catalog}
@@ -1432,34 +1523,7 @@ function MainMenu({
         ) : null}
         {panel === "wiki" ? (
           <MainMenuSubpanel title="Wiki" onBack={openHome}>
-            <dl className="main-menu__wiki">
-              <div>
-                <dt>Field Plot</dt>
-                <dd>A tile that holds one planted crop job.</dd>
-              </div>
-              <div>
-                <dt>Crop</dt>
-                <dd>A harvestable plant stored in the silo.</dd>
-              </div>
-              <div>
-                <dt>Machine</dt>
-                <dd>A structure with a recipe queue for farm products.</dd>
-              </div>
-              <div>
-                <dt>{demoMode ? "Demo Farm" : "Delivery Order"}</dt>
-                <dd>
-                  {demoMode
-                    ? "A browser-local farm saved on this device."
-                    : "A request that pays coins and XP for goods."}
-                </dd>
-              </div>
-              {!demoMode ? (
-                <div>
-                  <dt>Storage Upgrade</dt>
-                  <dd>A coin purchase that raises Silo or Barn capacity after reaching its unlock level.</dd>
-                </div>
-              ) : null}
-            </dl>
+            <WikiPanel demoMode={demoMode} />
           </MainMenuSubpanel>
         ) : null}
         {panel === "account" ? (
@@ -1503,6 +1567,421 @@ function GuidedTutorial({ step, onGotIt }: { step: number; onGotIt: () => void }
       </section>
     </div>
   );
+}
+
+type MobileFarmHudProps = {
+  catalog: CatalogDocument;
+  view: FarmView;
+  selection: Selection;
+  nowMs: number;
+  send: SendCommand;
+  demoMode: boolean;
+  activeFieldTool: ActiveFieldTool;
+  buildToolSelected: boolean;
+  harvestMode: SweepHarvestMode;
+  plantSweep: PlantSweepState;
+  selectedTaskPreview: ResidentTaskPreviewSelection;
+  marketOpen: boolean;
+  onDefault: () => void;
+  onPlant: (cropId: string) => void;
+  onHarvest: () => void;
+  onHarvestMode: (mode: SweepHarvestMode) => void;
+  onBuild: () => void;
+  onSelectResident: (residentId: string) => void;
+  onOpenMarket: () => void;
+  onPreviewTask: (selection: ResidentTaskPreviewSelection) => void;
+  onClearSelection: () => void;
+  onEnterHouseInterior: () => void;
+};
+
+function MobileFarmHud({
+  catalog,
+  view,
+  selection,
+  nowMs,
+  send,
+  demoMode,
+  activeFieldTool,
+  buildToolSelected,
+  harvestMode,
+  plantSweep,
+  selectedTaskPreview,
+  marketOpen,
+  onDefault,
+  onPlant,
+  onHarvest,
+  onHarvestMode,
+  onBuild,
+  onSelectResident,
+  onOpenMarket,
+  onPreviewTask,
+  onClearSelection,
+  onEnterHouseInterior,
+}: MobileFarmHudProps) {
+  const [seedMenuOpen, setSeedMenuOpen] = useState(false);
+  const [harvestMenuOpen, setHarvestMenuOpen] = useState(false);
+  const [residentSwitcherOpen, setResidentSwitcherOpen] = useState(false);
+  const [selectionExpanded, setSelectionExpanded] = useState(true);
+  const selectionKey = selection ? `${selection.type}:${"id" in selection ? selection.id : "fixed"}` : "none";
+  const selectedResidentRecord = view.residents.find((resident) => resident.id === view.selected_resident_id) ?? view.residents[0];
+  const selectedResidentStatus = selectedResidentRecord
+    ? residentTaskStatus(catalog, view, selectedResidentRecord.id, nowMs)
+    : null;
+  const inventory = new Map(view.inventory.map((item) => [item.item_id, (item.available_quantity ?? item.quantity)]));
+  const unlockedCrops = catalog.crops.filter((crop) => crop.unlock_level <= view.level);
+  const hasPlantableSeed = unlockedCrops.some((crop) => (inventory.get(crop.item_id) ?? 0) > 0);
+  const selectedSeedCropId = activeFieldTool.type === "plant" ? activeFieldTool.cropId : null;
+  const selectedSeedFieldCount = plantSweep?.plotIds.length ?? 0;
+  const selectionSummary = mobileSelectionSummary(catalog, view, selection, nowMs);
+
+  useEffect(() => {
+    setSelectionExpanded(true);
+  }, [selectionKey]);
+
+  useEffect(() => {
+    if (activeFieldTool.type !== "plant") {
+      setSeedMenuOpen(false);
+    }
+    if (activeFieldTool.type !== "harvest") {
+      setHarvestMenuOpen(false);
+    }
+  }, [activeFieldTool.type]);
+
+  const closeTransientMenus = () => {
+    setSeedMenuOpen(false);
+    setHarvestMenuOpen(false);
+    setResidentSwitcherOpen(false);
+  };
+
+  return (
+    <div className="mobile-farm-hud" aria-label="Mobile farm controls">
+      {selectionSummary ? (
+        <section className="mobile-context-sheet" aria-label={selectionSummary.heading}>
+          <div className="mobile-context-sheet__peek">
+            <div>
+              <span>{selectionSummary.kicker}</span>
+              <h2>{selectionSummary.heading}</h2>
+              <p>{selectionSummary.detail}</p>
+            </div>
+            <div className="mobile-context-sheet__actions">
+              <button
+                type="button"
+                className="mobile-icon-button"
+                aria-label="Toggle selection details"
+                aria-expanded={selectionExpanded}
+                onClick={() => setSelectionExpanded((expanded) => !expanded)}
+              >
+                <ChevronUp aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="mobile-icon-button"
+                aria-label="Clear selection"
+                onClick={() => {
+                  onPreviewTask(null);
+                  onClearSelection();
+                }}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+          {selectionExpanded ? (
+            <div className="mobile-context-sheet__details">
+              <SelectionPanel
+                catalog={catalog}
+                view={view}
+                selection={selection}
+                nowMs={nowMs}
+                send={send}
+                demoMode={demoMode}
+                selectedTaskPreview={selectedTaskPreview}
+                onPreviewTask={onPreviewTask}
+                onClearSelection={onClearSelection}
+                onEnterHouseInterior={onEnterHouseInterior}
+              />
+              <Inventory catalog={catalog} view={view} selection={selection} send={send} demoMode={demoMode} />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {residentSwitcherOpen ? (
+        <section className="mobile-resident-switcher" aria-label="Farm Residents">
+          <ResidentSelector
+            catalog={catalog}
+            view={view}
+            nowMs={nowMs}
+            onSelectResident={(residentId) => {
+              void onSelectResident(residentId);
+              setResidentSwitcherOpen(false);
+            }}
+          />
+        </section>
+      ) : null}
+
+      {seedMenuOpen ? (
+        <section className="mobile-tool-popover" aria-label="Seed type">
+          {unlockedCrops.map((crop) => {
+            const quantity = inventory.get(crop.item_id) ?? 0;
+            const active = selectedSeedCropId === crop.item_id;
+            return (
+              <button
+                type="button"
+                key={crop.item_id}
+                className={active ? "mobile-tool-popover__item mobile-tool-popover__item--active" : "mobile-tool-popover__item"}
+                disabled={quantity < 1}
+                aria-pressed={active}
+                onClick={() => {
+                  onPlant(crop.item_id);
+                  setSeedMenuOpen(false);
+                }}
+              >
+                <ResourceIcon type="item" itemId={crop.item_id} itemKind="crop" />
+                <span>{itemName(catalog, crop.item_id)}</span>
+                <strong>{quantity}</strong>
+              </button>
+            );
+          })}
+        </section>
+      ) : null}
+
+      {harvestMenuOpen ? (
+        <section className="mobile-tool-popover mobile-tool-popover--compact" aria-label="Harvest mode">
+          <button
+            type="button"
+            className={
+              harvestMode === "matching_crop"
+                ? "mobile-tool-popover__item mobile-tool-popover__item--active"
+                : "mobile-tool-popover__item"
+            }
+            aria-pressed={harvestMode === "matching_crop"}
+            onClick={() => {
+              onHarvestMode("matching_crop");
+              setHarvestMenuOpen(false);
+            }}
+          >
+            <span>Matching crop</span>
+          </button>
+          <button
+            type="button"
+            className={
+              harvestMode === "all_crops"
+                ? "mobile-tool-popover__item mobile-tool-popover__item--active"
+                : "mobile-tool-popover__item"
+            }
+            aria-pressed={harvestMode === "all_crops"}
+            onClick={() => {
+              onHarvestMode("all_crops");
+              setHarvestMenuOpen(false);
+            }}
+          >
+            <span>All crops</span>
+          </button>
+        </section>
+      ) : null}
+
+      <div className="mobile-resident-chip">
+        <button
+          type="button"
+          aria-expanded={residentSwitcherOpen}
+          onClick={() => {
+            setResidentSwitcherOpen((open) => !open);
+            setSeedMenuOpen(false);
+            setHarvestMenuOpen(false);
+          }}
+        >
+          <UserRound aria-hidden="true" />
+          <span>{selectedResidentRecord?.display_name ?? "Resident"}</span>
+          <strong>{selectedResidentStatus ? selectedResidentStatus.queuedCount : 0}</strong>
+        </button>
+      </div>
+
+      {activeFieldTool.type === "plant" ? (
+        <p className="mobile-tool-status" role="status" aria-live="polite">
+          {selectedSeedFieldCount === 0
+            ? "Tap Field Plots to seed"
+            : `${selectedSeedFieldCount} ${selectedSeedFieldCount === 1 ? "field" : "fields"} selected`}
+        </p>
+      ) : null}
+
+      <nav className="mobile-action-bar" aria-label="Farm actions">
+        <MobileActionButton
+          label="Select"
+          active={!buildToolSelected && activeFieldTool.type === "default"}
+          icon={<MousePointer2 aria-hidden="true" />}
+          onClick={() => {
+            closeTransientMenus();
+            onDefault();
+          }}
+        />
+        <MobileActionButton
+          label="Plant"
+          active={activeFieldTool.type === "plant"}
+          icon={selectedSeedCropId ? <ResourceIcon type="item" itemId={selectedSeedCropId} itemKind="crop" /> : <Wheat aria-hidden="true" />}
+          disabled={!hasPlantableSeed}
+          expanded={seedMenuOpen}
+          onClick={() => {
+            setSeedMenuOpen((open) => !open);
+            setHarvestMenuOpen(false);
+            setResidentSwitcherOpen(false);
+          }}
+        />
+        <MobileActionButton
+          label="Harvest"
+          active={activeFieldTool.type === "harvest"}
+          icon={<Scissors aria-hidden="true" />}
+          expanded={harvestMenuOpen}
+          onClick={() => {
+            if (activeFieldTool.type === "harvest") {
+              setHarvestMenuOpen((open) => !open);
+            } else {
+              onHarvest();
+              setHarvestMenuOpen(false);
+            }
+            setSeedMenuOpen(false);
+            setResidentSwitcherOpen(false);
+          }}
+        />
+        <MobileActionButton
+          label="Build"
+          active={buildToolSelected}
+          icon={<Hammer aria-hidden="true" />}
+          onClick={() => {
+            closeTransientMenus();
+            onBuild();
+          }}
+        />
+        {!demoMode ? (
+          <MobileActionButton
+            label="Market"
+            active={marketOpen}
+            icon={<Store aria-hidden="true" />}
+            onClick={() => {
+              closeTransientMenus();
+              onOpenMarket();
+            }}
+          />
+        ) : null}
+      </nav>
+    </div>
+  );
+}
+
+function MobileActionButton({
+  label,
+  icon,
+  active,
+  disabled,
+  expanded,
+  onClick,
+}: {
+  label: string;
+  icon: ReactNode;
+  active?: boolean;
+  disabled?: boolean;
+  expanded?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={active ? "mobile-action-button mobile-action-button--active" : "mobile-action-button"}
+      aria-pressed={active}
+      aria-expanded={expanded}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <span className="mobile-action-button__icon">{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function mobileSelectionSummary(
+  catalog: CatalogDocument,
+  view: FarmView,
+  selection: Selection,
+  nowMs: number,
+): { kicker: string; heading: string; detail: string } | null {
+  if (!selection) {
+    return null;
+  }
+
+  const plot = selectedPlot(view, selection);
+  if (plot) {
+    if (!plot.crop) {
+      return { kicker: "Field Plot", heading: "Empty Field Plot", detail: "Choose Plant, then tap fields to seed." };
+    }
+    const cropName = itemName(catalog, plot.crop.item_id);
+    const ready = plot.crop.ready_at_ms <= nowMs;
+    return {
+      kicker: "Field Plot",
+      heading: cropName,
+      detail: ready ? "Ready to harvest." : `${secondsRemaining(plot.crop.ready_at_ms, nowMs)} until ready.`,
+    };
+  }
+
+  const resident = selectedResident(view, selection);
+  if (resident) {
+    const status = residentTaskStatus(catalog, view, resident.id, nowMs);
+    return {
+      kicker: resident.id === view.selected_resident_id ? "Selected Resident" : "Farm Resident",
+      heading: resident.display_name,
+      detail: status.currentTask ? `${taskLabel(catalog, status.currentTask)} in progress.` : "Idle and ready for work.",
+    };
+  }
+
+  if (!isStructureSelectionForMobile(selection)) {
+    return null;
+  }
+
+  return {
+    kicker: "Selection",
+    heading: selectedStructureLabel(view, selection),
+    detail: mobileStructureSummary(catalog, view, selection, nowMs),
+  };
+}
+
+function isStructureSelectionForMobile(selection: Selection): selection is StructureSelection {
+  return selection !== null && selection.type !== "plot" && selection.type !== "resident";
+}
+
+function mobileStructureSummary(
+  catalog: CatalogDocument,
+  view: FarmView,
+  selection: Exclude<Selection, { type: "plot" } | { type: "resident" } | null>,
+  nowMs: number,
+) {
+  const machine = selectedMachine(view, selection);
+  if (machine) {
+    const status = machineProductionStatus(catalog, view, machine, nowMs);
+    return productionStatusLabel(selectedStructureLabel(view, selection), catalog, status) ?? "No active production.";
+  }
+  const shelter = selectedShelter(view, selection);
+  if (shelter) {
+    const status = shelterProductionStatus(catalog, view, shelter, nowMs);
+    return productionStatusLabel(selectedStructureLabel(view, selection), catalog, status) ?? "No active production.";
+  }
+  if (selection.type === "silo") {
+    return `${view.silo_used}/${view.silo_capacity} crops stored.`;
+  }
+  if (selection.type === "barn") {
+    return `${view.barn_used}/${view.barn_capacity} goods stored.`;
+  }
+  if (selection.type === "delivery_board") {
+    return `${view.delivery_orders.length} delivery ${view.delivery_orders.length === 1 ? "order" : "orders"}.`;
+  }
+  if (selection.type === "farmhouse") {
+    return "Enter rooms, inspect upgrades, or start household work.";
+  }
+  if (selection.type === "farm_shop") {
+    return "Manage roadside Shop Stock and Customer Visits.";
+  }
+  if (selection.type === "tool_shed") {
+    return "Stores tools for Farm Resident work.";
+  }
+  return "Open details for available commands.";
 }
 
 function MainMenuSubpanel({
@@ -1581,7 +2060,7 @@ function Metric({
   label: string;
 }) {
   return (
-    <span className="metric">
+    <span className={`metric metric--${type}`}>
       <ResourceIcon type={type} />
       {label}
     </span>
@@ -1689,38 +2168,29 @@ function ResidentCard({
   onSelectResident: (residentId: string) => void;
 }) {
   const status = residentTaskStatus(catalog, view, resident.id, nowMs);
-  const work = residentWork(view, resident.id);
+  const pose = currentResidentScenePose(view, resident.id, nowMs);
 
   const selectResident = async () => {
     await onSelectResident(resident.id);
   };
 
   return (
-    <article className={selected ? "resident-card resident-card--selected" : "resident-card"}>
-      <div className="resident-card__topline">
-        <strong>{selected ? "Selected Resident" : "Farm Resident"}</strong>
-        <button type="button" disabled={selected} onClick={() => void selectResident()}>
-          {selected ? "Selected" : "Select"}
-        </button>
-      </div>
-      <strong className="resident-card__display-name">{resident.display_name}</strong>
-      <dl className="resident-card__status">
-        <div>
-          <dt>Current task</dt>
-          <dd>{status.label}</dd>
-        </div>
-        <div>
-          <dt>Queued tasks</dt>
-          <dd>{status.queuedCount}</dd>
-        </div>
-      </dl>
-      {status.currentTask ? (
-        <div className="resident-task-progress">
+    <article className={selected ? "resident-picker-row resident-picker-row--selected" : "resident-picker-row"}>
+      <button
+        type="button"
+        className="resident-picker-row__button"
+        aria-pressed={selected}
+        onClick={() => void selectResident()}
+      >
+        <span className="resident-picker-row__name">{resident.display_name}</span>
+        <span className="resident-picker-row__meta">
+          <span>{selected ? "Selected" : sceneStateLabel(pose.state)}</span>
+          <span className="resident-picker-row__badge">{status.queuedCount}</span>
+        </span>
+        {status.currentTask ? (
           <progress value={status.progress} max={1} aria-label={`${resident.display_name} task progress`} />
-          <span>{Math.round(status.progress * 100)}%</span>
-        </div>
-      ) : null}
-      <ResidentCarrySummary work={work} compact />
+        ) : null}
+      </button>
     </article>
   );
 }
@@ -2099,6 +2569,195 @@ function StorageInventoryItem({
   );
 }
 
+function FieldTools({
+  catalog,
+  view,
+  activeFieldTool,
+  buildToolSelected,
+  harvestMode,
+  plantSweep,
+  onDefault,
+  onPlant,
+  onHarvest,
+  onHarvestMode,
+  onBuild,
+}: {
+  catalog: CatalogDocument;
+  view: FarmView;
+  activeFieldTool: ActiveFieldTool;
+  buildToolSelected: boolean;
+  harvestMode: SweepHarvestMode;
+  plantSweep: PlantSweepState;
+  onDefault: () => void;
+  onPlant: (cropId: string) => void;
+  onHarvest: () => void;
+  onHarvestMode: (mode: SweepHarvestMode) => void;
+  onBuild: () => void;
+}) {
+  const [seedMenuOpen, setSeedMenuOpen] = useState(false);
+  const [harvestMenuOpen, setHarvestMenuOpen] = useState(false);
+  const inventory = new Map(view.inventory.map((item) => [item.item_id, (item.available_quantity ?? item.quantity)]));
+  const unlockedCrops = catalog.crops.filter((crop) => crop.unlock_level <= view.level);
+  const hasPlantableSeed = unlockedCrops.some((crop) => (inventory.get(crop.item_id) ?? 0) > 0);
+  const selectedSeedFieldCount = plantSweep?.plotIds.length ?? 0;
+  const selectedSeedCropId = activeFieldTool.type === "plant" ? activeFieldTool.cropId : null;
+  const selectedSeedName = selectedSeedCropId ? itemName(catalog, selectedSeedCropId) : null;
+  const defaultToolSelected = !buildToolSelected && activeFieldTool.type === "default";
+  const harvestModeLabel = harvestMode === "all_crops" ? "All crops" : "Matching crop";
+
+  useEffect(() => {
+    if (activeFieldTool.type !== "plant") {
+      setSeedMenuOpen(false);
+    }
+  }, [activeFieldTool.type]);
+
+  const selectSeed = (cropId: string) => {
+    onPlant(cropId);
+    setSeedMenuOpen(false);
+  };
+
+  const selectHarvestMode = (mode: SweepHarvestMode) => {
+    onHarvestMode(mode);
+    setHarvestMenuOpen(false);
+  };
+
+  return (
+    <section className="panel-section field-tools">
+      <h2>Field Tools</h2>
+      <div className="field-tool-grid">
+        <button
+          type="button"
+          className={defaultToolSelected ? "field-tool field-tool--active" : "field-tool"}
+          aria-pressed={defaultToolSelected}
+          onClick={() => {
+            setSeedMenuOpen(false);
+            setHarvestMenuOpen(false);
+            onDefault();
+          }}
+        >
+          Default
+        </button>
+        <button
+          type="button"
+          className={
+            activeFieldTool.type === "harvest"
+              ? "field-tool field-tool--harvest field-tool--active"
+              : "field-tool field-tool--harvest"
+          }
+          aria-pressed={activeFieldTool.type === "harvest"}
+          aria-haspopup="menu"
+          aria-expanded={harvestMenuOpen}
+          aria-label="Harvest"
+          onClick={() => {
+            setSeedMenuOpen(false);
+            setHarvestMenuOpen(false);
+            onHarvest();
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setSeedMenuOpen(false);
+            setHarvestMenuOpen((open) => !open);
+          }}
+        >
+          <span>Harvest</span>
+          <strong>{harvestModeLabel}</strong>
+        </button>
+        {harvestMenuOpen ? (
+          <div className="harvest-menu" role="menu" aria-label="Harvest mode">
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={harvestMode === "matching_crop"}
+              className={
+                harvestMode === "matching_crop"
+                  ? "harvest-menu__item harvest-menu__item--active"
+                  : "harvest-menu__item"
+              }
+              onClick={() => selectHarvestMode("matching_crop")}
+            >
+              <span>Matching crop</span>
+            </button>
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={harvestMode === "all_crops"}
+              className={
+                harvestMode === "all_crops"
+                  ? "harvest-menu__item harvest-menu__item--active"
+                  : "harvest-menu__item"
+              }
+              onClick={() => selectHarvestMode("all_crops")}
+            >
+              <span>All crops</span>
+            </button>
+          </div>
+        ) : null}
+        <button
+          type="button"
+          className={buildToolSelected ? "field-tool field-tool--active field-tool--build" : "field-tool field-tool--build"}
+          aria-pressed={buildToolSelected}
+          onClick={() => {
+            setSeedMenuOpen(false);
+            setHarvestMenuOpen(false);
+            onBuild();
+          }}
+        >
+          Build
+        </button>
+        <button
+          type="button"
+          className={activeFieldTool.type === "plant" ? "field-tool field-tool--active field-tool--seed" : "field-tool field-tool--seed"}
+          aria-pressed={activeFieldTool.type === "plant"}
+          aria-haspopup="menu"
+          aria-expanded={seedMenuOpen}
+          aria-label="Seed"
+          disabled={!hasPlantableSeed}
+          onClick={() => {
+            setHarvestMenuOpen(false);
+            setSeedMenuOpen((open) => !open);
+          }}
+        >
+          <ResourceIcon type="item" itemId={selectedSeedCropId ?? "wheat"} itemKind="crop" />
+          <span>Seed</span>
+          {selectedSeedName ? <strong>{selectedSeedName}</strong> : null}
+        </button>
+        {seedMenuOpen ? (
+          <div className="seed-menu" role="menu" aria-label="Seed type">
+            {unlockedCrops.map((crop) => {
+              const quantity = inventory.get(crop.item_id) ?? 0;
+              const active = selectedSeedCropId === crop.item_id;
+              return (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={active}
+                  key={crop.item_id}
+                  className={active ? "seed-menu__item seed-menu__item--active" : "seed-menu__item"}
+                  disabled={quantity < 1}
+                  onClick={() => selectSeed(crop.item_id)}
+                >
+                  <ResourceIcon type="item" itemId={crop.item_id} itemKind="crop" />
+                  <span>{itemName(catalog, crop.item_id)}</span>
+                  <strong>{quantity}</strong>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+      {activeFieldTool.type === "plant" ? (
+        <p className="field-tool-status" role="status" aria-live="polite">
+          {selectedSeedFieldCount === 0
+            ? "No fields selected for seeding"
+            : `${selectedSeedFieldCount} ${
+                selectedSeedFieldCount === 1 ? "field" : "fields"
+              } selected for seeding`}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function ResourceAmount({ item, amount }: { item: InventoryItemView; amount: string }) {
   return (
     <span className="resource-amount">
@@ -2205,7 +2864,10 @@ function SelectionPanel({
   nowMs,
   send,
   demoMode,
+  selectedTaskPreview,
+  onPreviewTask,
   onClearSelection,
+  onEnterHouseInterior,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
@@ -2213,7 +2875,10 @@ function SelectionPanel({
   nowMs: number;
   send: SendCommand;
   demoMode: boolean;
+  selectedTaskPreview: ResidentTaskPreviewSelection;
+  onPreviewTask: (selection: ResidentTaskPreviewSelection) => void;
   onClearSelection: () => void;
+  onEnterHouseInterior: () => void;
 }) {
   const plot = selectedPlot(view, selection);
   const machine = selectedMachine(view, selection);
@@ -2229,7 +2894,14 @@ function SelectionPanel({
       <div className="selection-panel__header">
         <h2>{resident ? "Resident Details" : "Selection"}</h2>
         {resident ? (
-          <button type="button" aria-label="Close Resident Details" onClick={onClearSelection}>
+          <button
+            type="button"
+            aria-label="Close Resident Details"
+            onClick={() => {
+              onPreviewTask(null);
+              onClearSelection();
+            }}
+          >
             Close
           </button>
         ) : null}
@@ -2268,7 +2940,15 @@ function SelectionPanel({
           />
         )
       ) : null}
-      {isFarmhouse ? <FarmhouseActions catalog={catalog} view={view} nowMs={nowMs} send={send} /> : null}
+      {isFarmhouse ? (
+        <FarmhouseActions
+          catalog={catalog}
+          view={view}
+          nowMs={nowMs}
+          send={send}
+          onEnterHouseInterior={onEnterHouseInterior}
+        />
+      ) : null}
       {plot ? <PlotActions catalog={catalog} view={view} plot={plot} nowMs={nowMs} send={send} /> : null}
       {machine ? (
         <MachineActions catalog={catalog} view={view} machine={machine} nowMs={nowMs} send={send} />
@@ -2277,7 +2957,15 @@ function SelectionPanel({
         <ShelterActions catalog={catalog} view={view} shelter={shelter} nowMs={nowMs} send={send} />
       ) : null}
       {resident ? (
-        <ResidentActions catalog={catalog} view={view} resident={resident} nowMs={nowMs} />
+        <ResidentActions
+          catalog={catalog}
+          view={view}
+          resident={resident}
+          nowMs={nowMs}
+          send={send}
+          selectedTaskPreview={selectedTaskPreview}
+          onPreviewTask={onPreviewTask}
+        />
       ) : null}
       {!demoMode && selection?.type === "delivery_board" ? <p>Use delivery orders below.</p> : null}
       {!demoMode && isFarmShop ? (
@@ -2309,11 +2997,17 @@ function ResidentActions({
   view,
   resident,
   nowMs,
+  send,
+  selectedTaskPreview,
+  onPreviewTask,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
   resident: FarmResident;
   nowMs: number;
+  send: SendCommand;
+  selectedTaskPreview: ResidentTaskPreviewSelection;
+  onPreviewTask: (selection: ResidentTaskPreviewSelection) => void;
 }) {
   const status = residentTaskStatus(catalog, view, resident.id, nowMs);
   const work = residentWork(view, resident.id);
@@ -2362,10 +3056,46 @@ function ResidentActions({
               <ResidentTaskQueueRow
                 key={task.id}
                 catalog={catalog}
+                residentId={resident.id}
                 task={task}
+                queue={queue}
+                index={index}
                 fallbackQueueState={index === 0 ? "Current" : "Queued"}
+                selected={selectedTaskPreview?.residentId === resident.id && selectedTaskPreview.taskId === task.id}
+                onPreviewTask={onPreviewTask}
+                onReorderTask={async (taskId, beforeTaskId) => {
+                  await send({
+                    type: "reorder_resident_task",
+                    resident_id: resident.id,
+                    task_id: taskId,
+                    ...(beforeTaskId ? { before_task_id: beforeTaskId } : {}),
+                  });
+                }}
               />
             ))}
+            {queue.length > 2 ? (
+              <li
+                className="resident-queue-drop-target"
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(event) => {
+                  const draggedTaskId = event.dataTransfer.getData("application/x-my-farm-resident-task");
+                  if (!draggedTaskId) {
+                    return;
+                  }
+                  event.preventDefault();
+                  void send({
+                    type: "reorder_resident_task",
+                    resident_id: resident.id,
+                    task_id: draggedTaskId,
+                  });
+                }}
+              >
+                Drop at end
+              </li>
+            ) : null}
           </ol>
         )}
       </div>
@@ -2375,17 +3105,69 @@ function ResidentActions({
 
 function ResidentTaskQueueRow({
   catalog,
+  residentId,
   task,
+  queue,
+  index,
   fallbackQueueState,
+  selected,
+  onPreviewTask,
+  onReorderTask,
 }: {
   catalog: CatalogDocument;
+  residentId: string;
   task: ResidentTaskSummaryView;
+  queue: ResidentTaskSummaryView[];
+  index: number;
   fallbackQueueState: string;
+  selected: boolean;
+  onPreviewTask: (selection: ResidentTaskPreviewSelection) => void;
+  onReorderTask: (taskId: string, beforeTaskId?: string) => Promise<void>;
 }) {
+  const reorderable = index > 0 && task.queue_state === "queued";
+  const moveUpBeforeTaskId = index > 1 ? queue[index - 1]?.id : null;
+  const moveDownBeforeTaskId = queue[index + 2]?.id ?? null;
+  const canMoveUp = reorderable && index > 1;
+  const canMoveDown = reorderable && index < queue.length - 1;
+  const previewTask = () => onPreviewTask({ residentId, taskId: task.id });
+  const reorder = async (beforeTaskId?: string) => {
+    await onReorderTask(task.id, beforeTaskId);
+  };
+
   return (
-    <li className="resident-queue-task">
-      <details>
-        <summary>
+    <li
+      className={selected ? "resident-queue-task resident-queue-task--selected" : "resident-queue-task"}
+      draggable={reorderable}
+      data-task-id={task.id}
+      data-task-reorderable={reorderable}
+      onDragStart={(event) => {
+        if (!reorderable) {
+          event.preventDefault();
+          return;
+        }
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("application/x-my-farm-resident-task", task.id);
+      }}
+      onDragOver={(event) => {
+        if (reorderable) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        }
+      }}
+      onDrop={(event) => {
+        if (!reorderable) {
+          return;
+        }
+        const draggedTaskId = event.dataTransfer.getData("application/x-my-farm-resident-task");
+        if (!draggedTaskId || draggedTaskId === task.id) {
+          return;
+        }
+        event.preventDefault();
+        void onReorderTask(draggedTaskId, task.id);
+      }}
+    >
+      <details open={selected}>
+        <summary onClick={previewTask}>
           <span>{taskLabel(catalog, task)}</span>
           <small>
             {queueStateLabel(task, fallbackQueueState)} - {task.step_count}{" "}
@@ -2406,6 +3188,28 @@ function ResidentTaskQueueRow({
           ))}
         </ol>
       </details>
+      <div className="resident-queue-task__controls">
+        <button
+          type="button"
+          disabled={!canMoveUp || !moveUpBeforeTaskId}
+          onClick={() => {
+            if (moveUpBeforeTaskId) {
+              void reorder(moveUpBeforeTaskId);
+            }
+          }}
+        >
+          Move up
+        </button>
+        <button
+          type="button"
+          disabled={!canMoveDown}
+          onClick={() => {
+            void reorder(moveDownBeforeTaskId ?? undefined);
+          }}
+        >
+          Move down
+        </button>
+      </div>
     </li>
   );
 }
@@ -2447,6 +3251,24 @@ function itemKindLabel(kind: ResidentStepView["kind"]) {
     return "animal product";
   }
   return kind;
+}
+
+function selectedResidentTaskPreviewPath(
+  view: FarmView,
+  selection: ResidentTaskPreviewSelection,
+): ResidentScenePath | null {
+  if (!selection) {
+    return null;
+  }
+  const task = residentWork(view, selection.residentId)?.queue.find((entry) => entry.id === selection.taskId);
+  if (!task || task.preview.path.length === 0) {
+    return null;
+  }
+  return {
+    residentId: selection.residentId,
+    tiles: task.preview.path,
+    state: "walking",
+  };
 }
 
 function ResidentCarrySummary({
@@ -2499,11 +3321,13 @@ function FarmhouseActions({
   view,
   nowMs,
   send,
+  onEnterHouseInterior,
 }: {
   catalog: CatalogDocument;
   view: FarmView;
   nowMs: number;
   send: SendCommand;
+  onEnterHouseInterior: () => void;
 }) {
   const oven = catalog.farmhouse_upgrades.find((upgrade) => upgrade.kind === "oven");
   const reason = farmhouseOvenDisabledReason(catalog, view);
@@ -2517,6 +3341,9 @@ function FarmhouseActions({
   return (
     <div className="action-stack">
       <p>Farmhouse</p>
+      <button type="button" onClick={onEnterHouseInterior}>
+        Enter Farmhouse
+      </button>
       {!oven ? (
         <p>Oven upgrade unavailable</p>
       ) : ovenOwned ? (
@@ -2947,6 +3774,7 @@ function FarmShopActions({
   const shop = view.farm_shop;
   const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [price, setPrice] = useState(1);
   const inventory = useMemo(
     () => new Map(view.inventory.map((item) => [item.item_id, item])),
     [view.inventory],
@@ -2956,8 +3784,11 @@ function FarmShopActions({
   );
   const selectedMarketItem = sellableItems.find((marketItem) => marketItem.item_id === itemId) ?? sellableItems[0];
   const selectedItemId = selectedMarketItem?.item_id ?? "";
+  const selectedPrice = shop?.prices.find((entry) => entry.item_id === selectedItemId) ?? null;
   const stockUsed = shop?.stock.reduce((sum, stock) => sum + stock.quantity, 0) ?? 0;
   const stockCapacity = shop?.stock_capacity ?? 0;
+  const listedItemTypes = shop?.prices.length ?? 0;
+  const itemTypeCapacity = shop?.item_type_capacity ?? 0;
   const selectedInventory = selectedItemId ? inventory.get(selectedItemId) : null;
   const availableInventory = selectedInventory?.available_quantity ?? selectedInventory?.quantity ?? 0;
   const selectedStock = shop?.stock.find((stock) => stock.item_id === selectedItemId)?.quantity ?? 0;
@@ -2969,6 +3800,9 @@ function FarmShopActions({
   const projectedStockUsed = shop ? projectedFarmShopStockUsed(view, shop.id, stockUsed) : 0;
   const projectedStockRoom = Math.max(0, stockCapacity - projectedStockUsed);
   const commandQuantity = Math.max(1, Math.floor(quantity));
+  const requestedPrice = Number.isFinite(price) ? Math.floor(price) : 0;
+  const commandPrice = Math.max(1, requestedPrice);
+  const priceChance = selectedPrice ? `${Math.round(selectedPrice.sale_chance_bps / 100)}%` : "0%";
   const stockReason = !shop
     ? "Farm Shop not built"
     : !selectedMarketItem
@@ -2977,6 +3811,8 @@ function FarmShopActions({
         ? `Need ${commandQuantity - availableInventory} more in storage`
         : commandQuantity > projectedStockRoom
           ? "Projected Shop Stock capacity is full"
+          : !selectedPrice && listedItemTypes >= itemTypeCapacity
+            ? "Shop item type limit reached"
           : undefined;
   const returnReason = !shop
     ? "Farm Shop not built"
@@ -2987,6 +3823,17 @@ function FarmShopActions({
         : !storageHasRoomForReturn(catalog, view, selectedItemId, commandQuantity)
           ? "Destination storage is full"
           : undefined;
+  const priceReason = !shop
+    ? "Farm Shop not built"
+    : !selectedMarketItem
+      ? "Item is unavailable"
+      : !selectedPrice
+        ? "Stock item to set a Shop Price"
+        : requestedPrice < 1
+          ? "Price must be at least 1"
+          : requestedPrice > selectedPrice.max_price
+            ? `Max Shop Price is ${selectedPrice.max_price} coins`
+            : undefined;
 
   useEffect(() => {
     if (!selectedItemId || selectedItemId === itemId) {
@@ -2994,6 +3841,10 @@ function FarmShopActions({
     }
     setItemId(selectedItemId);
   }, [itemId, selectedItemId]);
+
+  useEffect(() => {
+    setPrice(selectedPrice?.price ?? 1);
+  }, [selectedItemId, selectedPrice?.price]);
 
   if (!shop) {
     return <p>Build the Farm Shop by the road.</p>;
@@ -3005,6 +3856,11 @@ function FarmShopActions({
       {shop.current_sale && shop.current_sale.visible_until_ms > nowMs ? (
         <p className="farm-shop-panel__sale">
           Sold {itemName(catalog, shop.current_sale.item_id)} for {shop.current_sale.coins_gained} coins
+        </p>
+      ) : null}
+      {shop.current_rejection && shop.current_rejection.visible_until_ms > nowMs ? (
+        <p className="farm-shop-panel__sale">
+          Customer passed on {itemName(catalog, shop.current_rejection.item_id)} at {shop.current_rejection.shop_price} coins
         </p>
       ) : null}
       <dl className="farm-shop-panel__summary">
@@ -3020,16 +3876,24 @@ function FarmShopActions({
           <dt>Available stock</dt>
           <dd>{availableStock}</dd>
         </div>
+        <div>
+          <dt>Listed items</dt>
+          <dd>{listedItemTypes}/{itemTypeCapacity}</dd>
+        </div>
       </dl>
       <div className="farm-shop-panel__stock-list">
         {shop.stock.length === 0 ? <p>No Shop Stock</p> : null}
         {shop.stock.map((stock) => {
           const reserved = view.reservations.farm_shop_stock[stock.item_id] ?? 0;
           const available = Math.max(0, stock.quantity - reserved);
+          const stockPrice = shop.prices.find((entry) => entry.item_id === stock.item_id);
           return (
             <div className="farm-shop-stock-row" key={stock.item_id}>
               <ResourceAmount item={resourceItem(catalog, stock.item_id, stock.quantity)} amount={`x${stock.quantity}`} />
-              <small>{available} available{reserved > 0 ? `, ${reserved} reserved` : ""}</small>
+              <small>
+                {available} available{reserved > 0 ? `, ${reserved} reserved` : ""}
+                {stockPrice ? ` - ${stockPrice.price} coins, ${Math.round(stockPrice.sale_chance_bps / 100)}% chance` : ""}
+              </small>
             </div>
           );
         })}
@@ -3055,6 +3919,23 @@ function FarmShopActions({
           onChange={(event) => setQuantity(Number(event.target.value))}
         />
       </label>
+      <label className="farm-shop-panel__field">
+        <span>Shop Price</span>
+        <input
+          aria-label="Farm Shop price"
+          type="number"
+          min={1}
+          max={selectedPrice?.max_price ?? 1}
+          value={price}
+          disabled={!selectedPrice}
+          onChange={(event) => setPrice(Number(event.target.value))}
+        />
+      </label>
+      <small className="farm-shop-panel__status">
+        {selectedPrice
+          ? `Base ${selectedPrice.base_price} coins - Max ${selectedPrice.max_price} coins - Sale chance ${priceChance}`
+          : "Stock item to set a Shop Price"}
+      </small>
       <div className="farm-shop-panel__actions">
         <button
           type="button"
@@ -3070,9 +3951,16 @@ function FarmShopActions({
         >
           Return
         </button>
+        <button
+          type="button"
+          disabled={Boolean(priceReason)}
+          onClick={() => send({ type: "set_farm_shop_price", item_id: selectedItemId, price: commandPrice })}
+        >
+          Set Price
+        </button>
       </div>
       <small className="farm-shop-panel__status">
-        {[stockReason, returnReason].filter(Boolean).join(" - ") || "Ready"}
+        {[stockReason, returnReason, priceReason].filter(Boolean).join(" - ") || "Ready"}
       </small>
     </section>
   );
@@ -3149,7 +4037,7 @@ function BuildTray({
         </div>
         <div className="build-detail-strip__facts">
           <span>{detail.cost} coins</span>
-          <span>{detail.placing ? "Choose a tile" : detail.reason ?? "Click to place"}</span>
+          <span>{detail.placing ? `Place ${detail.label} - Choose a tile` : detail.reason ?? "Click to place"}</span>
         </div>
       </div>
       <nav className="build-tray" aria-label="Structures">

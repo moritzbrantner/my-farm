@@ -279,6 +279,8 @@ pub struct FarmShopState {
     pub tile: Tile,
     pub stock: Vec<ItemStack>,
     pub stock_capacity: u32,
+    #[serde(default)]
+    pub prices: BTreeMap<String, u32>,
     #[ts(type = "number")]
     pub next_customer_visit_at_ms: i64,
     #[ts(type = "number")]
@@ -286,6 +288,9 @@ pub struct FarmShopState {
     #[serde(default)]
     #[ts(optional)]
     pub current_sale: Option<FarmShopSaleWindow>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub current_rejection: Option<FarmShopRejectionWindow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -296,6 +301,19 @@ pub struct FarmShopSaleWindow {
     pub coins_gained: u32,
     #[ts(type = "number")]
     pub sold_at_ms: i64,
+    #[ts(type = "number")]
+    pub visible_until_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+pub struct FarmShopRejectionWindow {
+    pub id: String,
+    pub item_id: String,
+    pub shop_price: u32,
+    pub base_price: u32,
+    pub sale_chance_bps: u32,
+    #[ts(type = "number")]
+    pub visited_at_ms: i64,
     #[ts(type = "number")]
     pub visible_until_ms: i64,
 }

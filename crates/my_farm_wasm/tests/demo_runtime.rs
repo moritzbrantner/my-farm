@@ -274,7 +274,7 @@ fn demo_runtime_ticks_completed_resident_tasks_and_preserves_save_state() {
     assert_eq!(queued.version, 3);
     assert_eq!(queued.view.selected_resident_id, "man");
     assert_eq!(queued.view.resident_work["man"].queue.len(), 1);
-    assert_eq!(queued.view.resident_work["man"].queue[0].step_count, 5);
+    assert_eq!(queued.view.resident_work["man"].queue[0].step_count, 4);
 
     let ticked = farm(&mut runtime, 30_000.0);
     assert_eq!(ticked.version, 4);
@@ -514,6 +514,10 @@ fn demo_runtime_rejects_farm_shop_stock_commands_before_core_execution() {
         FarmCommand::UnstockFarmShop {
             item_id: "wheat".to_owned(),
             quantity: 1,
+        },
+        FarmCommand::SetFarmShopPrice {
+            item_id: "wheat".to_owned(),
+            price: 2,
         },
     ] {
         let response = command_raw(&mut runtime, 0, command, 1_000.0);

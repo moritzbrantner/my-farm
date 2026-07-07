@@ -394,6 +394,35 @@
     {
       "type": "object",
       "required": [
+        "resident_id",
+        "task_id",
+        "type"
+      ],
+      "properties": {
+        "before_task_id": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resident_id": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "reorder_resident_task"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "display_name",
         "resident_id",
         "type"
@@ -505,6 +534,30 @@
           "type": "string",
           "enum": [
             "unstock_farm_shop"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "item_id",
+        "price",
+        "type"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "price": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "set_farm_shop_price"
           ]
         }
       }

@@ -10,6 +10,7 @@ import {
   interpolatePath,
   isResidentInsideHouse,
   residentVisualCue,
+  residentVisualPresentation,
 } from "./residentTasks";
 
 test("interpolates resident walking along stored path", () => {
@@ -67,7 +68,7 @@ test("resident works at approach tile after walking finishes", () => {
   });
 });
 
-test("resident works at path destination after local walk finishes even when snapshot tile is stale", () => {
+test("resident working pose uses current step target when scene snapshot is still walking", () => {
   const view = farmViewWithTask({
     id: "task-1",
     kind: { type: "field_work" },
@@ -76,7 +77,7 @@ test("resident works at path destination after local walk finishes even when sna
     steps: [
       {
         reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
-        work: { type: "harvest_crop", crop_id: "wheat", quantity: 2 },
+        work: { type: "plant_crop", crop_id: "wheat" },
         approach_tile: { x: 10, y: 10 },
         walk_path: [
           { x: 9, y: 10 },
@@ -88,9 +89,14 @@ test("resident works at path destination after local walk finishes even when sna
       },
     ],
   });
-  view.resident_work.woman!.scene.tile = { x: 8, y: 10 };
+  const work = view.resident_work.woman;
+  if (!work) {
+    throw new Error("missing resident work fixture");
+  }
+  work.scene.tile = { x: 8, y: 10 };
+  work.scene.path_state = "walking";
 
-  expect(currentResidentScenePose(view, "woman", 2_500)).toEqual({
+  expect(currentResidentScenePose(view, "woman", 2_250)).toEqual({
     tile: { x: 10, y: 10 },
     label: "Field Plot plot-1",
     state: "working",
@@ -415,6 +421,107 @@ test("uses idle and walking visual cues from authoritative scene state", () => {
   });
 });
 
+test("maps resident current task work to a presentation tool", () => {
+  const cases: Array<{
+    work: ResidentTask["steps"][number]["work"];
+    heldTool: ReturnType<typeof residentVisualPresentation>["heldTool"];
+  }> = [
+    { work: { type: "pickup_items", source: { type: "silo" }, items: [{ item_id: "wheat", quantity: 1 }] }, heldTool: "none" },
+    { work: { type: "pickup_tools", source: { type: "farmhouse" }, tools: [{ tool_kind: "hoe", quantity: 1 }] }, heldTool: "tool_bundle" },
+    { work: { type: "plant_crop", crop_id: "wheat" }, heldTool: "hoe" },
+    { work: { type: "harvest_crop", crop_id: "wheat", quantity: 2 }, heldTool: "sickle" },
+    { work: { type: "collect_machine_job", job_id: "job-1", recipe_id: "chicken_feed" }, heldTool: "wrench" },
+    { work: { type: "start_oven_recipe", job_id: "job-1", recipe_id: "bread" }, heldTool: "mixing_bowl" },
+    { work: { type: "collect_oven_job", job_id: "job-1", recipe_id: "bread" }, heldTool: "oven_mitt" },
+    { work: { type: "feed_animal" }, heldTool: "feed_bucket" },
+    { work: { type: "collect_animal_product", item_id: "egg", quantity: 1 }, heldTool: "collection_pail" },
+    { work: { type: "deposit_inventory", item_id: "wheat", quantity: 1 }, heldTool: "none" },
+    { work: { type: "deposit_items", destination: { type: "silo" }, items: [{ item_id: "wheat", quantity: 1 }] }, heldTool: "none" },
+    { work: { type: "return_tools", source: { type: "farmhouse" }, tools: [{ tool_kind: "hoe", quantity: 1 }] }, heldTool: "tool_bundle" },
+  ];
+
+  for (const { work, heldTool } of cases) {
+    const view = farmViewWithTask({
+      id: `task-${work.type}`,
+      kind: { type: "production_work" },
+      started_at_ms: 1_000,
+      ready_at_ms: 3_000,
+      steps: [
+        {
+          reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+          work,
+          approach_tile: { x: 10, y: 10 },
+          walk_path: [],
+          walk_duration_ms: 0,
+          work_duration_ms: 2_000,
+          duration_ms: 2_000,
+        },
+      ],
+    });
+
+    expect(residentVisualPresentation(view, "woman", 1_500).heldTool).toBe(heldTool);
+    expect(residentVisualPresentation(view, "woman", 1_500).motion).toBe("working");
+  }
+});
+
+test("resident visual presentation uses carried tools while walking", () => {
+  const view = farmViewWithTask({
+    id: "task-1",
+    kind: { type: "field_work" },
+    started_at_ms: 1_000,
+    ready_at_ms: 4_000,
+    steps: [
+      {
+        reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+        work: { type: "plant_crop", crop_id: "wheat" },
+        approach_tile: { x: 10, y: 10 },
+        walk_path: [{ x: 9, y: 10 }, { x: 10, y: 10 }],
+        walk_duration_ms: 2_000,
+        work_duration_ms: 1_000,
+        duration_ms: 3_000,
+      },
+    ],
+  });
+  view.resident_work.woman!.carry.tools = [{ tool_kind: "sickle", label: "Sickle", quantity: 1 }];
+
+  expect(residentVisualPresentation(view, "woman", 1_500)).toEqual({
+    activity: "walking",
+    prop: "none",
+    heldTool: "sickle",
+    motion: "walking",
+  });
+});
+
+test("blocked resident visual presentation does not use active work animation", () => {
+  const view = farmViewWithTask({
+    id: "blocked-task",
+    kind: { type: "field_work" },
+    started_at_ms: 1_000,
+    ready_at_ms: 4_000,
+    steps: [
+      {
+        reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+        work: { type: "plant_crop", crop_id: "wheat" },
+        approach_tile: { x: 10, y: 10 },
+        walk_path: [],
+        walk_duration_ms: 0,
+        work_duration_ms: 3_000,
+        duration_ms: 3_000,
+      },
+    ],
+  });
+  view.resident_work.woman!.state = "blocked";
+  view.resident_work.woman!.carry.tools = [{ tool_kind: "hoe", label: "Hoe", quantity: 1 }];
+
+  expect(residentVisualCue(view, "woman", 1_500)).toEqual({ activity: "planting", prop: "seed_pouch" });
+  expect(residentVisualPresentation(view, "woman", 1_500)).toEqual({
+    activity: "idle",
+    prop: "none",
+    heldTool: "hoe",
+    motion: "blocked",
+  });
+});
+
 function farmViewWithTask(task: ResidentTask | null): FarmView {
   const residentLocations = {
     woman: { x: 8, y: 10 },
@@ -425,6 +532,22 @@ function farmViewWithTask(task: ResidentTask | null): FarmView {
   const path = currentStep?.walk_path.length
     ? [residentLocations.woman, ...currentStep.walk_path]
     : [];
+  const summary = task
+    ? {
+        id: task.id,
+        kind: task.kind,
+        label: currentStep ? taskLabelForStep(currentStep) : "Field work",
+        step_count: task.steps.length,
+        steps: task.steps.map(stepView),
+        preview: {
+          path: task.steps.flatMap((step) => step.walk_path),
+          target,
+        },
+        queue_state: "current" as const,
+        started_at_ms: task.started_at_ms,
+        ready_at_ms: task.ready_at_ms,
+      }
+    : undefined;
   return {
     last_update_ms: 0,
     xp: 0,
@@ -459,30 +582,8 @@ function farmViewWithTask(task: ResidentTask | null): FarmView {
         display_name: "Woman",
         selected: true,
         state: task ? "working" : "idle",
-        current_task: task
-          ? {
-              id: task.id,
-              kind: task.kind,
-              label: currentStep ? taskLabelForStep(currentStep) : "Field work",
-              step_count: task.steps.length,
-              steps: task.steps.map(stepView),
-              queue_state: "current",
-              started_at_ms: task.started_at_ms,
-              ready_at_ms: task.ready_at_ms,
-            }
-          : undefined,
-        queue: task
-          ? [{
-              id: task.id,
-              kind: task.kind,
-              label: currentStep ? taskLabelForStep(currentStep) : "Field work",
-              step_count: task.steps.length,
-              steps: task.steps.map(stepView),
-              queue_state: "current",
-              started_at_ms: task.started_at_ms,
-              ready_at_ms: task.ready_at_ms,
-            }]
-          : [],
+        current_task: summary,
+        queue: summary ? [summary] : [],
         current_step: currentStep
           ? {
               label: taskLabelForStep(currentStep),

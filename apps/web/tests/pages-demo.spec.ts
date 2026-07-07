@@ -16,14 +16,14 @@ test("pages demo runs from WASM without server API calls", async ({ page }) => {
   await expect(page.getByText("Browser Demo")).toBeVisible();
   await page.getByRole("button", { name: "Start Farm" }).click();
 
-  await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
   const residents = page.getByLabel("Farm Residents");
-  await expect(residents.getByText("Selected Resident")).toBeVisible();
-  await expect(residents.locator(".resident-card")).toHaveCount(2);
+  await expect(residents.getByText("Selected")).toBeVisible();
+  await expect(residents.locator(".resident-picker-row")).toHaveCount(2);
   await expect(page.getByTestId("farm-scene-resident-woman")).toBeVisible();
   await expect(page.getByTestId("farm-scene-resident-man")).toBeVisible();
   await expect(page.getByText("Farmers Market")).toHaveCount(0);
-  await page.locator(".interaction-tools").getByRole("button", { name: "Build" }).click();
+  await page.locator(".field-tools").getByRole("button", { name: "Build" }).click();
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Field Plot/ })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Feed Mill/ })).toHaveCount(0);
@@ -34,7 +34,7 @@ test("pages demo runs from WASM without server API calls", async ({ page }) => {
 test("pages demo places a House Interior Decoration through the WASM runtime", async ({ page }) => {
   await page.goto("/");
   await seedLevelFiveSave(page);
-  await page.reload();
+  await page.goto("/");
   await page.getByRole("button", { name: "Start Farm" }).click();
 
   await enterHouseRoom(page, "Living Room");
@@ -59,7 +59,7 @@ test("pages demo places a House Interior Decoration through the WASM runtime", a
 test("pages demo persists moved and removed House Interior Decorations", async ({ page }) => {
   await page.goto("/");
   await seedLevelFiveSave(page);
-  await page.reload();
+  await page.goto("/");
   await page.getByRole("button", { name: "Start Farm" }).click();
 
   await enterHouseRoom(page, "Living Room");
@@ -83,7 +83,7 @@ test("pages demo persists moved and removed House Interior Decorations", async (
 test("pages demo persists a Farmhouse Oven production save in localStorage", async ({ page }) => {
   await page.goto("/");
   await seedBreadSave(page);
-  await page.reload();
+  await page.goto("/");
 
   await expect(page.getByRole("region", { name: "Main menu" })).toBeVisible();
   await page.getByRole("button", { name: "Start Farm" }).click();
@@ -107,7 +107,7 @@ test("pages demo persists a Farmhouse Oven production save in localStorage", asy
 test("pages demo shows Farmhouse Oven status from a WASM save", async ({ page }) => {
   await page.goto("/");
   await seedQueuedBreadSave(page);
-  await page.reload();
+  await page.goto("/");
 
   await expect(page.getByRole("region", { name: "Main menu" })).toBeVisible();
   await page.getByRole("button", { name: "Start Farm" }).click();
@@ -148,8 +148,12 @@ async function countDemoFarmRefreshes(page: Page) {
       __demoFarmRefreshes: number;
     };
 
-    const wasm = (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
-    await wasm.default();
+    const existing = (window as unknown as { __myFarmWasmModule?: WasmModule }).__myFarmWasmModule;
+    const wasm = existing ?? (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
+    if (!existing) {
+      await wasm.default();
+      (window as unknown as { __myFarmWasmModule?: WasmModule }).__myFarmWasmModule = wasm;
+    }
     const originalFarmJson = wasm.DemoFarmRuntime.prototype.farm_json;
     (window as unknown as DemoRefreshWindow).__demoFarmRefreshes = 0;
     wasm.DemoFarmRuntime.prototype.farm_json = function farmJsonWithCount(this: WasmRuntime, nowMs: number) {
@@ -173,6 +177,7 @@ async function closeGuidedTutorial(page: Page) {
 
 async function enterHouseRoom(page: Page, roomName: "Living Room" | "Kitchen" | "Bedroom") {
   await page.getByLabel("Farmhouse structure").click({ force: true });
+  await page.getByRole("button", { name: "Enter Farmhouse" }).click();
   await expect(page.getByRole("region", { name: "House Interior" })).toBeVisible();
   await expect(page.getByTestId("house-overview")).toBeVisible();
   await page.getByRole("button", { name: `Enter ${roomName}` }).click();
@@ -207,10 +212,12 @@ async function expectElementFramed(page: Page, target: ReturnType<Page["locator"
 
 async function expectHouseInteriorControlsFramedWithoutOverlap(page: Page) {
   const controls = [
+    page.locator(".house-camera-controls"),
     page.locator(".house-interior__title"),
     page.locator(".house-interior__back"),
     page.locator(".house-interior__grid-toggle"),
     page.getByTestId("decoration-placement-status"),
+    page.locator(".room-tile-coordinate-controls"),
     page.getByRole("navigation", { name: "Decorations" }),
   ];
   const boxes: Array<{ x: number; y: number; width: number; height: number }> = [];
@@ -300,8 +307,12 @@ async function seedLevelFiveSave(page: Page) {
       DemoFarmRuntime: new (savedJson: string | undefined, nowMs: number) => WasmRuntime;
     };
 
-    const wasm = (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
-    await wasm.default();
+    const existing = (window as unknown as { __myFarmWasmModule?: WasmModule }).__myFarmWasmModule;
+    const wasm = existing ?? (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
+    if (!existing) {
+      await wasm.default();
+      (window as unknown as { __myFarmWasmModule?: WasmModule }).__myFarmWasmModule = wasm;
+    }
     const runtime = new wasm.DemoFarmRuntime(undefined, 1_000);
     const save = JSON.parse(runtime.save_json()) as { farm: { xp: number; level: number } };
     save.farm.xp = 55;
@@ -322,8 +333,12 @@ async function seedBreadSave(page: Page) {
       DemoFarmRuntime: new (savedJson: string | undefined, nowMs: number) => WasmRuntime;
     };
 
-    const wasm = (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
-    await wasm.default();
+    const existing = (window as unknown as { __myFarmWasmModule?: WasmModule }).__myFarmWasmModule;
+    const wasm = existing ?? (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
+    if (!existing) {
+      await wasm.default();
+      (window as unknown as { __myFarmWasmModule?: WasmModule }).__myFarmWasmModule = wasm;
+    }
     let runtime = new wasm.DemoFarmRuntime(undefined, 1_000);
     const leveledSave = JSON.parse(runtime.save_json()) as {
       farm: { xp: number; level: number; inventory: Record<string, number> };
@@ -368,8 +383,12 @@ async function seedQueuedBreadSave(page: Page) {
       DemoFarmRuntime: new (savedJson: string | undefined, nowMs: number) => WasmRuntime;
     };
 
-    const wasm = (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
-    await wasm.default();
+    const existing = (window as unknown as { __myFarmWasmModule?: WasmModule }).__myFarmWasmModule;
+    const wasm = existing ?? (await Function("return import('/src/generated/my_farm_wasm/my_farm_wasm.js')")()) as WasmModule;
+    if (!existing) {
+      await wasm.default();
+      (window as unknown as { __myFarmWasmModule?: WasmModule }).__myFarmWasmModule = wasm;
+    }
     let runtime = new wasm.DemoFarmRuntime(undefined, 1_000);
     const leveledSave = JSON.parse(runtime.save_json()) as {
       farm: { xp: number; level: number; inventory: Record<string, number> };

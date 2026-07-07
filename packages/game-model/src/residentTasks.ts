@@ -6,6 +6,7 @@ import type {
   ResidentVisualActivity,
   ResidentVisualProp,
   ResidentWorkView,
+  ToolKind,
 } from "@my-farm/contracts";
 
 export type { ResidentVisualActivity, ResidentVisualProp };
@@ -31,9 +32,31 @@ export type ResidentScenePath = {
   state: ResidentPathState;
 };
 
+export type ResidentFacing = "north" | "east" | "south" | "west";
+
 export type ResidentVisualCue = {
   activity: ResidentVisualActivity;
   prop: ResidentVisualProp;
+};
+
+export type ResidentMotionState = "idle" | "walking" | "working" | "blocked";
+
+export type ResidentHeldTool =
+  | "none"
+  | "hoe"
+  | "sickle"
+  | "mixing_bowl"
+  | "oven_mitt"
+  | "feed_bucket"
+  | "collection_pail"
+  | "wrench"
+  | "tool_bundle";
+
+export type ResidentVisualPresentation = {
+  activity: ResidentVisualActivity;
+  prop: ResidentVisualProp;
+  heldTool: ResidentHeldTool;
+  motion: ResidentMotionState;
 };
 
 export function residentWork(view: FarmView, residentId: string): ResidentWorkView | null {
@@ -72,6 +95,47 @@ export function residentVisualCue(
   return step ? { activity: step.activity, prop: step.prop } : { activity: "idle", prop: "none" };
 }
 
+export function residentVisualPresentation(
+  view: FarmView,
+  residentId: string,
+  nowMs: number,
+): ResidentVisualPresentation {
+  const pose = currentResidentScenePose(view, residentId, nowMs);
+  const work = residentWork(view, residentId);
+  const carriedTool = carriedHeldTool(work);
+  const carriedProp = carriedVisualProp(work);
+
+  if (pose.state === "idle") {
+    return { activity: "idle", prop: "none", heldTool: "none", motion: "idle" };
+  }
+
+  if (pose.state === "blocked") {
+    return {
+      activity: "idle",
+      prop: carriedTool === "none" ? carriedProp : "none",
+      heldTool: carriedTool,
+      motion: "blocked",
+    };
+  }
+
+  if (pose.state === "walking") {
+    return {
+      activity: "walking",
+      prop: carriedTool === "none" ? carriedProp : "none",
+      heldTool: carriedTool,
+      motion: "walking",
+    };
+  }
+
+  const cue = residentVisualCue(view, residentId, nowMs);
+  return {
+    activity: cue.activity,
+    prop: cue.prop,
+    heldTool: heldToolForActivity(cue.activity),
+    motion: "working",
+  };
+}
+
 export function currentResidentScenePose(
   view: FarmView,
   residentId: string,
@@ -101,9 +165,14 @@ export function currentResidentScenePose(
     };
   }
 
-  const workTile = work.scene.path.at(-1) ?? work.target?.tile ?? work.scene.tile;
+  const workingTile =
+    work.current_step.target?.tile ??
+    work.target?.tile ??
+    work.scene.path.at(-1) ??
+    work.scene.tile ??
+    currentTile;
   return {
-    tile: workTile,
+    tile: workingTile,
     label: work.target?.label ?? "Work target",
     state: "working",
   };
@@ -145,6 +214,24 @@ export function currentResidentScenePath(
   };
 }
 
+export function currentResidentFacing(
+  view: FarmView,
+  residentId: string,
+  nowMs = Date.now(),
+): ResidentFacing {
+  const work = residentWork(view, residentId);
+  const scene = currentResidentScenePose(view, residentId, nowMs);
+  const target = work?.target?.tile;
+  if (!work?.current_task || !work.current_step || work.scene.path.length <= 1) {
+    return facingBetween(scene.tile, target);
+  }
+  const walkEndsAtMs = work.current_task.started_at_ms + work.current_step.walk_duration_ms;
+  if (nowMs < walkEndsAtMs) {
+    return pathSegmentFacing(work.scene.path, progressBetween(work.current_task.started_at_ms, walkEndsAtMs, nowMs));
+  }
+  return facingBetween(scene.tile, target);
+}
+
 export function reservedFieldReason(view: FarmView, plotId: string): string | null {
   return reservationReason(view.reservations.field_plots[plotId]);
 }
@@ -176,6 +263,68 @@ function reservationReason(reservation: ReservationReasonView | null | undefined
   return reservation?.reason ?? null;
 }
 
+function carriedHeldTool(work: ResidentWorkView | null): ResidentHeldTool {
+  const tool = work?.carry.tools[0];
+  if (!tool) {
+    return "none";
+  }
+  return heldToolForToolKind(tool.tool_kind);
+}
+
+function carriedVisualProp(work: ResidentWorkView | null): ResidentVisualProp {
+  const item = work?.carry.items[0];
+  if (!item) {
+    return "none";
+  }
+  return item.kind === "crop" || item.kind === "animal_product" ? "basket" : "crate";
+}
+
+function heldToolForToolKind(toolKind: ToolKind): ResidentHeldTool {
+  switch (toolKind) {
+    case "hoe":
+      return "hoe";
+    case "sickle":
+      return "sickle";
+    case "mixing_bowl":
+      return "mixing_bowl";
+    case "oven_mitt":
+      return "oven_mitt";
+    case "feed_bucket":
+      return "feed_bucket";
+    case "collection_pail":
+      return "collection_pail";
+    case "wrench":
+      return "wrench";
+  }
+}
+
+function heldToolForActivity(activity: ResidentVisualActivity): ResidentHeldTool {
+  switch (activity) {
+    case "planting":
+      return "hoe";
+    case "harvesting":
+      return "sickle";
+    case "collecting_machine":
+      return "wrench";
+    case "starting_oven":
+      return "mixing_bowl";
+    case "collecting_oven":
+      return "oven_mitt";
+    case "feeding_animal":
+      return "feed_bucket";
+    case "collecting_animal_product":
+      return "collection_pail";
+    case "picking_up_tools":
+    case "returning_tools":
+      return "tool_bundle";
+    case "idle":
+    case "walking":
+    case "picking_up_items":
+    case "depositing_inventory":
+      return "none";
+  }
+}
+
 function progressBetween(startMs: number, readyAtMs: number, nowMs: number) {
   const duration = readyAtMs - startMs;
   if (duration <= 0) {
@@ -205,4 +354,32 @@ export function interpolatePath(
     x: from.x + (to.x - from.x) * segmentProgress,
     y: from.y + (to.y - from.y) * segmentProgress,
   };
+}
+
+function pathSegmentFacing(path: Array<{ x: number; y: number }>, progress: number): ResidentFacing {
+  if (path.length < 2) {
+    return "south";
+  }
+  const clamped = Math.min(1, Math.max(0, progress));
+  const segmentCount = path.length - 1;
+  const segmentIndex = Math.min(segmentCount - 1, Math.floor(clamped * segmentCount));
+  return facingBetween(path[segmentIndex], path[segmentIndex + 1]);
+}
+
+function facingBetween(
+  from: { x: number; y: number },
+  to: { x: number; y: number } | null | undefined,
+): ResidentFacing {
+  if (!to) {
+    return "south";
+  }
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dx >= 0 ? "east" : "west";
+  }
+  if (Math.abs(dy) > 0) {
+    return dy >= 0 ? "south" : "north";
+  }
+  return "south";
 }

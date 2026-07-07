@@ -2,8 +2,8 @@ import type {
   CatalogDocument,
   CommandRequest,
   CommandResponse,
-  FarmResident,
   FarmResponse,
+  FarmResident,
   FarmView,
   ReservationView,
   ResidentWorkView,
@@ -76,8 +76,8 @@ export type LegacyFarmView = Omit<
   farm_shop?: LegacyFarmShopView | null;
 };
 
-export type LegacyFarmShopView = Omit<NonNullable<FarmView["farm_shop"]>, "stock_capacity"> &
-  Partial<Pick<NonNullable<FarmView["farm_shop"]>, "stock_capacity">>;
+export type LegacyFarmShopView = Omit<NonNullable<FarmView["farm_shop"]>, "item_type_capacity" | "prices"> &
+  Partial<Pick<NonNullable<FarmView["farm_shop"]>, "item_type_capacity" | "prices">>;
 
 export type LegacyFarmResponse = Omit<FarmResponse, "view"> & {
   view: LegacyFarmView;
@@ -88,7 +88,7 @@ export type LegacyCommandResponse = Omit<CommandResponse, "view"> & {
 };
 
 export function createHttpFarmClient(
-  _baseUrl: string,
+  baseUrl: string,
   gameplayWebsocketUrl: string,
   platform: FarmClientPlatform,
 ): FarmClient {
@@ -101,7 +101,8 @@ export function createHttpFarmClient(
     catalog: unavailableUntilConnected,
     farm: unavailableUntilConnected,
     async reset(): Promise<FarmResponse> {
-      return normalizeFarmResponse(await websocket.reset());
+      const response = await websocket.reset();
+      return normalizeFarmResponse(response);
     },
     async command(command: CommandRequest): Promise<CommandResponse> {
       return normalizeCommandResponse(await websocket.command(command));
@@ -327,10 +328,10 @@ function normalizeFarmShop(shop: LegacyFarmView["farm_shop"]): FarmView["farm_sh
   }
   return {
     ...shop,
-    stock_capacity:
-      typeof shop.stock_capacity === "number" && Number.isFinite(shop.stock_capacity)
-        ? shop.stock_capacity
-        : 20,
+    item_type_capacity: typeof shop.item_type_capacity === "number" && Number.isFinite(shop.item_type_capacity)
+      ? shop.item_type_capacity
+      : 10,
+    prices: Array.isArray(shop.prices) ? shop.prices : [],
   };
 }
 

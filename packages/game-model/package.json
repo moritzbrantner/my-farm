@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./basicFarmScenarios": "./src/basicFarmScenarios.ts",
     "./houseInterior": "./src/houseInterior.ts",
     "./residentTasks": "./src/residentTasks.ts",
     "./selectors": "./src/selectors.ts",

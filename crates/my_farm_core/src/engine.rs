@@ -1,11 +1,11 @@
 use crate::{
     AnimalShelterState, AnimalState, CatalogDocument, DecorationDef, DecorationPlacement,
-    DeliveryOrder, FarmShopSaleWindow, FarmShopState, FarmState, FarmhouseUpgradeKind, FieldPlot,
-    ItemKind, ItemStack, MachineJob, MachineKind, MachineState, OvenJob, OvenJobStatus,
-    RecipeTarget, ReservedWorkTarget, ResidentTask, ResidentTaskKind, ResidentTaskStep,
-    ResidentTaskStepWork, Room, RoomTile, ShelterKind, StorageKind, StorageSourceRef,
-    StructureKind, Tile, ToolKind, ToolShedState, ToolSourceRef, ToolStack, add_inventory,
-    add_shelter_animals, barn_storage_used, crop_storage_used,
+    DeliveryOrder, FarmShopRejectionWindow, FarmShopSaleWindow, FarmShopState, FarmState,
+    FarmhouseUpgradeKind, FieldPlot, ItemKind, ItemStack, MachineJob, MachineKind, MachineState,
+    OvenJob, OvenJobStatus, RecipeTarget, ReservedWorkTarget, ResidentTask, ResidentTaskKind,
+    ResidentTaskStep, ResidentTaskStepWork, Room, RoomTile, ShelterKind, StorageKind,
+    StorageSourceRef, StructureKind, Tile, ToolKind, ToolShedState, ToolSourceRef, ToolStack,
+    add_inventory, add_shelter_animals, barn_storage_used, crop_storage_used,
     default_resident_task_step_duration_ms, default_tool_stock, gain_xp, inventory_quantity,
     next_id, remove_inventory, scaled_duration_ms, update_level,
 };
@@ -27,7 +27,8 @@ const TOOL_SHED_COST: u32 = 45;
 const TOOL_SHED_UNLOCK_LEVEL: u32 = 3;
 const FARM_SHOP_COST: u32 = 25;
 const FARM_SHOP_UNLOCK_LEVEL: u32 = 2;
-const FARM_SHOP_STOCK_CAPACITY: u32 = 8;
+const FARM_SHOP_STOCK_CAPACITY: u32 = 30;
+pub const FARM_SHOP_ITEM_TYPE_CAPACITY: u32 = 10;
 const FARM_SHOP_SALE_VISIBLE_MS: i64 = 8_000;
 const DECORATION_EDITING_UNLOCK_LEVEL: u32 = 5;
 const RESIDENT_FIELD_WORK_BASE_DURATION_MS: i64 = 1_000;
@@ -113,6 +114,13 @@ pub enum FarmCommand {
     SelectResident {
         resident_id: String,
     },
+    ReorderResidentTask {
+        resident_id: String,
+        task_id: String,
+        #[serde(default)]
+        #[ts(optional)]
+        before_task_id: Option<String>,
+    },
     RenameResident {
         resident_id: String,
         display_name: String,
@@ -132,6 +140,10 @@ pub enum FarmCommand {
     UnstockFarmShop {
         item_id: String,
         quantity: u32,
+    },
+    SetFarmShopPrice {
+        item_id: String,
+        price: u32,
     },
     PlaceDecoration {
         room_id: String,
@@ -222,6 +234,13 @@ pub enum FarmEvent {
     ResidentSelected {
         resident_id: String,
     },
+    ResidentTaskReordered {
+        resident_id: String,
+        task_id: String,
+        #[serde(default)]
+        #[ts(optional)]
+        before_task_id: Option<String>,
+    },
     ResidentRenamed {
         resident_id: String,
         display_name: String,
@@ -248,6 +267,16 @@ pub enum FarmEvent {
         item_id: String,
         quantity: u32,
         coins_gained: u32,
+    },
+    FarmShopPriceSet {
+        item_id: String,
+        price: u32,
+    },
+    FarmShopVisitRejected {
+        item_id: String,
+        shop_price: u32,
+        base_price: u32,
+        sale_chance_bps: u32,
     },
     DecorationPlaced {
         room_id: String,
@@ -391,6 +420,11 @@ pub fn apply_command(
             discard_inventory(farm, &item_id, quantity)
         }
         FarmCommand::SelectResident { resident_id } => select_resident(farm, &resident_id),
+        FarmCommand::ReorderResidentTask {
+            resident_id,
+            task_id,
+            before_task_id,
+        } => reorder_resident_task(farm, catalog, &resident_id, &task_id, before_task_id),
         FarmCommand::RenameResident {
             resident_id,
             display_name,
@@ -406,6 +440,9 @@ pub fn apply_command(
         }
         FarmCommand::UnstockFarmShop { item_id, quantity } => {
             unstock_farm_shop(farm, catalog, now_ms, &item_id, quantity)
+        }
+        FarmCommand::SetFarmShopPrice { item_id, price } => {
+            set_farm_shop_price(farm, catalog, &item_id, price)
         }
         FarmCommand::PlaceDecoration {
             room_id,
@@ -755,6 +792,7 @@ fn plan_resource_steps(
 ) -> Result<Vec<ResidentTaskStep>, CommandError> {
     let mut projected = projected_resident_inventory(farm, catalog, resident_id);
     let mut planned = Vec::new();
+    let mut previous_tile = projected_resident_start_tile(farm, resident_id);
 
     for index in 0..work_steps.len() {
         let work_step = work_steps[index].clone();
@@ -765,56 +803,266 @@ fn plan_resource_steps(
             > projected.item_capacity
             && !projected.items.is_empty()
         {
-            planned.extend(deposit_all_carried_items(catalog, &mut projected));
-        }
-        let pickups = missing_projected_items(farm, &projected, &pickup_inputs)?;
-        if !pickups.is_empty() {
-            for pickup in pickups {
-                add_projected_items(&mut projected.items, std::slice::from_ref(&pickup));
-                planned.push(resident_task_step(
-                    reserved_target_for_storage_source(&storage_source_for_item(
-                        catalog,
-                        &pickup.item_id,
-                    )),
-                    ResidentTaskStepWork::PickupItems {
-                        source: storage_source_for_item(catalog, &pickup.item_id),
-                        items: vec![pickup],
-                    },
-                ));
-            }
+            append_steps_with_cursor(
+                farm,
+                &mut planned,
+                &mut previous_tile,
+                deposit_all_carried_items(catalog, &mut projected),
+            )?;
         }
 
-        if let Some(tool_kind) = tool_for_work(&work_step.work) {
-            if projected.tools.get(&tool_kind).copied().unwrap_or(0) == 0 {
-                let source = available_tool_source(farm, tool_kind)
-                    .ok_or_else(|| CommandError::new("required tool unavailable"))?;
-                add_projected_tools(&mut projected.tools, &[ToolStack::new(tool_kind, 1)]);
-                planned.push(resident_task_step(
-                    ReservedWorkTarget::ToolSource,
-                    ResidentTaskStepWork::PickupTools {
-                        source,
-                        tools: vec![ToolStack::new(tool_kind, 1)],
-                    },
-                ));
-            }
+        let pickup_requirements = prerequisite_pickup_requirements(
+            farm,
+            catalog,
+            &projected,
+            &work_step,
+            &pickup_inputs,
+        )?;
+        let pickup_steps =
+            best_prerequisite_pickup_order(farm, &previous_tile, &work_step, pickup_requirements)?;
+        for pickup_step in &pickup_steps {
+            apply_projected_step(farm, catalog, &mut projected, pickup_step)?;
         }
+        append_steps_with_cursor(farm, &mut planned, &mut previous_tile, pickup_steps)?;
 
         let outputs = step_inventory_outputs(catalog, &work_step.work);
         if carried_item_quantity(&projected.items) + stack_quantity(&outputs)
             > projected.item_capacity
             && !projected.items.is_empty()
         {
-            planned.extend(deposit_all_carried_items(catalog, &mut projected));
+            append_steps_with_cursor(
+                farm,
+                &mut planned,
+                &mut previous_tile,
+                deposit_all_carried_items(catalog, &mut projected),
+            )?;
         }
         remove_projected_items(&mut projected.items, &inputs)?;
         add_projected_items(&mut projected.items, &outputs);
-        planned.push(work_step);
+        append_steps_with_cursor(farm, &mut planned, &mut previous_tile, vec![work_step])?;
     }
 
-    planned.extend(deposit_all_carried_items(catalog, &mut projected));
-    planned.extend(return_all_carried_tools(farm, &mut projected));
+    append_steps_with_cursor(
+        farm,
+        &mut planned,
+        &mut previous_tile,
+        deposit_all_carried_items(catalog, &mut projected),
+    )?;
+    append_steps_with_cursor(
+        farm,
+        &mut planned,
+        &mut previous_tile,
+        return_all_carried_tools(farm, &mut projected),
+    )?;
 
     Ok(planned)
+}
+
+#[derive(Clone)]
+struct PickupRequirement {
+    alternatives: Vec<PickupCandidate>,
+}
+
+#[derive(Clone)]
+struct PickupCandidate {
+    step: ResidentTaskStep,
+    sort_key: String,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct PickupOrderScore {
+    total_path_len: usize,
+    pickup_keys: Vec<String>,
+    route_tiebreakers: Vec<(i32, i32)>,
+}
+
+fn prerequisite_pickup_requirements(
+    farm: &FarmState,
+    catalog: &CatalogDocument,
+    projected: &ProjectedInventory,
+    work_step: &ResidentTaskStep,
+    pickup_inputs: &[ItemStack],
+) -> Result<Vec<PickupRequirement>, CommandError> {
+    let mut requirements = item_pickup_requirements(
+        catalog,
+        missing_projected_items(farm, projected, pickup_inputs)?,
+    );
+
+    if let Some(tool_kind) = tool_for_work(&work_step.work) {
+        if projected.tools.get(&tool_kind).copied().unwrap_or(0) == 0 {
+            let alternatives = available_tool_sources(farm, tool_kind)
+                .into_iter()
+                .map(|source| PickupCandidate {
+                    sort_key: format!(
+                        "tools:{}:{}",
+                        tool_source_sort_key(&source),
+                        tool_kind_sort_key(tool_kind)
+                    ),
+                    step: resident_task_step(
+                        ReservedWorkTarget::ToolSource,
+                        ResidentTaskStepWork::PickupTools {
+                            source,
+                            tools: vec![ToolStack::new(tool_kind, 1)],
+                        },
+                    ),
+                })
+                .collect::<Vec<_>>();
+            if alternatives.is_empty() {
+                return Err(CommandError::new("required tool unavailable"));
+            }
+            requirements.push(PickupRequirement { alternatives });
+        }
+    }
+
+    Ok(requirements)
+}
+
+fn item_pickup_requirements(
+    catalog: &CatalogDocument,
+    pickups: Vec<ItemStack>,
+) -> Vec<PickupRequirement> {
+    let mut grouped: Vec<(StorageSourceRef, Vec<ItemStack>)> = Vec::new();
+    for pickup in pickups {
+        let source = storage_source_for_item(catalog, &pickup.item_id);
+        if let Some((_, items)) = grouped
+            .iter_mut()
+            .find(|(existing_source, _)| *existing_source == source)
+        {
+            items.push(pickup);
+        } else {
+            grouped.push((source, vec![pickup]));
+        }
+    }
+
+    grouped
+        .into_iter()
+        .map(|(source, mut items)| {
+            items.sort_by(|left, right| left.item_id.cmp(&right.item_id));
+            let sort_key = format!(
+                "items:{}:{}",
+                storage_source_sort_key(&source),
+                items
+                    .iter()
+                    .map(|item| format!("{}:{}", item.item_id, item.quantity))
+                    .collect::<Vec<_>>()
+                    .join("|")
+            );
+            PickupRequirement {
+                alternatives: vec![PickupCandidate {
+                    step: resident_task_step(
+                        reserved_target_for_storage_source(&source),
+                        ResidentTaskStepWork::PickupItems { source, items },
+                    ),
+                    sort_key,
+                }],
+            }
+        })
+        .collect()
+}
+
+fn best_prerequisite_pickup_order(
+    farm: &FarmState,
+    start: &Tile,
+    work_step: &ResidentTaskStep,
+    requirements: Vec<PickupRequirement>,
+) -> Result<Vec<ResidentTaskStep>, CommandError> {
+    if requirements.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut best: Option<(PickupOrderScore, Vec<PickupCandidate>)> = None;
+    visit_pickup_orders(farm, start, work_step, requirements, Vec::new(), &mut best);
+
+    best.map(|(_, candidates)| {
+        candidates
+            .into_iter()
+            .map(|candidate| candidate.step)
+            .collect()
+    })
+    .ok_or_else(|| CommandError::new("work target is unreachable"))
+}
+
+fn visit_pickup_orders(
+    farm: &FarmState,
+    start: &Tile,
+    work_step: &ResidentTaskStep,
+    remaining: Vec<PickupRequirement>,
+    current: Vec<PickupCandidate>,
+    best: &mut Option<(PickupOrderScore, Vec<PickupCandidate>)>,
+) {
+    if remaining.is_empty() {
+        if let Some(score) = score_pickup_order(farm, start, work_step, &current) {
+            if best
+                .as_ref()
+                .is_none_or(|(best_score, _)| score < *best_score)
+            {
+                *best = Some((score, current));
+            }
+        }
+        return;
+    }
+
+    for index in 0..remaining.len() {
+        let mut next_remaining = remaining.clone();
+        let requirement = next_remaining.remove(index);
+        for candidate in requirement.alternatives {
+            let mut next_current = current.clone();
+            next_current.push(candidate);
+            visit_pickup_orders(
+                farm,
+                start,
+                work_step,
+                next_remaining.clone(),
+                next_current,
+                best,
+            );
+        }
+    }
+}
+
+fn score_pickup_order(
+    farm: &FarmState,
+    start: &Tile,
+    work_step: &ResidentTaskStep,
+    order: &[PickupCandidate],
+) -> Option<PickupOrderScore> {
+    let mut cursor = start.clone();
+    let mut total_path_len = 0;
+    let mut pickup_keys = Vec::new();
+    let mut route_tiebreakers = Vec::new();
+
+    for pickup in order {
+        let route = best_work_target_route(farm, &cursor, &pickup.step)?;
+        total_path_len += route.path.len();
+        route_tiebreakers.push((route.approach_tile.y, route.approach_tile.x));
+        pickup_keys.push(pickup.sort_key.clone());
+        cursor = route.approach_tile;
+    }
+
+    let final_route = best_work_target_route(farm, &cursor, work_step)?;
+    total_path_len += final_route.path.len();
+    route_tiebreakers.push((final_route.approach_tile.y, final_route.approach_tile.x));
+
+    Some(PickupOrderScore {
+        total_path_len,
+        pickup_keys,
+        route_tiebreakers,
+    })
+}
+
+fn append_steps_with_cursor(
+    farm: &FarmState,
+    planned: &mut Vec<ResidentTaskStep>,
+    previous_tile: &mut Tile,
+    steps: Vec<ResidentTaskStep>,
+) -> Result<(), CommandError> {
+    for step in steps {
+        let route = best_work_target_route(farm, previous_tile, &step)
+            .ok_or_else(|| CommandError::new("work target is unreachable"))?;
+        *previous_tile = route.approach_tile;
+        planned.push(step);
+    }
+    Ok(())
 }
 
 fn pickup_inputs_for_remaining_work(
@@ -1249,14 +1497,16 @@ fn tool_for_work(work: &ResidentTaskStepWork) -> Option<ToolKind> {
     }
 }
 
-fn available_tool_source(farm: &FarmState, tool_kind: ToolKind) -> Option<ToolSourceRef> {
-    if let Some(source) = available_tool_shed_source(farm, tool_kind) {
-        return Some(source);
-    }
+fn available_tool_sources(farm: &FarmState, tool_kind: ToolKind) -> Vec<ToolSourceRef> {
+    let mut sources = Vec::new();
     if tool_source_available(farm, &ToolSourceRef::Farmhouse, tool_kind) {
-        return Some(ToolSourceRef::Farmhouse);
+        sources.push(ToolSourceRef::Farmhouse);
     }
-    None
+    if let Some(source) = available_tool_shed_source(farm, tool_kind) {
+        sources.push(source);
+    }
+    sources.sort_by_key(tool_source_sort_key);
+    sources
 }
 
 fn is_field_tool(tool_kind: ToolKind) -> bool {
@@ -1275,6 +1525,32 @@ fn tool_source_available(farm: &FarmState, source: &ToolSourceRef, tool_kind: To
     tool_source_quantity(farm, source, tool_kind)
         .saturating_sub(reserved_tool_pickups(farm, source, tool_kind))
         > 0
+}
+
+fn storage_source_sort_key(source: &StorageSourceRef) -> &'static str {
+    match source {
+        StorageSourceRef::Silo => "silo",
+        StorageSourceRef::Barn => "barn",
+    }
+}
+
+fn tool_source_sort_key(source: &ToolSourceRef) -> String {
+    match source {
+        ToolSourceRef::Farmhouse => "farmhouse".to_owned(),
+        ToolSourceRef::ToolShed { id } => format!("tool_shed:{id}"),
+    }
+}
+
+fn tool_kind_sort_key(tool_kind: ToolKind) -> &'static str {
+    match tool_kind {
+        ToolKind::Hoe => "hoe",
+        ToolKind::Sickle => "sickle",
+        ToolKind::MixingBowl => "mixing_bowl",
+        ToolKind::OvenMitt => "oven_mitt",
+        ToolKind::FeedBucket => "feed_bucket",
+        ToolKind::CollectionPail => "collection_pail",
+        ToolKind::Wrench => "wrench",
+    }
 }
 
 fn tool_source_quantity(farm: &FarmState, source: &ToolSourceRef, tool_kind: ToolKind) -> u32 {
@@ -1803,6 +2079,7 @@ fn complete_resident_task_step(
             remove_farm_shop_stock(shop, &items)
                 .map_err(|error| ResidentTaskBlock::new("missing_shop_stock", error.message))?;
             add_resident_items(farm, resident_id, &items);
+            cleanup_farm_shop_prices(farm);
             Ok(items
                 .iter()
                 .map(|item| FarmEvent::FarmShopUnstocked {
@@ -2090,6 +2367,13 @@ fn complete_resident_task_step(
                 ));
             };
             add_farm_shop_stock(shop, &items);
+            for item in &items {
+                if let Ok(base_price) =
+                    ensure_farm_shop_item_is_sellable(farm, catalog, &item.item_id)
+                {
+                    ensure_farm_shop_price(farm, &item.item_id, base_price);
+                }
+            }
             Ok(items
                 .iter()
                 .map(|item| FarmEvent::FarmShopStocked {
@@ -2593,9 +2877,11 @@ fn buy_structure(
                 tile,
                 stock: Vec::new(),
                 stock_capacity: FARM_SHOP_STOCK_CAPACITY,
+                prices: BTreeMap::new(),
                 next_customer_visit_at_ms: farm.last_update_ms + farm_shop_visit_interval_ms(0),
                 visit_count: 0,
                 current_sale: None,
+                current_rejection: None,
             });
         }
     }
@@ -3118,6 +3404,145 @@ fn select_resident(
     }])
 }
 
+fn reorder_resident_task(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    resident_id: &str,
+    task_id: &str,
+    before_task_id: Option<String>,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    find_resident_index(farm, resident_id)?;
+    let queue = farm
+        .resident_task_queues
+        .get(resident_id)
+        .ok_or_else(|| CommandError::new("resident task queue not found"))?;
+    if queue.len() <= 1 {
+        return Err(CommandError::new("no queued resident tasks to reorder"));
+    }
+
+    let source_index = queue
+        .iter()
+        .position(|task| task.id == task_id)
+        .ok_or_else(|| CommandError::new("resident task not found"))?;
+    if source_index == 0 {
+        return Err(CommandError::new(
+            "current resident task cannot be reordered",
+        ));
+    }
+
+    if before_task_id.as_deref() == Some(task_id) {
+        return Err(CommandError::new(
+            "resident task cannot be moved before itself",
+        ));
+    }
+
+    let future_tasks = queue.iter().skip(1).cloned().collect::<Vec<_>>();
+    let mut reordered = future_tasks.clone();
+    let source_future_index = source_index - 1;
+    let moved_task = reordered.remove(source_future_index);
+    let insert_index = match before_task_id.as_deref() {
+        Some(before_id) => reordered
+            .iter()
+            .position(|task| task.id == before_id)
+            .ok_or_else(|| CommandError::new("destination resident task not found"))?,
+        None => reordered.len(),
+    };
+    reordered.insert(insert_index, moved_task);
+
+    let replanned_queue = replan_resident_future_queue(farm, catalog, resident_id, reordered)?;
+    farm.resident_task_queues
+        .insert(resident_id.to_owned(), replanned_queue);
+
+    Ok(vec![FarmEvent::ResidentTaskReordered {
+        resident_id: resident_id.to_owned(),
+        task_id: task_id.to_owned(),
+        before_task_id,
+    }])
+}
+
+fn replan_resident_future_queue(
+    farm: &FarmState,
+    catalog: &CatalogDocument,
+    resident_id: &str,
+    future_tasks: Vec<ResidentTask>,
+) -> Result<Vec<ResidentTask>, CommandError> {
+    let original_queue = farm
+        .resident_task_queues
+        .get(resident_id)
+        .ok_or_else(|| CommandError::new("resident task queue not found"))?;
+    let current_task = original_queue
+        .first()
+        .cloned()
+        .ok_or_else(|| CommandError::new("current resident task not found"))?;
+
+    let mut scratch = farm.clone();
+    scratch
+        .resident_task_queues
+        .insert(resident_id.to_owned(), vec![current_task]);
+
+    let mut planned_future_count = 0usize;
+    for task in future_tasks {
+        let base_steps = resident_task_reorder_work_steps(&task);
+        if base_steps.is_empty() {
+            return Err(CommandError::new("resident task has no reorderable work"));
+        }
+        if planned_future_count > 0 {
+            strip_trailing_cleanup_steps(&mut scratch, resident_id);
+        }
+
+        let started_at_ms = scratch
+            .resident_task_queues
+            .get(resident_id)
+            .and_then(|queue| queue.last())
+            .map(resident_task_tail_ready_at)
+            .unwrap_or(farm.last_update_ms)
+            .max(farm.last_update_ms);
+        let steps = plan_resource_steps(&scratch, catalog, resident_id, base_steps)?;
+        let steps = plan_resident_task_steps(&scratch, resident_id, steps)?;
+        let ready_at_ms = started_at_ms
+            + steps
+                .first()
+                .map(resident_task_step_duration_ms)
+                .unwrap_or(0);
+        scratch
+            .resident_task_queues
+            .entry(resident_id.to_owned())
+            .or_default()
+            .push(ResidentTask {
+                id: task.id,
+                kind: task.kind,
+                steps,
+                started_at_ms,
+                ready_at_ms,
+            });
+        planned_future_count += 1;
+    }
+
+    scratch
+        .resident_task_queues
+        .remove(resident_id)
+        .ok_or_else(|| CommandError::new("resident task queue not found"))
+}
+
+fn resident_task_reorder_work_steps(task: &ResidentTask) -> Vec<ResidentTaskStep> {
+    task.steps
+        .iter()
+        .filter(|step| is_reorder_base_work(&step.work))
+        .map(|step| resident_task_step(step.reserved_work_target.clone(), step.work.clone()))
+        .collect()
+}
+
+fn is_reorder_base_work(work: &ResidentTaskStepWork) -> bool {
+    !matches!(
+        work,
+        ResidentTaskStepWork::PickupItems { .. }
+            | ResidentTaskStepWork::PickupTools { .. }
+            | ResidentTaskStepWork::DepositInventory { .. }
+            | ResidentTaskStepWork::DepositItems { .. }
+            | ResidentTaskStepWork::ReturnTools { .. }
+    )
+}
+
 fn rename_resident(
     farm: &mut FarmState,
     resident_id: &str,
@@ -3224,12 +3649,17 @@ fn stock_farm_shop(
         .as_ref()
         .map(|shop| shop.id.clone())
         .ok_or_else(|| CommandError::new("farm shop not built"))?;
-    ensure_farm_shop_item_is_sellable(farm, catalog, item_id)?;
+    let base_price = ensure_farm_shop_item_is_sellable(farm, catalog, item_id)?;
     if quantity == 0 {
         return Err(CommandError::new("quantity must be greater than zero"));
     }
     if available_stored_quantity(farm, item_id) < quantity {
         return Err(CommandError::new(format!("not enough available {item_id}")));
+    }
+    if projected_farm_shop_item_quantity(farm, item_id) == 0
+        && projected_farm_shop_item_type_count(farm) >= FARM_SHOP_ITEM_TYPE_CAPACITY
+    {
+        return Err(CommandError::new("farm shop item type limit reached"));
     }
     let stack = ItemStack::new(item_id, quantity);
     if projected_farm_shop_stock_used(farm) + quantity > farm_shop_capacity(farm)? {
@@ -3246,6 +3676,7 @@ fn stock_farm_shop(
         )],
     )?;
     push_planned_resident_work(farm, planned);
+    ensure_farm_shop_price(farm, item_id, base_price);
     Ok(Vec::new())
 }
 
@@ -3284,6 +3715,7 @@ fn unstock_farm_shop(
         )],
     )?;
     push_planned_resident_work(farm, planned);
+    cleanup_farm_shop_prices(farm);
     Ok(Vec::new())
 }
 
@@ -3291,7 +3723,7 @@ fn ensure_farm_shop_item_is_sellable(
     farm: &FarmState,
     catalog: &CatalogDocument,
     item_id: &str,
-) -> Result<(), CommandError> {
+) -> Result<u32, CommandError> {
     catalog
         .item(item_id)
         .ok_or_else(|| CommandError::new("unknown item"))?;
@@ -3299,10 +3731,42 @@ fn ensure_farm_shop_item_is_sellable(
         .market_item(item_id)
         .ok_or_else(|| CommandError::new("unknown market item"))?;
     require_level(farm, market_item.unlock_level)?;
-    if market_item.sell_price.is_none() {
-        return Err(CommandError::new("item is not available to sell"));
+    market_item
+        .sell_price
+        .ok_or_else(|| CommandError::new("item is not available to sell"))
+}
+
+fn set_farm_shop_price(
+    farm: &mut FarmState,
+    catalog: &CatalogDocument,
+    item_id: &str,
+    price: u32,
+) -> Result<Vec<FarmEvent>, CommandError> {
+    if farm.farm_shop.is_none() {
+        return Err(CommandError::new("farm shop not built"));
     }
-    Ok(())
+    let base_price = ensure_farm_shop_item_is_sellable(farm, catalog, item_id)?;
+    if projected_farm_shop_item_quantity(farm, item_id) == 0 {
+        return Err(CommandError::new("item is not listed in the farm shop"));
+    }
+    if price == 0 {
+        return Err(CommandError::new("price must be greater than zero"));
+    }
+    let max_price = base_price
+        .checked_mul(2)
+        .ok_or_else(|| CommandError::new("farm shop price overflow"))?;
+    if price > max_price {
+        return Err(CommandError::new(
+            "price cannot exceed twice the base price",
+        ));
+    }
+    if let Some(shop) = farm.farm_shop.as_mut() {
+        shop.prices.insert(item_id.to_owned(), price);
+    }
+    Ok(vec![FarmEvent::FarmShopPriceSet {
+        item_id: item_id.to_owned(),
+        price,
+    }])
 }
 
 fn advance_farm_shop_visits(
@@ -3319,6 +3783,13 @@ fn advance_farm_shop_visits(
         .is_some_and(|sale| sale.visible_until_ms <= now_ms)
     {
         shop.current_sale = None;
+    }
+    if shop
+        .current_rejection
+        .as_ref()
+        .is_some_and(|rejection| rejection.visible_until_ms <= now_ms)
+    {
+        shop.current_rejection = None;
     }
     if now_ms < shop.next_customer_visit_at_ms {
         return Vec::new();
@@ -3349,6 +3820,16 @@ fn advance_farm_shop_visits(
             shop.current_sale = None;
         }
     }
+    if farm
+        .farm_shop
+        .as_ref()
+        .and_then(|shop| shop.current_rejection.as_ref())
+        .is_some_and(|rejection| rejection.visible_until_ms <= now_ms)
+    {
+        if let Some(shop) = farm.farm_shop.as_mut() {
+            shop.current_rejection = None;
+        }
+    }
     events
 }
 
@@ -3357,22 +3838,46 @@ fn complete_one_farm_shop_visit(
     catalog: &CatalogDocument,
 ) -> Option<FarmEvent> {
     let item_id = next_farm_shop_sale_item_id(farm)?;
-    let market_item = catalog.market_item(&item_id)?;
-    let coins_gained = market_item.sell_price?;
-    let sold_at_ms = farm.farm_shop.as_ref()?.next_customer_visit_at_ms;
+    let (shop_price, base_price) = farm_shop_price_for_item(farm, catalog, &item_id)?;
+    let sale_chance_bps = farm_shop_sale_chance_bps(shop_price, base_price);
+    let visited_at_ms = farm.farm_shop.as_ref()?.next_customer_visit_at_ms;
+    if farm_shop_visit_roll_bps(farm, &item_id, visited_at_ms) >= sale_chance_bps {
+        let rejection_id = next_id(farm, "shop-rejection");
+        if let Some(shop) = farm.farm_shop.as_mut() {
+            shop.current_sale = None;
+            shop.current_rejection = Some(FarmShopRejectionWindow {
+                id: rejection_id,
+                item_id: item_id.clone(),
+                shop_price,
+                base_price,
+                sale_chance_bps,
+                visited_at_ms,
+                visible_until_ms: visited_at_ms + FARM_SHOP_SALE_VISIBLE_MS,
+            });
+        }
+        return Some(FarmEvent::FarmShopVisitRejected {
+            item_id,
+            shop_price,
+            base_price,
+            sale_chance_bps,
+        });
+    }
+    let coins_gained = shop_price;
     let sale_id = next_id(farm, "shop-sale");
     {
         let shop = farm.farm_shop.as_mut()?;
         remove_farm_shop_stock_item(shop, &item_id, 1).ok()?;
+        shop.current_rejection = None;
         shop.current_sale = Some(FarmShopSaleWindow {
             id: sale_id,
             item_id: item_id.clone(),
             quantity: 1,
             coins_gained,
-            sold_at_ms,
-            visible_until_ms: sold_at_ms + FARM_SHOP_SALE_VISIBLE_MS,
+            sold_at_ms: visited_at_ms,
+            visible_until_ms: visited_at_ms + FARM_SHOP_SALE_VISIBLE_MS,
         });
     }
+    cleanup_farm_shop_prices(farm);
     farm.coins += coins_gained;
     Some(FarmEvent::FarmShopSaleCompleted {
         item_id,
@@ -3398,6 +3903,52 @@ fn next_farm_shop_sale_item_id(farm: &FarmState) -> Option<String> {
     available.get(index).cloned()
 }
 
+fn farm_shop_price_for_item(
+    farm: &FarmState,
+    catalog: &CatalogDocument,
+    item_id: &str,
+) -> Option<(u32, u32)> {
+    let base_price = catalog.market_item(item_id)?.sell_price?;
+    let price = farm
+        .farm_shop
+        .as_ref()?
+        .prices
+        .get(item_id)
+        .copied()
+        .unwrap_or(base_price);
+    Some((price, base_price))
+}
+
+pub fn farm_shop_sale_chance_bps(price: u32, base_price: u32) -> u32 {
+    if base_price == 0 || price <= base_price {
+        return 10_000;
+    }
+    let max_price = base_price.saturating_mul(2);
+    if price >= max_price {
+        return 2_500;
+    }
+    let markup = price - base_price;
+    10_000 - ((markup as u64 * 7_500) / base_price as u64) as u32
+}
+
+fn farm_shop_visit_roll_bps(farm: &FarmState, item_id: &str, visited_at_ms: i64) -> u32 {
+    let Some(shop) = farm.farm_shop.as_ref() else {
+        return 0;
+    };
+    let mut hash = 14_695_981_039_346_656_037_u64;
+    fn mix(hash: &mut u64, bytes: &[u8]) {
+        for byte in bytes {
+            *hash ^= u64::from(*byte);
+            *hash = hash.wrapping_mul(1_099_511_628_211);
+        }
+    }
+    mix(&mut hash, shop.id.as_bytes());
+    mix(&mut hash, &shop.visit_count.to_le_bytes());
+    mix(&mut hash, &visited_at_ms.to_le_bytes());
+    mix(&mut hash, item_id.as_bytes());
+    (hash % 10_000) as u32
+}
+
 fn farm_shop_visit_interval_ms(visit_count: u64) -> i64 {
     60_000 + ((visit_count % 7) as i64 * 10_000)
 }
@@ -3416,6 +3967,82 @@ fn projected_farm_shop_stock_used(farm: &FarmState) -> u32 {
         .map(|shop| shop.stock.iter().map(|stock| stock.quantity).sum())
         .unwrap_or(0);
     base + reserved_farm_shop_stock_deposits(farm) - reserved_farm_shop_stock_pickups_total(farm)
+}
+
+fn projected_farm_shop_item_type_count(farm: &FarmState) -> u32 {
+    projected_farm_shop_item_quantities(farm)
+        .values()
+        .filter(|quantity| **quantity > 0)
+        .count() as u32
+}
+
+pub fn projected_farm_shop_item_ids(farm: &FarmState) -> Vec<String> {
+    projected_farm_shop_item_quantities(farm)
+        .into_keys()
+        .collect()
+}
+
+fn projected_farm_shop_item_quantity(farm: &FarmState, item_id: &str) -> u32 {
+    projected_farm_shop_item_quantities(farm)
+        .get(item_id)
+        .copied()
+        .unwrap_or(0)
+}
+
+fn projected_farm_shop_item_quantities(farm: &FarmState) -> BTreeMap<String, u32> {
+    let mut quantities = BTreeMap::<String, i64>::new();
+    if let Some(shop) = farm.farm_shop.as_ref() {
+        for stock in &shop.stock {
+            *quantities.entry(stock.item_id.clone()).or_insert(0) += i64::from(stock.quantity);
+        }
+    }
+    for task in farm
+        .resident_task_queues
+        .values()
+        .flat_map(|queue| queue.iter())
+    {
+        for step in &task.steps {
+            match &step.work {
+                ResidentTaskStepWork::DepositShopStock { items } => {
+                    for item in items {
+                        *quantities.entry(item.item_id.clone()).or_insert(0) +=
+                            i64::from(item.quantity);
+                    }
+                }
+                ResidentTaskStepWork::PickupShopStock { items } => {
+                    for item in items {
+                        *quantities.entry(item.item_id.clone()).or_insert(0) -=
+                            i64::from(item.quantity);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    quantities
+        .into_iter()
+        .filter_map(|(item_id, quantity)| {
+            if quantity > 0 {
+                Some((item_id, quantity as u32))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn ensure_farm_shop_price(farm: &mut FarmState, item_id: &str, base_price: u32) {
+    if let Some(shop) = farm.farm_shop.as_mut() {
+        shop.prices.entry(item_id.to_owned()).or_insert(base_price);
+    }
+}
+
+fn cleanup_farm_shop_prices(farm: &mut FarmState) {
+    let projected = projected_farm_shop_item_quantities(farm);
+    if let Some(shop) = farm.farm_shop.as_mut() {
+        shop.prices
+            .retain(|item_id, _| projected.get(item_id).copied().unwrap_or(0) > 0);
+    }
 }
 
 fn farm_shop_stock_quantity(farm: &FarmState, item_id: &str) -> u32 {

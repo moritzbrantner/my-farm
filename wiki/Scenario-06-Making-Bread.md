@@ -15,7 +15,7 @@ Bread production connects storage, resident work, the Farmhouse Oven, and output
 
 ## Player steps
 
-1. Open the Farmhouse Oven or Oven Workstation surface.
+1. Open the exterior Farmhouse Baking Surface or enter the Kitchen Oven Workstation.
 2. Choose `Make Bread`.
 3. Watch the Oven status change through starting and producing states.
 4. Wait until the Oven shows Ready Bread.
@@ -34,6 +34,7 @@ Bread production connects storage, resident work, the Farmhouse Oven, and output
 ## What the model calls this
 
 - Bread is an Oven Recipe in the demo catalog.
+- The Farmhouse Baking Surface is an outside command surface for starting and collecting Oven recipes.
 - Start Oven Recipe is a resident work step at the Oven Workstation.
 - Producing describes an active production job progressing toward output.
 - Ready Bread is Ready Output waiting to be collected.
@@ -42,7 +43,7 @@ Bread production connects storage, resident work, the Farmhouse Oven, and output
 
 ## Suggested visual callouts
 
-- Oven Workstation action showing Bread.
+- Farmhouse Baking Surface or Oven Workstation action showing Bread.
 - Oven status while producing Bread.
 - Oven status when Ready Bread is available.
 - Resident activity at the Farmhouse or inside the kitchen, if visible.
@@ -51,6 +52,7 @@ Bread production connects storage, resident work, the Farmhouse Oven, and output
 ## Related terms
 
 - Farmhouse Oven
+- Farmhouse Baking Surface
 - Oven
 - Oven Workstation
 - Recipe

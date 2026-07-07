@@ -179,6 +179,7 @@ fn unsupported_demo_command<'a>(_farm: &FarmState, command: &'a FarmCommand) -> 
         | FarmCommand::CollectOvenJob
         | FarmCommand::BuyFieldPlot { .. }
         | FarmCommand::SelectResident { .. }
+        | FarmCommand::ReorderResidentTask { .. }
         | FarmCommand::RenameResident { .. }
         | FarmCommand::CollectMachineJob { .. }
         | FarmCommand::PlaceDecoration { .. }
@@ -206,7 +207,8 @@ fn unsupported_demo_command<'a>(_farm: &FarmState, command: &'a FarmCommand) -> 
         | FarmCommand::BuyMarketItem { .. }
         | FarmCommand::SellMarketItem { .. }
         | FarmCommand::StockFarmShop { .. }
-        | FarmCommand::UnstockFarmShop { .. } => Some("feature is not available in the demo"),
+        | FarmCommand::UnstockFarmShop { .. }
+        | FarmCommand::SetFarmShopPrice { .. } => Some("feature is not available in the demo"),
     }
 }
 
