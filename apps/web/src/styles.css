@@ -899,6 +899,42 @@ button[aria-disabled="true"] {
   background: #e5edd4;
 }
 
+.scenario-banner {
+  position: absolute;
+  top: 72px;
+  left: 12px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(460px, calc(100vw - 372px));
+  padding: 8px 10px;
+  border: 1px solid rgba(32, 49, 43, 0.24);
+  border-radius: 8px;
+  background: rgba(237, 246, 223, 0.94);
+  box-shadow: 0 10px 24px rgba(32, 49, 43, 0.14);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.scenario-banner span {
+  color: #536a5e;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.scenario-banner strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scenario-banner a {
+  flex: 0 0 auto;
+  color: #2f5a3d;
+  font-weight: 900;
+}
+
 .metric {
   display: inline-flex;
   align-items: center;
@@ -932,6 +968,46 @@ button[aria-disabled="true"] {
   width: 18px;
   height: 18px;
   stroke-width: 2.6;
+}
+
+.wiki-page {
+  width: 100vw;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-y: auto;
+  padding: 28px;
+  background:
+    linear-gradient(180deg, rgba(232, 242, 224, 0.88), rgba(251, 246, 232, 0.96)),
+    #f3efe1;
+}
+
+.wiki-page__shell {
+  display: grid;
+  gap: 18px;
+  width: min(940px, 100%);
+  margin: 0 auto;
+  padding: 22px;
+  border: 1px solid rgba(32, 49, 43, 0.2);
+  border-radius: 8px;
+  background: rgba(251, 246, 232, 0.98);
+  box-shadow: 0 18px 42px rgba(32, 49, 43, 0.14);
+}
+
+.wiki-page__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.wiki-page__header button {
+  min-width: 72px;
+  background: #e5edd4;
+}
+
+.wiki-page .wiki-scenario {
+  max-height: none;
+  overflow: visible;
 }
 
 .main-menu {
@@ -1129,14 +1205,31 @@ button[aria-disabled="true"] {
   list-style: none;
 }
 
+.wiki-panel__scenario-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.wiki-panel__scenario-list a,
 .wiki-panel__scenario-list button {
   display: grid;
   gap: 4px;
-  width: 100%;
   min-width: 0;
   padding: 10px;
+  border: 1px solid #486355;
+  border-radius: 8px;
   text-align: left;
+  text-decoration: none;
   background: #e5edd4;
+  color: #20312b;
+}
+
+.wiki-panel__scenario-list button {
+  place-items: center;
+  min-width: 64px;
+  font-size: 13px;
 }
 
 .wiki-panel__scenario-list span {
@@ -1204,6 +1297,21 @@ button[aria-disabled="true"] {
   font-size: 13px;
   font-weight: 650;
   line-height: 1.35;
+}
+
+.wiki-scenario__open {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #446d38;
+  border-radius: 8px;
+  background: #fff7d0;
+  color: #20312b;
+  font-weight: 800;
+  text-decoration: none;
 }
 
 .wiki-scenario ul,
@@ -2779,10 +2887,29 @@ h2 {
     flex-basis: 22px;
   }
 
+  .scenario-banner {
+    top: 56px;
+    left: 8px;
+    right: 8px;
+    max-width: none;
+  }
+
   .top-bar__menu-button {
     min-width: 38px;
     min-height: 32px;
     padding: 4px 8px;
+  }
+
+  .wiki-page {
+    padding: 12px;
+  }
+
+  .wiki-page__shell {
+    padding: 16px;
+  }
+
+  .wiki-page__header {
+    align-items: center;
   }
 
   .main-menu {

@@ -6,6 +6,7 @@ import {
   previousBasicFarmScenarioId,
   type BasicFarmScenarioId,
 } from "@my-farm/game-model/basicFarmScenarios";
+import { scenarioPageHref } from "../scenarioRoutes";
 
 type WikiTab = "scenarios" | "glossary";
 
@@ -102,9 +103,12 @@ function ScenarioIndex({ onSelectScenario }: { onSelectScenario: (scenarioId: Ba
       <ol className="wiki-panel__scenario-list">
         {basicFarmScenarios.map((scenario) => (
           <li key={scenario.id}>
-            <button type="button" onClick={() => onSelectScenario(scenario.id)}>
+            <a href={scenarioPageHref(scenario.id)}>
               <span>{scenarioTitle(scenario.number, scenario.title)}</span>
               <small>{scenario.summary}</small>
+            </a>
+            <button type="button" onClick={() => onSelectScenario(scenario.id)}>
+              Read
             </button>
           </li>
         ))}
@@ -133,6 +137,9 @@ function ScenarioDetail({
         <span>Scenario {scenario.number.toString().padStart(2, "0")}</span>
         <h3>{scenario.title}</h3>
         <p>{scenario.summary}</p>
+        <a className="wiki-scenario__open" href={scenarioPageHref(scenarioId)}>
+          Open Scenario
+        </a>
       </header>
       <ScenarioSection title="What this teaches" items={scenario.teaches} />
       <ScenarioSection title="Farm setup" items={scenario.farmSetup} />

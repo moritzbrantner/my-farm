@@ -6,26 +6,47 @@ const demoSaveKey = "my-farm.demo.save.v1";
 test("pages demo exposes Basic Farm Scenarios in the in-app Wiki", async ({ page }) => {
   const apiRequests = expectNoApiRequests(page);
 
-  await page.goto("/");
-  await page.getByRole("button", { name: "Wiki" }).click();
+  await page.goto("/wiki");
 
   const wiki = page.getByRole("region", { name: "Wiki pages" });
   await expect(wiki).toBeVisible();
-  await expect(wiki.getByRole("button", { name: /Scenario 01: Fresh Farm/ })).toBeVisible();
-  await expect(wiki.getByRole("button", { name: /Scenario 07: Blocked Work and Storage/ })).toBeVisible();
+  await expect(page).toHaveURL(/\/wiki$/);
+  await expect(page.locator(".farm-canvas")).toHaveCount(0);
+  await expect(wiki.getByRole("link", { name: /Scenario 01: Fresh Farm/ })).toBeVisible();
+  await expect(wiki.getByRole("link", { name: /Scenario 07: Blocked Work and Storage/ })).toBeVisible();
 
-  await wiki.getByRole("button", { name: /Scenario 02: Planting Wheat/ }).click();
+  await wiki
+    .getByRole("listitem")
+    .filter({ hasText: "Scenario 02: Planting Wheat" })
+    .getByRole("button", { name: "Read" })
+    .click();
   await expect(wiki.getByRole("heading", { name: "Planting Wheat" })).toBeVisible();
   await expect(wiki.getByRole("heading", { name: "Player steps" })).toBeVisible();
   await expect(wiki.getByRole("heading", { name: "What changes on the farm" })).toBeVisible();
   await expect(wiki.getByRole("heading", { name: "Related terms" })).toBeVisible();
+  await expect(wiki.getByRole("link", { name: "Open Scenario" })).toHaveAttribute("href", /\/wiki\/scenario-2$/);
 
   await wiki.getByRole("button", { name: "Next" }).click();
   await expect(wiki.getByRole("heading", { name: "Resident Work Queue" })).toBeVisible();
   await wiki.getByRole("button", { name: "Previous" }).click();
   await expect(wiki.getByRole("heading", { name: "Planting Wheat" })).toBeVisible();
   await wiki.getByRole("button", { name: "All Scenarios" }).click();
-  await expect(wiki.getByRole("button", { name: /Scenario 01: Fresh Farm/ })).toBeVisible();
+  await expect(wiki.getByRole("link", { name: /Scenario 01: Fresh Farm/ })).toBeVisible();
+
+  expect(apiRequests()).toEqual([]);
+});
+
+test("pages demo scenario URL loads a seeded farm scene", async ({ page }) => {
+  const apiRequests = expectNoApiRequests(page);
+
+  await page.goto("/wiki/scenario-2");
+
+  await expect(page).toHaveURL(/\/wiki\/scenario-2$/);
+  await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
+  await expect(page.getByLabel("Scenario lesson")).toContainText("Planting Wheat");
+  await expect(page.getByText("Scenario 02: Planting Wheat")).toBeVisible();
+  await expect(page.getByText("Reserved for Woman's task")).toBeVisible();
+  await expect(page.locator(".top-bar").getByText("Silo 9/40")).toBeVisible();
 
   expect(apiRequests()).toEqual([]);
 });

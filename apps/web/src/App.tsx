@@ -30,6 +30,16 @@ import {
 import { ResourceIcon } from "./components/ResourceIcon";
 import { WikiPanel } from "./components/WikiPanel";
 import {
+  appRouteFromLocation,
+  homePageHref,
+  wikiPageHref,
+  type AppRoute,
+} from "./scenarioRoutes";
+import {
+  getBasicFarmScenario,
+  type BasicFarmScenarioId,
+} from "@my-farm/game-model/basicFarmScenarios";
+import {
   availableRecipes,
   builtStructureKinds,
   isTileAvailableForNewFieldPlot,
@@ -128,6 +138,10 @@ type ResidentTaskPreviewSelection = {
   residentId: string;
   taskId: string;
 } | null;
+type ScenarioSceneConfig = {
+  selection: Selection;
+  activeFieldTool: ActiveFieldTool;
+};
 
 const structureBuildCardMetas: Record<BuildableKind, StructureBuildCardMeta> = {
   field_plot: {
@@ -207,13 +221,18 @@ function useMediaQuery(query: string) {
 }
 
 export function App() {
+  const [initialRoute] = useState<AppRoute>(() => appRouteFromLocation());
+  const initialScenarioId = initialRoute.type === "scenario" ? initialRoute.scenarioId : null;
+  const scenarioScene = initialScenarioId ? scenarioSceneConfig(initialScenarioId) : null;
   const [catalog, setCatalog] = useState<CatalogDocument | null>(null);
   const [view, setView] = useState<FarmView | null>(null);
   const [version, setVersion] = useState(0);
-  const [selection, setSelection] = useState<Selection>(null);
+  const [selection, setSelection] = useState<Selection>(scenarioScene?.selection ?? null);
   const [fieldMenu, setFieldMenu] = useState<FieldContextMenuState>(null);
   const [structureMenu, setStructureMenu] = useState<StructureContextMenuState>(null);
-  const [activeFieldTool, setActiveFieldTool] = useState<ActiveFieldTool>({ type: "default" });
+  const [activeFieldTool, setActiveFieldTool] = useState<ActiveFieldTool>(
+    scenarioScene?.activeFieldTool ?? { type: "default" },
+  );
   const [buildToolSelected, setBuildToolSelected] = useState(false);
   const [buildPlacement, setBuildPlacement] = useState<BuildPlacementState>(null);
   const [selectedBuildKind, setSelectedBuildKind] = useState<BuildableKind | null>(null);
@@ -221,7 +240,7 @@ export function App() {
   const [plantSweep, setPlantSweep] = useState<PlantSweepState>(null);
   const [harvestSweep, setHarvestSweep] = useState<HarvestSweepState>(null);
   const [harvestMode, setHarvestMode] = useState<SweepHarvestMode>("matching_crop");
-  const [screen, setScreen] = useState<GameScreen>("main_menu");
+  const [screen, setScreen] = useState<GameScreen>(initialScenarioId ? "playing" : "main_menu");
   const [playScene, setPlayScene] = useState<PlayScene>("farm");
   const [houseInteriorMode, setHouseInteriorMode] = useState<HouseInteriorMode>("overview");
   const [houseGridEnabled, setHouseGridEnabled] = useState(true);
@@ -232,7 +251,9 @@ export function App() {
   const [guidedTutorialStep, setGuidedTutorialStep] = useState<number | null>(null);
   const [marketOpen, setMarketOpen] = useState(false);
   const [message, setMessage] = useState(
-    demoMode ? "Loading browser demo..." : "Connecting to local server...",
+    initialScenarioId
+      ? `Loading ${scenarioTitleLabel(initialScenarioId)}...`
+      : demoMode ? "Loading browser demo..." : "Connecting to local server...",
   );
   const [connectionStatus, setConnectionStatus] = useState<FarmConnectionStatus>(
     demoMode ? "synced" : "disconnected",
@@ -274,8 +295,13 @@ export function App() {
     const [catalogResponse, farmResponse] = await Promise.all([client.catalog(), client.farm()]);
     setCatalog(catalogResponse);
     applyFarmSnapshot(farmResponse.version, farmResponse.view);
-    setMessage(farmResponse.notice?.message ?? (demoMode ? "Demo farm loaded" : "Local farm synced"));
-  }, [applyFarmSnapshot, client, demoMode]);
+    setMessage(
+      farmResponse.notice?.message ??
+        (initialScenarioId
+          ? scenarioTitleLabel(initialScenarioId)
+          : demoMode ? "Demo farm loaded" : "Local farm synced"),
+    );
+  }, [applyFarmSnapshot, client, demoMode, initialScenarioId]);
 
   useEffect(() => {
     if (!demoMode) {
@@ -1179,6 +1205,10 @@ export function App() {
     plantSweep,
   ]);
 
+  if (initialRoute.type === "wiki") {
+    return <StandaloneWikiPage demoMode={demoMode} />;
+  }
+
   if (!view || !catalog) {
     return (
       <main className="app loading">
@@ -1282,6 +1312,7 @@ export function App() {
                 connectionStatus={connectionStatus}
                 onOpenMenu={openMainMenu}
               />
+              {initialScenarioId ? <ScenarioBanner scenarioId={initialScenarioId} /> : null}
               {!mobileLayout ? (
                 <aside className="side-panel">
                   <PanelHeader view={view} version={version} onReset={reset} demoMode={demoMode} />
@@ -1429,6 +1460,63 @@ function demoMenuModel(model: StructureMenuModel): StructureMenuModel {
   };
 }
 
+function scenarioSceneConfig(scenarioId: BasicFarmScenarioId): ScenarioSceneConfig {
+  switch (scenarioId) {
+    case "planting-wheat":
+      return {
+        selection: { type: "plot", id: "plot-1" },
+        activeFieldTool: { type: "plant", cropId: "wheat" },
+      };
+    case "resident-work-queue":
+      return { selection: { type: "resident", id: "woman" }, activeFieldTool: { type: "default" } };
+    case "harvesting-ready-crops":
+      return { selection: { type: "plot", id: "plot-1" }, activeFieldTool: { type: "harvest" } };
+    case "unlocking-corn-and-oven":
+    case "making-bread":
+      return { selection: { type: "farmhouse" }, activeFieldTool: { type: "default" } };
+    case "blocked-work-and-storage":
+      return { selection: { type: "plot", id: "plot-1" }, activeFieldTool: { type: "default" } };
+    case "fresh-farm":
+      return { selection: null, activeFieldTool: { type: "default" } };
+  }
+}
+
+function scenarioTitleLabel(scenarioId: BasicFarmScenarioId) {
+  const scenario = getBasicFarmScenario(scenarioId);
+  return `Scenario ${scenario.number.toString().padStart(2, "0")}: ${scenario.title}`;
+}
+
+function ScenarioBanner({ scenarioId }: { scenarioId: BasicFarmScenarioId }) {
+  const scenario = getBasicFarmScenario(scenarioId);
+
+  return (
+    <aside className="scenario-banner" aria-label="Scenario lesson">
+      <span>Scenario {scenario.number.toString().padStart(2, "0")}</span>
+      <strong>{scenario.title}</strong>
+      <a href={wikiPageHref()}>Wiki</a>
+    </aside>
+  );
+}
+
+function StandaloneWikiPage({ demoMode }: { demoMode: boolean }) {
+  return (
+    <main className="wiki-page">
+      <section className="wiki-page__shell" aria-label="Wiki page">
+        <div className="wiki-page__header">
+          <div className="main-menu__title">
+            <span>My Farm</span>
+            <h1>Wiki</h1>
+          </div>
+          <button type="button" onClick={() => window.location.assign(homePageHref())}>
+            Back
+          </button>
+        </div>
+        <WikiPanel demoMode={demoMode} />
+      </section>
+    </main>
+  );
+}
+
 function MainMenu({
   view,
   message,
@@ -1447,7 +1535,10 @@ function MainMenu({
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
 
-  const openHome = () => setPanel("home");
+  const openHome = () => {
+    window.history.pushState(null, "", homePageHref());
+    setPanel("home");
+  };
 
   return (
     <section className="main-menu" aria-label="Main menu">
@@ -1476,7 +1567,7 @@ function MainMenu({
               <button type="button" onClick={() => setPanel("settings")}>
                 Settings
               </button>
-              <button type="button" onClick={() => setPanel("wiki")}>
+              <button type="button" onClick={() => window.location.assign(wikiPageHref())}>
                 Wiki
               </button>
               <button type="button" onClick={() => setPanel("account")}>

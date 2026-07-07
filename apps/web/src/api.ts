@@ -2,8 +2,10 @@ import type {
   CatalogDocument,
   CommandRequest,
   CommandResponse,
+  FarmCommand,
   FarmResponse,
 } from "@my-farm/contracts";
+import type { BasicFarmScenarioId } from "@my-farm/game-model/basicFarmScenarios";
 import {
   createHttpFarmClient,
   normalizeCommandResponse,
@@ -15,6 +17,7 @@ import {
   type LegacyCommandResponse,
   type LegacyFarmResponse,
 } from "@my-farm/game-client";
+import { currentScenarioId } from "./scenarioRoutes";
 
 const defaultApiPort = "8081";
 const demoSaveKey = "my-farm.demo.save.v1";
@@ -47,6 +50,7 @@ type WasmDemoRuntime = {
 
 function createWasmDemoClient(): FarmClient {
   let runtimePromise: Promise<WasmDemoRuntime> | null = null;
+  const scenarioId = currentScenarioId();
 
   async function runtime(): Promise<WasmDemoRuntime> {
     if (!runtimePromise) {
@@ -68,10 +72,16 @@ function createWasmDemoClient(): FarmClient {
     if (import.meta.env.DEV) {
       (window as typeof window & { __myFarmWasmModule?: typeof module }).__myFarmWasmModule = module;
     }
+    if (scenarioId) {
+      return createScenarioRuntime(module.DemoFarmRuntime, scenarioId, Date.now());
+    }
     return new module.DemoFarmRuntime(window.localStorage.getItem(demoSaveKey) ?? undefined, Date.now());
   }
 
   function persist(nextRuntime: WasmDemoRuntime) {
+    if (scenarioId) {
+      return;
+    }
     window.localStorage.setItem(demoSaveKey, nextRuntime.save_json());
   }
 
@@ -100,6 +110,64 @@ function createWasmDemoClient(): FarmClient {
       return response;
     },
   };
+}
+
+function createScenarioRuntime(
+  Runtime: new (savedJson: string | undefined, nowMs: number) => WasmDemoRuntime,
+  scenarioId: BasicFarmScenarioId,
+  nowMs: number,
+): WasmDemoRuntime {
+  const startMs = nowMs - 1_000_000;
+  const runtime = new Runtime(undefined, startMs);
+  let version = 0;
+
+  const snapshot = (atMs: number) => {
+    version = normalizeFarmResponse(JSON.parse(runtime.farm_json(atMs)) as LegacyFarmResponse).version;
+  };
+  const command = (command: FarmCommand, atMs: number) => {
+    const requestJson = JSON.stringify({ expected_version: version, command });
+    const response = normalizeCommandResponse(
+      JSON.parse(runtime.command_json(requestJson, atMs)) as LegacyCommandResponse,
+    );
+    if (!response.accepted) {
+      throw new Error(response.error ?? `Scenario setup failed for ${scenarioId}`);
+    }
+    version = response.version;
+  };
+  const plantWheat = (plotIds: string[], atMs: number) =>
+    command({ type: "sweep_plant", crop_id: "wheat", plot_ids: plotIds }, atMs);
+  const harvest = (plotIds: string[], atMs: number) =>
+    command({ type: "sweep_harvest", plot_ids: plotIds }, atMs);
+
+  switch (scenarioId) {
+    case "fresh-farm":
+      break;
+    case "planting-wheat":
+    case "resident-work-queue":
+    case "blocked-work-and-storage":
+      plantWheat(["plot-1"], nowMs);
+      break;
+    case "harvesting-ready-crops":
+      plantWheat(["plot-1"], startMs);
+      snapshot(nowMs);
+      break;
+    case "unlocking-corn-and-oven":
+      plantWheat(["plot-1", "plot-2", "plot-3", "plot-4"], startMs);
+      snapshot(startMs + 500_000);
+      harvest(["plot-1", "plot-2", "plot-3", "plot-4"], startMs + 500_000);
+      snapshot(nowMs);
+      break;
+    case "making-bread":
+      plantWheat(["plot-1", "plot-2", "plot-3", "plot-4"], startMs);
+      snapshot(startMs + 350_000);
+      harvest(["plot-1", "plot-2", "plot-3", "plot-4"], startMs + 350_000);
+      snapshot(startMs + 650_000);
+      command({ type: "buy_farmhouse_upgrade", upgrade_kind: "oven" }, startMs + 650_000);
+      command({ type: "queue_oven_recipe", recipe_id: "bread" }, nowMs);
+      break;
+  }
+
+  return runtime;
 }
 
 function defaultBaseUrl(): string {
