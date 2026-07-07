@@ -67,6 +67,36 @@ test("resident works at approach tile after walking finishes", () => {
   });
 });
 
+test("resident works at path destination after local walk finishes even when snapshot tile is stale", () => {
+  const view = farmViewWithTask({
+    id: "task-1",
+    kind: { type: "field_work" },
+    started_at_ms: 1_000,
+    ready_at_ms: 4_000,
+    steps: [
+      {
+        reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+        work: { type: "harvest_crop", crop_id: "wheat", quantity: 2 },
+        approach_tile: { x: 10, y: 10 },
+        walk_path: [
+          { x: 9, y: 10 },
+          { x: 10, y: 10 },
+        ],
+        walk_duration_ms: 1_000,
+        work_duration_ms: 2_000,
+        duration_ms: 3_000,
+      },
+    ],
+  });
+  view.resident_work.woman!.scene.tile = { x: 8, y: 10 };
+
+  expect(currentResidentScenePose(view, "woman", 2_500)).toEqual({
+    tile: { x: 10, y: 10 },
+    label: "Field Plot plot-1",
+    state: "working",
+  });
+});
+
 test("idle resident renders from authoritative resident location", () => {
   const view = farmViewWithTask(null);
 

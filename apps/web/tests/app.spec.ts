@@ -522,6 +522,72 @@ test("moves a resident toward the current task target over authoritative task ti
   await expect(resident).toHaveAttribute("data-resident-state", "working");
 });
 
+test("keeps resident at the approach tile after local walking finishes from a stale snapshot", async ({ page }) => {
+  const startedAt = Date.now() - 1_500;
+  const view = withResidentTaskQueues({
+    ...farmView,
+    resident_locations: {
+      ...farmView.resident_locations,
+      man: { x: 10, y: 10 },
+    },
+  }, {
+      woman: [],
+      man: [
+        {
+          id: "task-stale-scene",
+          kind: { type: "field_work" },
+          started_at_ms: startedAt,
+          ready_at_ms: startedAt + 6_000,
+          steps: [
+            taskStep({
+              reserved_work_target: { type: "field_plot", plot_id: "plot-1" },
+              work: { type: "harvest_crop", crop_id: "wheat", quantity: 2 },
+              approach_tile: { x: 0, y: 0 },
+              walk_path: [
+                { x: 10, y: 9 },
+                { x: 9, y: 9 },
+                { x: 9, y: 8 },
+                { x: 8, y: 8 },
+                { x: 8, y: 7 },
+                { x: 7, y: 7 },
+                { x: 7, y: 6 },
+                { x: 6, y: 6 },
+                { x: 6, y: 5 },
+                { x: 5, y: 5 },
+                { x: 5, y: 4 },
+                { x: 4, y: 4 },
+                { x: 4, y: 3 },
+                { x: 3, y: 3 },
+                { x: 3, y: 2 },
+                { x: 2, y: 2 },
+                { x: 2, y: 1 },
+                { x: 1, y: 1 },
+                { x: 1, y: 0 },
+                { x: 0, y: 0 },
+              ],
+              walk_duration_ms: 1_000,
+              work_duration_ms: 5_000,
+              duration_ms: 6_000,
+            }),
+          ],
+        },
+      ],
+  });
+  view.resident_work.man!.scene.tile = { x: 10, y: 10 };
+  await mockFarmApi(page, view);
+  await openFarm(page);
+
+  const resident = page.getByTestId("farm-scene-resident-man");
+  const field = page.getByLabel("Field Plot plot-1");
+
+  await expect(resident).toHaveAttribute("data-resident-state", "working");
+  await expect(resident).toHaveAttribute("data-resident-target", "Field Plot plot-1");
+  const residentCenter = await elementCenter(resident);
+  const fieldCenter = await elementCenter(field);
+
+  expect(distanceBetween(residentCenter, fieldCenter)).toBeLessThan(90);
+});
+
 test("clicking a farm resident selects them, sends assignment command, and shows only their path", async ({ page }) => {
   const commands: CommandRequest[] = [];
   const now = Date.now();
