@@ -354,20 +354,25 @@ fn has_elapsed_visible_ready_transition(
         return false;
     }
 
-    farm.field_plots.iter().any(|plot| {
+    let crop_ready = farm.field_plots.iter().any(|plot| {
         plot.crop
             .as_ref()
             .is_some_and(|crop| elapsed_crossed_ready_at(crop.ready_at_ms, last_update_ms, now_ms))
-    }) || farm.resident_task_queues.values().any(|queue| {
-        queue
-            .first()
-            .is_some_and(|task| elapsed_crossed_ready_at(task.ready_at_ms, last_update_ms, now_ms))
-    }) || farm.machines.iter().any(|machine| {
+    });
+    let resident_task_ready = farm
+        .resident_task_queues
+        .iter()
+        .any(|(resident_id, queue)| {
+            !farm.blocked_resident_tasks.contains_key(resident_id)
+                && queue.first().is_some_and(|task| task.ready_at_ms <= now_ms)
+        });
+    let machine_ready = farm.machines.iter().any(|machine| {
         machine
             .queue
             .first()
             .is_some_and(|job| elapsed_crossed_ready_at(job.ready_at_ms, last_update_ms, now_ms))
-    }) || farm.shelters.iter().any(|shelter| {
+    });
+    let animal_ready = farm.shelters.iter().any(|shelter| {
         shelter.animals.iter().any(|animal| {
             matches!(
                 animal.state,
@@ -375,7 +380,9 @@ fn has_elapsed_visible_ready_transition(
                     if elapsed_crossed_ready_at(ready_at_ms, last_update_ms, now_ms)
             )
         })
-    })
+    });
+
+    crop_ready || resident_task_ready || machine_ready || animal_ready
 }
 
 fn elapsed_crossed_ready_at(ready_at_ms: i64, last_update_ms: i64, now_ms: i64) -> bool {

@@ -425,6 +425,7 @@ pub fn apply_command(
 
     match result {
         Ok(mut events) => {
+            let immediate_resident_events = complete_resident_tasks(farm, catalog, now_ms);
             grant_unclaimed_crop_starter_stock(farm, catalog);
             if farm.level != previous_level {
                 events.push(FarmEvent::LevelChanged { level: farm.level });
@@ -432,6 +433,7 @@ pub fn apply_command(
             ensure_delivery_orders(farm, catalog);
             let mut all_events = elapsed_events;
             all_events.extend(events);
+            all_events.extend(immediate_resident_events);
             CommandOutcome {
                 accepted: true,
                 events: all_events,

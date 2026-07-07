@@ -310,6 +310,56 @@ async fn websocket_reset_persists_version_zero_and_broadcasts_new_farm() {
 }
 
 #[tokio::test]
+async fn websocket_harvest_command_response_shows_first_real_resident_step() {
+    let (addr, _server, pool) = websocket_test_server().await;
+    let (mut client, initial) = connect_gameplay_websocket(addr).await;
+
+    let mut farm = load_saved_farm(&pool).await;
+    farm.field_plots[0].crop = Some(my_farm_core::PlantedCrop {
+        item_id: "wheat".to_owned(),
+        planted_at_ms: initial.view.last_update_ms - 1_000,
+        ready_at_ms: initial.view.last_update_ms,
+    });
+    save_test_farm(&pool, initial.version, &farm).await;
+
+    send_websocket_json(
+        &mut client,
+        &WebsocketClientMessage::SubmitCommand {
+            request_id: "harvest-ready-crop".to_owned(),
+            expected_version: initial.version,
+            command: FarmCommand::HarvestCrop {
+                plot_id: "plot-1".to_owned(),
+            },
+        },
+    )
+    .await;
+
+    let response: WebsocketServerMessage = websocket_json(&mut client).await;
+    let WebsocketServerMessage::CommandResponse {
+        request_id,
+        accepted,
+        version,
+        view,
+        error,
+        ..
+    } = response
+    else {
+        panic!("expected command response");
+    };
+    assert_eq!(request_id, "harvest-ready-crop");
+    assert!(accepted);
+    assert_eq!(version, 1);
+    assert!(error.is_none());
+
+    let work = &view.resident_work["woman"];
+    let current_task = work.current_task.as_ref().unwrap();
+    let current_step = work.current_step.as_ref().unwrap();
+    assert_eq!(current_step.label, "Harvest Wheat");
+    assert_eq!(current_step.work_duration_ms, 1_000);
+    assert!(current_task.ready_at_ms > current_task.started_at_ms);
+}
+
+#[tokio::test]
 async fn websocket_elapsed_time_broadcasts_one_visible_ready_snapshot_to_all_clients() {
     let (addr, _server, pool) = websocket_test_server().await;
     let (mut first_client, initial) = connect_gameplay_websocket(addr).await;
@@ -486,6 +536,78 @@ async fn websocket_elapsed_time_persists_and_broadcasts_resident_task_completion
         saved.resident_task_queues["woman"][0].steps[0].work,
         my_farm_core::ResidentTaskStepWork::ReturnTools { .. }
     ));
+}
+
+#[tokio::test]
+async fn websocket_elapsed_time_broadcasts_already_due_resident_task_once() {
+    let (addr, _server, pool) = websocket_test_server().await;
+    let (mut client, initial) = connect_gameplay_websocket(addr).await;
+
+    let mut ready_farm = load_saved_farm(&pool).await;
+    ready_farm.field_plots[0].crop = Some(my_farm_core::PlantedCrop {
+        item_id: "wheat".to_owned(),
+        planted_at_ms: initial.view.last_update_ms - 1_000,
+        ready_at_ms: initial.view.last_update_ms,
+    });
+    save_test_farm(&pool, initial.version, &ready_farm).await;
+
+    send_websocket_json(
+        &mut client,
+        &WebsocketClientMessage::SubmitCommand {
+            request_id: "harvest-overdue-resident-task".to_owned(),
+            expected_version: initial.version,
+            command: FarmCommand::HarvestCrop {
+                plot_id: "plot-1".to_owned(),
+            },
+        },
+    )
+    .await;
+    let harvested: WebsocketServerMessage = websocket_json(&mut client).await;
+    assert!(matches!(
+        harvested,
+        WebsocketServerMessage::CommandResponse {
+            accepted: true,
+            version: 1,
+            ..
+        }
+    ));
+    let _ = websocket_farm_snapshot(&mut client).await;
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let mut farm = load_saved_farm(&pool).await;
+    let task = farm
+        .resident_task_queues
+        .get_mut("woman")
+        .unwrap()
+        .first_mut()
+        .unwrap();
+    task.ready_at_ms = now_ms - 1_000;
+    farm.last_update_ms = now_ms - 100;
+    save_test_farm(&pool, 1, &farm).await;
+
+    let elapsed = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        websocket_farm_snapshot(&mut client),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(elapsed.version, 2);
+    assert!(elapsed.view.field_plots[0].crop.is_none());
+    assert_eq!(
+        elapsed.view.resident_work["woman"]
+            .current_step
+            .as_ref()
+            .map(|step| step.label.as_str()),
+        Some("Store 2 Wheat")
+    );
+
+    let no_duplicate = tokio::time::timeout(
+        std::time::Duration::from_millis(150),
+        websocket_json::<WebsocketServerMessage>(&mut client),
+    )
+    .await;
+    assert!(no_duplicate.is_err());
 }
 
 #[tokio::test]
