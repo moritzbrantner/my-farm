@@ -16,14 +16,14 @@ test("pages demo runs from WASM without server API calls", async ({ page }) => {
   await expect(page.getByText("Browser Demo")).toBeVisible();
   await page.getByRole("button", { name: "Start Farm" }).click();
 
-  await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
   const residents = page.getByLabel("Farm Residents");
   await expect(residents.getByText("Selected")).toBeVisible();
   await expect(residents.locator(".resident-picker-row")).toHaveCount(2);
   await expect(page.getByTestId("farm-scene-resident-woman")).toBeVisible();
   await expect(page.getByTestId("farm-scene-resident-man")).toBeVisible();
   await expect(page.getByText("Farmers Market")).toHaveCount(0);
-  await page.locator(".field-tools").getByRole("button", { name: "Build" }).click();
+  await page.locator(".interaction-tools").getByRole("button", { name: "Build" }).click();
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Field Plot/ })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Feed Mill/ })).toHaveCount(0);

@@ -22,16 +22,16 @@ test("renders the playable farm shell", async ({ page }, testInfo) => {
     await expect(mobileActions.getByRole("button", { name: "Plant" })).toBeVisible();
     await expect(mobileActions.getByRole("button", { name: "Build" })).toBeVisible();
   } else {
-    await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
-    await expect(page.locator(".field-tools").getByRole("button", { name: "Seed" })).toBeVisible();
-    await expect(page.locator(".field-tools").getByRole("button", { name: "Build" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
+    await expect(page.locator(".interaction-tools").getByRole("button", { name: "Seed" })).toBeVisible();
+    await expect(page.locator(".interaction-tools").getByRole("button", { name: "Build" })).toBeVisible();
   }
 
   await expect(page.getByRole("navigation", { name: "Structures" })).toBeHidden();
   if (testInfo.project.name === "mobile") {
     await page.getByRole("navigation", { name: "Farm actions" }).getByRole("button", { name: "Build" }).click();
   } else {
-    await page.locator(".field-tools").getByRole("button", { name: "Build" }).click();
+    await page.locator(".interaction-tools").getByRole("button", { name: "Build" }).click();
   }
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Bakery/ })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Structures" }).getByRole("button", { name: /Feed Mill/ })).toBeVisible();
@@ -1295,29 +1295,29 @@ test("shelters show producing and ready animal product status", async ({ page })
   await expect(page.getByLabel("Cow Pasture structure")).toBeVisible();
 });
 
-test("field tools expose one seed picker and change the cursor", async ({ page }, testInfo) => {
+test("interaction tools expose one seed picker and change the cursor", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Cursor behavior is desktop-specific.");
   await mockFarmApi(page);
   await openFarm(page);
 
-  const tools = page.locator(".field-tools");
+  const tools = page.locator(".interaction-tools");
   await expect(tools.getByRole("button", { name: "Seed" })).toHaveCount(1);
   await expect(tools.getByRole("button", { name: /Corn/ })).toHaveCount(0);
 
-  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", "pointer");
+  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", /pointer/);
   await tools.getByRole("button", { name: "Build" }).click();
   await expect(page.getByRole("navigation", { name: "Structures" })).toBeVisible();
   await tools.getByRole("button", { name: "Default" }).click();
   await expect(page.getByRole("navigation", { name: "Structures" })).toBeHidden();
-  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", "pointer");
+  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", /pointer/);
 
   await tools.getByRole("button", { name: "Seed" }).click();
-  await expect(tools.getByRole("menu", { name: "Seed type" })).toBeVisible();
+  await expect(tools.getByRole("menu", { name: "Seed crop" })).toBeVisible();
   await tools.getByRole("menuitemradio", { name: /Wheat/ }).click();
-  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", "copy");
+  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", /copy/);
 
   await tools.getByRole("button", { name: "Harvest" }).click();
-  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", "cell");
+  await expect(page.locator(".field-hit-target").first()).toHaveCSS("cursor", /cell/);
 });
 
 test("main menu opens settings wiki and account panels", async ({ page }, testInfo) => {
@@ -1348,7 +1348,7 @@ test("main menu opens settings wiki and account panels", async ({ page }, testIn
   if (testInfo.project.name === "mobile") {
     await expect(page.getByRole("navigation", { name: "Farm actions" })).toBeVisible();
   } else {
-    await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
   }
 });
 
@@ -1364,7 +1364,7 @@ test("top bar menu returns to the main menu", async ({ page }, testInfo) => {
     await expect(page.getByRole("navigation", { name: "Farm actions" })).toBeVisible();
     await expect(page.getByText("Farm reset")).toHaveText("Farm reset");
   } else {
-    await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
     await expect(page.getByText("Farm reset")).toBeVisible();
   }
 });
@@ -2735,7 +2735,7 @@ test("dragging across ready matching crops sends one sweep harvest command", asy
   const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
   const readyStartPoint = await fieldTargetPoint(page, "plot-1");
 
-  await page.locator(".field-tools").getByRole("button", { name: "Harvest" }).click();
+  await page.locator(".interaction-tools").getByRole("button", { name: "Harvest" }).click();
   await dragHarvestSweep(page, readyStartPoint, secondFieldPoint);
 
   await expect
@@ -2756,7 +2756,7 @@ test("dragging across a different ready crop keeps sweep harvest crop-specific",
   const wheatPoint = await fieldTargetPoint(page, "plot-1");
   const cornPoint = await fieldTargetPoint(page, "plot-2");
 
-  await page.locator(".field-tools").getByRole("button", { name: "Harvest" }).click();
+  await page.locator(".interaction-tools").getByRole("button", { name: "Harvest" }).click();
   await dragHarvestSweep(page, wheatPoint, cornPoint);
 
   await expect
@@ -2764,7 +2764,7 @@ test("dragging across a different ready crop keeps sweep harvest crop-specific",
     .toMatchObject({ type: "sweep_harvest", plot_ids: ["plot-1"] });
 });
 
-test("right click harvest tool enables sweeping all ready crop kinds", async ({
+test("harvest mode popover enables sweeping all ready crop kinds", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Desktop drag behavior is covered in desktop.");
@@ -2776,11 +2776,12 @@ test("right click harvest tool enables sweeping all ready crop kinds", async ({
 
   const wheatPoint = await fieldTargetPoint(page, "plot-1");
   const cornPoint = await fieldTargetPoint(page, "plot-2");
-  const harvestTool = page.locator(".field-tools").getByRole("button", { name: "Harvest" });
+  const tools = page.locator(".interaction-tools");
+  const harvestTool = tools.getByRole("button", { name: "Harvest" });
 
   await harvestTool.click();
-  await harvestTool.click({ button: "right" });
-  await page.getByRole("menuitemradio", { name: "All crops" }).click();
+  await expect(tools.getByRole("menu", { name: "Harvest mode" })).toBeVisible();
+  await tools.getByRole("menuitemradio", { name: "All crops" }).click();
   await dragHarvestSweep(page, wheatPoint, cornPoint);
 
   await expect
@@ -3051,7 +3052,7 @@ test("default field tool cancels harvest dragging", async ({ page }, testInfo) =
 
   const firstFieldPoint = await fieldTargetPoint(page, "plot-1");
   const secondFieldPoint = await fieldTargetPoint(page, "plot-2");
-  const tools = page.locator(".field-tools");
+  const tools = page.locator(".interaction-tools");
 
   await tools.getByRole("button", { name: "Harvest" }).click();
   await tools.getByRole("button", { name: "Default" }).click();
@@ -4559,7 +4560,7 @@ async function openBuildMenu(page: Page) {
     return page.getByRole("navigation", { name: "Structures" });
   }
 
-  const tools = page.locator(".field-tools");
+  const tools = page.locator(".interaction-tools");
   await tools.getByRole("button", { name: "Build" }).click();
   return page.getByRole("navigation", { name: "Structures" });
 }
@@ -4796,7 +4797,7 @@ async function selectSeedTool(page: Page, seedName: string) {
     return;
   }
 
-  const tools = page.locator(".field-tools");
+  const tools = page.locator(".interaction-tools");
   await tools.getByRole("button", { name: "Seed" }).click();
   await tools.getByRole("menuitemradio", { name: new RegExp(seedName) }).click();
 }

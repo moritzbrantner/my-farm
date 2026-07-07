@@ -83,8 +83,8 @@ test("pages demo unlocks Corn and buys the Oven Farmhouse Upgrade", async ({ pag
   await seedLevelTwoSave(page);
   await startDemoFarm(page);
 
-  await page.locator(".field-tools").getByRole("button", { name: "Seed" }).click();
-  await expect(page.locator(".field-tools").getByRole("menuitemradio", { name: /Corn/ })).toBeVisible();
+  await page.locator(".interaction-tools").getByRole("button", { name: "Seed" }).click();
+  await expect(page.locator(".interaction-tools").getByRole("menuitemradio", { name: /Corn/ })).toBeVisible();
   await page.keyboard.press("Escape");
 
   await openFarmhouseSelection(page);
@@ -160,7 +160,7 @@ test("pages demo explains storage-full harvest before accepting conflicting work
 async function startDemoFarm(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Start Farm" }).click();
-  await expect(page.getByRole("heading", { name: "Field Tools" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Interaction Tools" })).toBeVisible();
 }
 
 async function openFarmhouseSelection(page: Page) {
@@ -170,7 +170,7 @@ async function openFarmhouseSelection(page: Page) {
 }
 
 async function selectSeedTool(page: Page, seedName: string) {
-  const tools = page.locator(".field-tools");
+  const tools = page.locator(".interaction-tools");
   await tools.getByRole("button", { name: "Seed" }).click();
   await tools.getByRole("menuitemradio", { name: new RegExp(seedName) }).click();
 }
