@@ -188,12 +188,13 @@ button[aria-disabled="true"] {
 .house-room-tiles {
   position: absolute;
   left: 50%;
-  top: 50%;
-  width: min(58vw, 520px);
+  top: calc(50% + 15px);
+  width: min(76vw, 297px);
   aspect-ratio: 8 / 6;
   display: grid;
-  gap: 1px;
-  transform: translate(-50%, -43%);
+  gap: 0;
+  transform: translate(-50%, -50%) scaleY(0.53) rotate(45deg);
+  transform-origin: center;
   pointer-events: auto;
 }
 
@@ -269,7 +270,8 @@ button[aria-disabled="true"] {
 
 .house-room-door {
   left: 50%;
-  top: 74%;
+  top: auto;
+  bottom: 18px;
   min-width: 104px;
   min-height: 38px;
   padding: 7px 10px;
@@ -2427,7 +2429,7 @@ h2 {
   .app {
     --farm-viewport-inset-top: 58px;
     --farm-viewport-inset-right: 0px;
-    --farm-viewport-inset-bottom: 148px;
+    --farm-viewport-inset-bottom: 286px;
     --farm-viewport-inset-left: 0px;
   }
 
@@ -2467,7 +2469,7 @@ h2 {
     top: auto;
     left: 0;
     right: 0;
-    bottom: 148px;
+    bottom: 10px;
     width: auto;
     max-height: 36vh;
     padding: 0 10px;

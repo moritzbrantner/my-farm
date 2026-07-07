@@ -770,6 +770,22 @@ test("mobile opens Resident Details as a bottom sheet", async ({ page }, testInf
   expect(box!.height).toBeLessThan(viewport!.height * 0.6);
 });
 
+test("mobile keeps farm overlays stuck to the bottom", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "Mobile overlay position is covered in the mobile project.");
+  await mockFarmApi(page);
+  await openFarm(page);
+
+  const sidePanel = page.locator(".side-panel");
+  await expect(sidePanel.getByRole("heading", { name: "Farm Control" })).toBeVisible();
+  await expect(sidePanel.getByRole("heading", { name: "Farm Residents" })).toBeVisible();
+  const box = await sidePanel.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(box!.y + box!.height).toBeGreaterThan(viewport!.height - 24);
+  expect(box!.y).toBeGreaterThan(viewport!.height * 0.52);
+});
+
 test("renders resident as working after walking to the approach tile", async ({ page }) => {
   const now = Date.now();
   const view = withResidentTaskQueues(farmView, {
@@ -1685,6 +1701,7 @@ test("frames the House Interior scene and controls on desktop and mobile", async
   await expect(page.getByTestId("house-room-living_room")).toBeVisible();
   await expectElementFramed(page, page.getByTestId("house-room-living_room"));
   await expectElementFramed(page, page.locator(".house-room-tiles"));
+  await expectHouseRoomGridAlignedWithIsometricFloor(page);
   await expectHouseInteriorControlsFramedWithoutOverlap(page);
   await expectReadableButtons(page.getByRole("navigation", { name: "Decorations" }).getByRole("button"));
   await expect(page.getByTestId("farm-scene-resident-woman")).toHaveCount(0);
@@ -4433,6 +4450,7 @@ async function expectHouseInteriorControlsFramedWithoutOverlap(page: Page) {
     { name: "title", locator: page.locator(".house-interior__title") },
     { name: "back", locator: page.locator(".house-interior__back") },
     { name: "grid", locator: page.locator(".house-interior__grid-toggle") },
+    { name: "door", locator: page.locator(".house-room-door") },
     { name: "decoration status", locator: page.getByTestId("decoration-placement-status") },
     { name: "decorations", locator: page.getByRole("navigation", { name: "Decorations" }) },
   ];
@@ -4455,6 +4473,20 @@ async function expectHouseInteriorControlsFramedWithoutOverlap(page: Page) {
       ).toBe(false);
     }
   }
+}
+
+async function expectHouseRoomGridAlignedWithIsometricFloor(page: Page) {
+  const gridTransform = await page.locator(".house-room-tiles").evaluate((element) => {
+    const transform = getComputedStyle(element).transform;
+    if (transform === "none") {
+      return { b: 0, c: 0 };
+    }
+    const matrix = new DOMMatrixReadOnly(transform);
+    return { b: matrix.b, c: matrix.c };
+  });
+
+  expect(Math.abs(gridTransform.b)).toBeGreaterThan(0.1);
+  expect(Math.abs(gridTransform.c)).toBeGreaterThan(0.1);
 }
 
 async function expectReadableButtons(buttons: Locator) {
