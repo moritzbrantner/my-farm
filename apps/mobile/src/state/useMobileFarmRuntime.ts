@@ -140,7 +140,7 @@ export function useMobileFarmRuntime() {
     async (command: FarmCommand) => {
       if (!client) {
         setMessage("Connect to a Farm server first");
-        return;
+        return { accepted: false, error: "Connect to a Farm server first" };
       }
       const startedAt = Date.now();
       try {
@@ -153,8 +153,11 @@ export function useMobileFarmRuntime() {
         applyFarmSnapshot({ version: response.version, view: response.view, notice: response.notice });
         setDiagnostics((current) => ({ ...current, lastCommandLatencyMs: Date.now() - startedAt }));
         setMessage(response.notice?.message ?? (response.accepted ? "Command accepted" : response.error ?? "Command rejected"));
+        return { accepted: response.accepted, error: response.error };
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : "Command failed");
+        const errorMessage = error instanceof Error ? error.message : "Command failed";
+        setMessage(errorMessage);
+        return { accepted: false, error: errorMessage };
       }
     },
     [applyFarmSnapshot, client],

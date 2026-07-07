@@ -3,6 +3,7 @@ import type {
   FarmCommand,
   FarmResponse,
   StructureKind,
+  SweepHarvestMode,
 } from "@my-farm/contracts";
 import type { FarmConnectionStatus } from "@my-farm/game-client";
 
@@ -23,7 +24,8 @@ export type Diagnostics = {
   farmVersion: number;
 };
 
-export type CommandSender = (command: FarmCommand) => Promise<void>;
+export type CommandResult = { accepted: boolean; error: string | null };
+export type CommandSender = (command: FarmCommand) => Promise<CommandResult>;
 
 export type ShellProps = {
   serverUrl: string;
@@ -39,3 +41,22 @@ export type ShellProps = {
 export type BuildableStructureKind = Exclude<StructureKind, "silo" | "barn">;
 export type BuildableKind = "field_plot" | BuildableStructureKind;
 
+export type ActiveFieldTool = { type: "default" } | { type: "plant"; cropId: string } | { type: "harvest" };
+export type PlantSweepState = {
+  cropId: string;
+  plotIds: string[];
+  pointerId: number;
+} | null;
+export type HarvestSweepState = {
+  cropId: string;
+  harvestMode: SweepHarvestMode;
+  plotIds: string[];
+  pointerId: number;
+} | null;
+export type BuildPlacementState = {
+  kind: BuildableKind;
+} | null;
+export type ResidentTaskPreviewSelection = {
+  residentId: string;
+  taskId: string;
+} | null;

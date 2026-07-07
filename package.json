@@ -6,7 +6,8 @@
     "apps/mobile",
     "packages/contracts",
     "packages/game-client",
-    "packages/game-model"
+    "packages/game-model",
+    "packages/game-scene"
   ],
   "scripts": {
     "dev": "cd apps/web && bun run dev",

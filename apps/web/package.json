@@ -17,6 +17,7 @@
   "dependencies": {
     "@my-farm/contracts": "workspace:*",
     "@my-farm/game-client": "workspace:*",
+    "@my-farm/game-scene": "workspace:*",
     "@my-farm/game-model": "workspace:*",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.17.10",

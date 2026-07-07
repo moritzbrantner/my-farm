@@ -18,6 +18,7 @@
     "@expo/vector-icons": "^14.0.3",
     "@my-farm/contracts": "workspace:*",
     "@my-farm/game-client": "workspace:*",
+    "@my-farm/game-scene": "workspace:*",
     "@my-farm/game-model": "workspace:*",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native/assets-registry": "0.74.87",

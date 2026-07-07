@@ -15,6 +15,8 @@
     "paths": {
       "@my-farm/contracts": ["../../packages/contracts/src/index.ts"],
       "@my-farm/game-client": ["../../packages/game-client/src/index.ts"],
+      "@my-farm/game-scene": ["../../packages/game-scene/src/index.ts"],
+      "@my-farm/game-scene/*": ["../../packages/game-scene/src/*"],
       "@my-farm/game-model": ["../../packages/game-model/src/index.ts"],
       "@my-farm/game-model/*": ["../../packages/game-model/src/*"]
     },

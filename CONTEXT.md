@@ -257,8 +257,8 @@ A player intent submitted to the active runtime and applied deterministically.
 _Avoid_: Action, mutation
 
 **Interaction Tool**:
-A browser-client mode that determines how Farm canvas pointer input is interpreted, such as Default, Seed, Harvest, or Build. Interaction Tools choose or prepare Commands but are not durable farm Tools.
-_Avoid_: UI tool button, farm Tool, action mode
+A client mode that determines how Farm scene input is interpreted, such as Select, Plant, Harvest, or Build. Interaction Tools prepare or submit Commands but are not durable farm Tools.
+_Avoid_: Farm Tool, durable Tool, browser-only tool
 
 **Sweep Harvest**:
 A player gesture that harvests multiple ready Field Plots of the same Crop in the order the player sweeps over them.
