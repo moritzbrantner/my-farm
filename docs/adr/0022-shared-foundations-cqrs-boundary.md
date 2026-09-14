@@ -1,4 +1,4 @@
-# Shared Foundations And CQRS Application Boundary
+# Shared Foundations And Lightweight CQRS Application Boundary
 
 Status: Accepted
 
@@ -13,7 +13,8 @@ At the same time, `farm-game-engine` has been split into narrower foundation cra
 ## Decision
 
 - `my-farm` owns farming semantics: crops, fields, animals, residents and their work, farmhouse behavior, production recipes, shop/economy rules, deliveries, and progression.
-- The core exposes an explicit CQRS application boundary. Commands mutate authoritative Farm state through the application layer; queries derive read models without mutation.
+- The core exposes a lightweight CQRS/CQS application boundary for player/business intent. Commands mutate authoritative farm state through the application layer; queries derive read models without mutation.
+- Time-driven simulation is explicitly outside CQRS dispatch. Elapsed-time processing, resident work progression, production completion, growth, and similar deterministic simulation work advance directly in the Rust core. They are not represented as commands merely to satisfy an architectural pattern.
 - Domain capabilities are extracted from the legacy `engine.rs` incrementally. Field planting and harvesting are the first command family to receive a dedicated domain boundary.
 - The existing mini-engine remains a compatibility adapter during migration. A domain slice may delegate to it until that slice's state-transition implementation can move without duplicating validation or changing behavior.
 - Generic deterministic simulation, navigation, catalog, scenario, and persistence primitives should move to or be consumed from the matching `farm-game-engine` foundation crates instead of being reimplemented locally.
@@ -25,6 +26,8 @@ At the same time, `farm-game-engine` has been split into narrower foundation cra
 
 ## Consequences
 
-The migration is intentionally incremental. New feature work should prefer the application/domain boundaries and should not make `engine.rs` larger when the affected capability already has an extracted domain home. Existing public command contracts remain compatible while internal ownership moves behind the CQRS application layer.
+The migration is intentionally incremental. New application feature work should prefer explicit command/query and domain boundaries without forcing simulation systems through handlers, mediators, buses, or projections. Hot and time-driven core paths remain ordinary deterministic Rust calls.
 
 The first field slice extracts command ownership and routing without copying the mature resident-task planning logic. Moving the actual field state-transition implementation is a follow-up once the shared simulation/navigation seams are consumable; until then, the compatibility adapter remains the single implementation of those invariants.
+
+CQRS infrastructure is not a portfolio requirement for foundations such as tables, maps, charts, rendering, physics, or runtime/game-server internals. Those components keep the data-oriented, state-oriented, algorithmic, or actor/runtime architecture appropriate to their performance and ownership constraints.
