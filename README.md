@@ -74,7 +74,8 @@ bun run validate
 
 ## Architecture
 
-- The CQRS application layer is the authoritative entry point for gameplay Commands and read-model Queries.
+- Lightweight CQRS/CQS is an application-boundary convention for player/business Commands and read-model Queries; it is not the simulation architecture.
+- Time-driven farming simulation advances directly in the deterministic Rust core and does not travel through command/query dispatch.
 - `my-farm` owns farming-specific rules and state. Generic deterministic simulation, navigation, catalog, scenario, and persistence primitives should converge on the matching `farm-game-engine` foundation crates when those crates are reproducibly consumable by CI.
 - The legacy mini-engine is a compatibility adapter during that migration; new domain slices should be extracted incrementally rather than duplicating rules.
 - Server, WASM Pages, web, and Expo are adapters around the same gameplay semantics.
