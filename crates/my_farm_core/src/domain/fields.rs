@@ -24,9 +24,7 @@ impl TryFrom<FarmCommand> for FieldCommand {
 
     fn try_from(command: FarmCommand) -> Result<Self, Self::Error> {
         match command {
-            FarmCommand::PlantCrop { plot_id, crop_id } => {
-                Ok(Self::PlantCrop { plot_id, crop_id })
-            }
+            FarmCommand::PlantCrop { plot_id, crop_id } => Ok(Self::PlantCrop { plot_id, crop_id }),
             FarmCommand::SweepPlant { crop_id, plot_ids } => {
                 Ok(Self::SweepPlant { crop_id, plot_ids })
             }
