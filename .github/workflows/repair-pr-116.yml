@@ -1,0 +1,85 @@
+name: Repair PR 116
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-pr-116
+  cancel-in-progress: false
+
+jobs:
+  repair-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: architecture/shared-foundations-cqrs-fields
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt
+
+      - name: Apply Rust formatting
+        run: cargo fmt --all
+
+      - name: Verify formatting-only scope
+        shell: bash
+        run: |
+          changed="$(git diff --name-only)"
+          printf '%s\n' "$changed"
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^(crates/my_farm_core/tests/core_loop\.rs|crates/my_farm_core/src/domain/fields\.rs|crates/my_farm_core/src/application\.rs)$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected rustfmt changes:"
+            printf '%s\n' "$unexpected"
+            exit 1
+          fi
+
+      - name: Commit formatting repair
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No formatting changes needed"
+          else
+            git add crates/my_farm_core/tests/core_loop.rs crates/my_farm_core/src/domain/fields.rs crates/my_farm_core/src/application.rs
+            git commit -m "chore: format Rust sources"
+            git push origin HEAD:architecture/shared-foundations-cqrs-fields
+          fi
+          echo "validated_sha=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate exact repaired head
+        run: bun run validate
+
+      - name: Report validated commit
+        run: echo "Validated PR branch commit $validated_sha"
+
+      - name: Remove one-shot workflow
+        if: always()
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          if [ -f .github/workflows/repair-pr-116.yml ]; then
+            git rm .github/workflows/repair-pr-116.yml
+            git commit -m "ci: remove completed PR repair workflow"
+            git push origin main
+          fi
