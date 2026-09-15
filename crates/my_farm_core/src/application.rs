@@ -1,6 +1,5 @@
 use crate::{
-    CatalogDocument, CommandOutcome, FarmCommand, FarmState, FarmView,
-    domain::fields::FieldCommand,
+    CatalogDocument, CommandOutcome, FarmCommand, FarmState, FarmView, domain::fields::FieldCommand,
 };
 
 /// Authoritative application entry point for player/business commands.
