@@ -131,10 +131,7 @@ fn planting_orders_prerequisite_pickups_by_shortest_route() {
 
     assert!(planted.accepted);
     let task = &farm.resident_task_queues["woman"][0];
-    assert_eq!(
-        farm.resident_inventories["woman"].tools[&ToolKind::Hoe],
-        1
-    );
+    assert_eq!(farm.resident_inventories["woman"].tools[&ToolKind::Hoe], 1);
     assert_eq!(
         farm.resident_inventories["woman"].tool_sources[&ToolKind::Hoe],
         ToolSourceRef::Farmhouse

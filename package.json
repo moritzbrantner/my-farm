@@ -29,7 +29,8 @@
     "contracts": "cargo run -p contract_codegen",
     "contracts:check": "cargo run -p contract_codegen -- --check",
     "test:rust": "cargo test --workspace",
-    "check": "cargo test --workspace && bun run build:web && bun run build:pages && bun run contracts:check"
+    "validate": "cargo fmt --all -- --check && cargo test --workspace && cargo run -p contract_codegen -- --check && bun run test:mobile && bun run build:web && bun run build:pages",
+    "check": "bun run validate"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
