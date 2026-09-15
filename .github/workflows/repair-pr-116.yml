@@ -2,7 +2,7 @@ name: Repair PR 116
 
 on:
   schedule:
-    - cron: "18 * * * *"
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: write
