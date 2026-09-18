@@ -12,7 +12,7 @@ export default defineConfig({
     },
     {
       command:
-        "cd ../.. && bun run build:wasm-demo && cd apps/web && VITE_API_BASE_URL=http://127.0.0.1:8091 vite --host 127.0.0.1 --port 5194",
+        "cd ../.. && if [ \"${MY_FARM_PREBUILT_WASM:-0}\" != \"1\" ]; then bun run build:wasm-demo; fi && cd apps/web && VITE_API_BASE_URL=http://127.0.0.1:8091 vite --host 127.0.0.1 --port 5194",
       url: "http://127.0.0.1:5194",
       reuseExistingServer: false,
     },
