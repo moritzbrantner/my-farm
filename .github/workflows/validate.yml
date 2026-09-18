@@ -35,6 +35,7 @@ jobs:
       artifact_paths: apps/web/src/generated/my_farm_wasm
       reuse_across_runs: true
       artifact_retention_days: 7
+      timeout_minutes: 30
 
   validate-core:
     name: Core validation
