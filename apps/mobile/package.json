@@ -22,7 +22,7 @@
     "@my-farm/game-model": "workspace:*",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native/assets-registry": "0.74.87",
-    "@react-native/gradle-plugin": "0.74.87",
+    "@react-native/gradle-plugin": "0.87.1",
     "@react-native/js-polyfills": "0.74.87",
     "@react-native/normalize-colors": "0.74.87",
     "@react-native/virtualized-lists": "0.74.87",
