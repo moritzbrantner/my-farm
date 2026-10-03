@@ -6,7 +6,7 @@ export default defineConfig({
   workers: 1,
   webServer: {
     command:
-      "cd ../.. && bun run build:wasm-demo && cd apps/web && VITE_MY_FARM_RUNTIME=wasm_demo vite --host 127.0.0.1 --port 5195",
+      "cd ../.. && if [ \"${MY_FARM_PREBUILT_WASM:-0}\" != \"1\" ]; then bun run build:wasm-demo; fi && cd apps/web && VITE_MY_FARM_RUNTIME=wasm_demo vite --host 127.0.0.1 --port 5195",
     url: "http://127.0.0.1:5195",
     reuseExistingServer: false,
   },

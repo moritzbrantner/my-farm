@@ -30,7 +30,9 @@
     "contracts:check": "cargo run -p contract_codegen -- --check",
     "test:rust": "cargo test --workspace",
     "validate": "cargo fmt --all -- --check && cargo test --workspace && cargo run -p contract_codegen -- --check && bun run test:mobile && bun run build:web && bun run build:pages",
-    "check": "bun run validate"
+    "check": "bun run validate",
+    "build:web:prepared": "cd apps/web && bun run build:prepared",
+    "build:pages:prepared": "cd apps/web && VITE_MY_FARM_RUNTIME=wasm_demo VITE_BASE_PATH=/my-farm/ bun run build:prepared"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
