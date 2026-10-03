@@ -22,7 +22,7 @@
         "@my-farm/game-model": "workspace:*",
         "@my-farm/game-scene": "workspace:*",
         "@react-native-async-storage/async-storage": "1.23.1",
-        "@react-native/assets-registry": "0.74.87",
+        "@react-native/assets-registry": "0.87.1",
         "@react-native/gradle-plugin": "0.74.87",
         "@react-native/js-polyfills": "0.74.87",
         "@react-native/normalize-colors": "0.74.87",
@@ -737,7 +737,7 @@
 
     "@react-native-community/cli-types": ["@react-native-community/cli-types@13.6.9", "", { "dependencies": { "joi": "^17.2.1" } }, "sha512-RLxDppvRxXfs3hxceW/mShi+6o5yS+kFPnPqZTaMKKR5aSg7LwDpLQW4K2D22irEG8e6RKDkZUeH9aL3vO2O0w=="],
 
-    "@react-native/assets-registry": ["@react-native/assets-registry@0.74.87", "", {}, "sha512-1XmRhqQchN+pXPKEKYdpJlwESxVomJOxtEnIkbo7GAlaN2sym84fHEGDXAjLilih5GVPpcpSmFzTy8jx3LtaFg=="],
+    "@react-native/assets-registry": ["@react-native/assets-registry@0.87.1", "", { "peerDependencies": { "react-native": "*" } }, "sha512-XmE1I4YM61ariwFMm9gAd5FnqztP89qDx1WVKJMQTxI/g+V8riuwJts33hsFkR0lC0Mj8oc+V4L/AXk3F9XseA=="],
 
     "@react-native/babel-plugin-codegen": ["@react-native/babel-plugin-codegen@0.74.87", "", { "dependencies": { "@react-native/codegen": "0.74.87" } }, "sha512-+vJYpMnENFrwtgvDfUj+CtVJRJuUnzAUYT0/Pb68Sq9RfcZ5xdcCuUgyf7JO+akW2VTBoJY427wkcxU30qrWWw=="],
 
@@ -2992,6 +2992,8 @@
     "react-devtools-core/ws": ["ws@7.5.11", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": "^5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-zS54Oen9bITtp7kp2XM3AydrCIq1D+HwJOuH+c+e4LfpL/lotP5osijd+UoMnxwAam1GN8R4KtLAyIrIcBNpiA=="],
 
     "react-dom/scheduler": ["scheduler@0.23.2", "", { "dependencies": { "loose-envify": "^1.1.0" } }, "sha512-UOShsPwz7NrMUqhR6t0hWjFduvOzbtv7toDH1/hIrfRNIDBnnBWd0CwJTGvTpngVlmwGCdP9/Zl/tVrDqcuYzQ=="],
+
+    "react-native/@react-native/assets-registry": ["@react-native/assets-registry@0.74.87", "", {}, "sha512-1XmRhqQchN+pXPKEKYdpJlwESxVomJOxtEnIkbo7GAlaN2sym84fHEGDXAjLilih5GVPpcpSmFzTy8jx3LtaFg=="],
 
     "react-native/react": ["react@18.2.0", "", { "dependencies": { "loose-envify": "^1.1.0" } }, "sha512-/3IjMdb2L9QbBdWiW5e3P2/npwMBaU9mHCSCUzNln0ZCYbcfTsGbTJrU/kGemdH2IWmB2ioZ+zkxtmq6g09fGQ=="],
 
