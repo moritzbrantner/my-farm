@@ -11,7 +11,8 @@ permissions:
 
 concurrency:
   group: validate-${{ github.ref }}
-  cancel-in-progress: true
+  # Only superseded PR validation is canceled; main runs carry the Pages deployment.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-wasm-demo:
