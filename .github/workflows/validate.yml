@@ -173,6 +173,9 @@ jobs:
           mkdir -p apps/web/src/generated/my_farm_wasm
           cp -R .artifacts/my-farm-wasm/. apps/web/src/generated/my_farm_wasm
 
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
       - name: Run Storybook tests
         run: bun run test:storybook
 
