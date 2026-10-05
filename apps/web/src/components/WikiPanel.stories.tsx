@@ -31,8 +31,8 @@ export const ScenarioIndex: Story = {
     const canvas = within(canvasElement);
 
     await expect(canvas.getByRole("region", { name: "Wiki pages" })).toBeVisible();
-    await expect(canvas.getByRole("button", { name: /Scenario 01: Fresh Farm/ })).toBeVisible();
-    await expect(canvas.getByRole("button", { name: /Scenario 07: Blocked Work and Storage/ })).toBeVisible();
+    await expect(canvas.getByRole("link", { name: /Scenario 01: Fresh Farm/ })).toBeVisible();
+    await expect(canvas.getByRole("link", { name: /Scenario 07: Blocked Work and Storage/ })).toBeVisible();
   },
 };
 
@@ -54,7 +54,9 @@ export const ScenarioNavigation: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
 
-    await userEvent.click(canvas.getByRole("button", { name: /Scenario 02: Planting Wheat/ }));
+    const plantingWheatEntry = canvas.getByRole("link", { name: /Scenario 02: Planting Wheat/ }).closest("li");
+    await expect(plantingWheatEntry).not.toBeNull();
+    await userEvent.click(within(plantingWheatEntry as HTMLElement).getByRole("button", { name: "Read" }));
     await expect(canvas.getByRole("heading", { name: "Planting Wheat" })).toBeVisible();
 
     await userEvent.click(canvas.getByRole("button", { name: "Next" }));
@@ -64,7 +66,7 @@ export const ScenarioNavigation: Story = {
     await expect(canvas.getByRole("heading", { name: "Planting Wheat" })).toBeVisible();
 
     await userEvent.click(canvas.getByRole("button", { name: "All Scenarios" }));
-    await expect(canvas.getByRole("button", { name: /Scenario 01: Fresh Farm/ })).toBeVisible();
+    await expect(canvas.getByRole("link", { name: /Scenario 01: Fresh Farm/ })).toBeVisible();
   },
 };
 
