@@ -22,7 +22,7 @@
         "@my-farm/game-model": "workspace:*",
         "@my-farm/game-scene": "workspace:*",
         "@react-native-async-storage/async-storage": "1.24.0",
-        "@react-native/assets-registry": "0.74.87",
+        "@react-native/assets-registry": "0.87.1",
         "@react-native/gradle-plugin": "0.74.87",
         "@react-native/js-polyfills": "0.74.87",
         "@react-native/normalize-colors": "0.87.1",
@@ -709,7 +709,7 @@
 
     "@react-native/asset-utils": ["@react-native/asset-utils@0.87.1", "", {}, "sha512-FeFnbn9ENPs7IVBzZt1bBWfiRGvT4q+CsWwXGFyKVW/1ol3ylBRuTtXBGHIAmcNN4fUR60nSXsCN19pzNHkPgA=="],
 
-    "@react-native/assets-registry": ["@react-native/assets-registry@0.74.87", "", {}, "sha512-1XmRhqQchN+pXPKEKYdpJlwESxVomJOxtEnIkbo7GAlaN2sym84fHEGDXAjLilih5GVPpcpSmFzTy8jx3LtaFg=="],
+    "@react-native/assets-registry": ["@react-native/assets-registry@0.87.1", "", { "peerDependencies": { "react-native": "*" } }, "sha512-XmE1I4YM61ariwFMm9gAd5FnqztP89qDx1WVKJMQTxI/g+V8riuwJts33hsFkR0lC0Mj8oc+V4L/AXk3F9XseA=="],
 
     "@react-native/babel-plugin-codegen": ["@react-native/babel-plugin-codegen@0.74.87", "", { "dependencies": { "@react-native/codegen": "0.74.87" } }, "sha512-+vJYpMnENFrwtgvDfUj+CtVJRJuUnzAUYT0/Pb68Sq9RfcZ5xdcCuUgyf7JO+akW2VTBoJY427wkcxU30qrWWw=="],
 
