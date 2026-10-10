@@ -1,87 +1,80 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "WebsocketClientMessage",
   "oneOf": [
     {
       "type": "object",
-      "required": [
-        "command",
-        "expected_version",
-        "request_id",
-        "type"
-      ],
       "properties": {
+        "type": {
+          "type": "string",
+          "const": "submit_command"
+        },
         "command": {
-          "$ref": "#/definitions/FarmCommand"
+          "$ref": "#/$defs/FarmCommand"
         },
         "expected_version": {
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         },
         "request_id": {
           "type": "string"
-        },
-        "type": {
-          "type": "string",
-          "enum": [
-            "submit_command"
-          ]
         }
-      }
+      },
+      "required": [
+        "type",
+        "request_id",
+        "expected_version",
+        "command"
+      ]
     },
     {
       "type": "object",
-      "required": [
-        "request_id",
-        "type"
-      ],
       "properties": {
-        "request_id": {
-          "type": "string"
-        },
         "type": {
           "type": "string",
-          "enum": [
-            "reset_farm"
-          ]
+          "const": "reset_farm"
+        },
+        "request_id": {
+          "type": "string"
         }
-      }
+      },
+      "required": [
+        "type",
+        "request_id"
+      ]
     }
   ],
-  "definitions": {
+  "$defs": {
     "FarmCommand": {
       "oneOf": [
         {
           "type": "object",
-          "required": [
-            "crop_id",
-            "plot_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "plant_crop"
+            },
             "crop_id": {
               "type": "string"
             },
             "plot_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "plant_crop"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "plot_id",
+            "crop_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "crop_id",
-            "plot_ids",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "sweep_plant"
+            },
             "crop_id": {
               "type": "string"
             },
@@ -90,537 +83,486 @@
               "items": {
                 "type": "string"
               }
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "sweep_plant"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "crop_id",
+            "plot_ids"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "plot_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "harvest_crop"
+            },
             "plot_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "harvest_crop"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "plot_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "plot_ids",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "sweep_harvest"
+            },
             "harvest_mode": {
-              "default": null,
               "anyOf": [
                 {
-                  "$ref": "#/definitions/SweepHarvestMode"
+                  "$ref": "#/$defs/SweepHarvestMode"
                 },
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "plot_ids": {
               "type": "array",
               "items": {
                 "type": "string"
               }
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "sweep_harvest"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "plot_ids"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "structure_kind",
-            "tile",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "buy_structure"
+            },
             "structure_kind": {
-              "$ref": "#/definitions/StructureKind"
+              "$ref": "#/$defs/StructureKind"
             },
             "tile": {
-              "$ref": "#/definitions/Tile"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "buy_structure"
-              ]
+              "$ref": "#/$defs/Tile"
             }
-          }
+          },
+          "required": [
+            "type",
+            "structure_kind",
+            "tile"
+          ]
         },
         {
           "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "buy_farmhouse_upgrade"
+            },
+            "upgrade_kind": {
+              "$ref": "#/$defs/FarmhouseUpgradeKind"
+            }
+          },
           "required": [
             "type",
             "upgrade_kind"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "buy_farmhouse_upgrade"
-              ]
-            },
-            "upgrade_kind": {
-              "$ref": "#/definitions/FarmhouseUpgradeKind"
-            }
-          }
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "storage_kind",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "upgrade_storage"
+            },
             "storage_kind": {
-              "$ref": "#/definitions/StorageKind"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "upgrade_storage"
-              ]
+              "$ref": "#/$defs/StorageKind"
             }
-          }
+          },
+          "required": [
+            "type",
+            "storage_kind"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "tile",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "buy_field_plot"
+            },
             "tile": {
-              "$ref": "#/definitions/Tile"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "buy_field_plot"
-              ]
+              "$ref": "#/$defs/Tile"
             }
-          }
+          },
+          "required": [
+            "type",
+            "tile"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "target",
-            "tile",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "move_structure"
+            },
             "target": {
-              "$ref": "#/definitions/StructureTarget"
+              "$ref": "#/$defs/StructureTarget"
             },
             "tile": {
-              "$ref": "#/definitions/Tile"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "move_structure"
-              ]
+              "$ref": "#/$defs/Tile"
             }
-          }
+          },
+          "required": [
+            "type",
+            "target",
+            "tile"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "machine_id",
-            "recipe_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "queue_recipe"
+            },
             "machine_id": {
               "type": "string"
             },
             "recipe_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "queue_recipe"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "machine_id",
+            "recipe_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "recipe_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "queue_oven_recipe"
+            },
             "recipe_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "queue_oven_recipe"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "recipe_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "machine_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "collect_machine_job"
+            },
             "machine_id": {
               "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "machine_id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "collect_oven_job"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "feed_animal"
             },
-            "type": {
-              "type": "string",
-              "enum": [
-                "collect_machine_job"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "collect_oven_job"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "animal_slot",
-            "shelter_id",
-            "type"
-          ],
-          "properties": {
             "animal_slot": {
               "type": "string"
             },
             "shelter_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "feed_animal"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "shelter_id",
+            "animal_slot"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "animal_slot",
-            "shelter_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "collect_animal_product"
+            },
             "animal_slot": {
               "type": "string"
             },
             "shelter_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "collect_animal_product"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "shelter_id",
+            "animal_slot"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "order_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "fulfill_delivery_order"
+            },
             "order_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "fulfill_delivery_order"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "order_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "order_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "discard_delivery_order"
+            },
             "order_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "discard_delivery_order"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "order_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "item_id",
-            "quantity",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "discard_inventory"
+            },
             "item_id": {
               "type": "string"
             },
             "quantity": {
               "type": "integer",
               "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "discard_inventory"
-              ]
+              "minimum": 0
             }
-          }
+          },
+          "required": [
+            "type",
+            "item_id",
+            "quantity"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "resident_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "select_resident"
+            },
             "resident_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "select_resident"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "resident_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "resident_id",
-            "task_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "reorder_resident_task"
+            },
             "before_task_id": {
-              "default": null,
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "default": null
             },
             "resident_id": {
               "type": "string"
             },
             "task_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "reorder_resident_task"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "resident_id",
+            "task_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "display_name",
-            "resident_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "rename_resident"
+            },
             "display_name": {
               "type": "string"
             },
             "resident_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "rename_resident"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "resident_id",
+            "display_name"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "item_id",
-            "quantity",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "buy_market_item"
+            },
             "item_id": {
               "type": "string"
             },
             "quantity": {
               "type": "integer",
               "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "buy_market_item"
-              ]
+              "minimum": 0
             }
-          }
+          },
+          "required": [
+            "type",
+            "item_id",
+            "quantity"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "item_id",
-            "quantity",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "sell_market_item"
+            },
             "item_id": {
               "type": "string"
             },
             "quantity": {
               "type": "integer",
               "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "sell_market_item"
-              ]
+              "minimum": 0
             }
-          }
+          },
+          "required": [
+            "type",
+            "item_id",
+            "quantity"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "item_id",
-            "quantity",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "stock_farm_shop"
+            },
             "item_id": {
               "type": "string"
             },
             "quantity": {
               "type": "integer",
               "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "stock_farm_shop"
-              ]
+              "minimum": 0
             }
-          }
+          },
+          "required": [
+            "type",
+            "item_id",
+            "quantity"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "item_id",
-            "quantity",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "unstock_farm_shop"
+            },
             "item_id": {
               "type": "string"
             },
             "quantity": {
               "type": "integer",
               "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "unstock_farm_shop"
-              ]
+              "minimum": 0
             }
-          }
+          },
+          "required": [
+            "type",
+            "item_id",
+            "quantity"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "item_id",
-            "price",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "set_farm_shop_price"
+            },
             "item_id": {
               "type": "string"
             },
             "price": {
               "type": "integer",
               "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "set_farm_shop_price"
-              ]
+              "minimum": 0
             }
-          }
+          },
+          "required": [
+            "type",
+            "item_id",
+            "price"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "decoration_id",
-            "room_id",
-            "tile",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "place_decoration"
+            },
             "decoration_id": {
               "type": "string"
             },
@@ -628,25 +570,23 @@
               "type": "string"
             },
             "tile": {
-              "$ref": "#/definitions/RoomTile"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "place_decoration"
-              ]
+              "$ref": "#/$defs/RoomTile"
             }
-          }
+          },
+          "required": [
+            "type",
+            "room_id",
+            "decoration_id",
+            "tile"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "placement_id",
-            "room_id",
-            "tile",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "move_decoration"
+            },
             "placement_id": {
               "type": "string"
             },
@@ -654,37 +594,35 @@
               "type": "string"
             },
             "tile": {
-              "$ref": "#/definitions/RoomTile"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "move_decoration"
-              ]
+              "$ref": "#/$defs/RoomTile"
             }
-          }
+          },
+          "required": [
+            "type",
+            "room_id",
+            "placement_id",
+            "tile"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "placement_id",
-            "room_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "remove_decoration"
+            },
             "placement_id": {
               "type": "string"
             },
             "room_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "remove_decoration"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "room_id",
+            "placement_id"
+          ]
         }
       ]
     },
@@ -696,22 +634,22 @@
     },
     "RoomTile": {
       "type": "object",
-      "required": [
-        "x",
-        "y"
-      ],
       "properties": {
         "x": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "y": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "x",
+        "y"
+      ]
     },
     "StorageKind": {
       "type": "string",
@@ -737,117 +675,103 @@
       "oneOf": [
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "silo"
-              ]
+              "const": "silo"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "barn"
-              ]
+              "const": "barn"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "machine"
+            },
             "id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "machine"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "shelter"
+            },
             "id": {
               "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "delivery_board"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "tool_shed"
             },
-            "type": {
-              "type": "string",
-              "enum": [
-                "shelter"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "delivery_board"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "id",
-            "type"
-          ],
-          "properties": {
             "id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "tool_shed"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "id",
-            "type"
-          ],
           "properties": {
-            "id": {
-              "type": "string"
-            },
             "type": {
               "type": "string",
-              "enum": [
-                "farm_shop"
-              ]
+              "const": "farm_shop"
+            },
+            "id": {
+              "type": "string"
             }
-          }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
         }
       ]
     },
@@ -860,10 +784,6 @@
     },
     "Tile": {
       "type": "object",
-      "required": [
-        "x",
-        "y"
-      ],
       "properties": {
         "x": {
           "type": "integer",
@@ -873,7 +793,11 @@
           "type": "integer",
           "format": "int32"
         }
-      }
+      },
+      "required": [
+        "x",
+        "y"
+      ]
     }
   }
 }

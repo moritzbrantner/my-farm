@@ -1,59 +1,39 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "FarmState",
   "type": "object",
-  "required": [
-    "barn_capacity",
-    "coins",
-    "delivery_board_built",
-    "delivery_orders",
-    "field_plots",
-    "inventory",
-    "last_update_ms",
-    "level",
-    "machines",
-    "next_id",
-    "schema_version",
-    "shelters",
-    "silo_capacity",
-    "xp"
-  ],
   "properties": {
     "barn_capacity": {
       "type": "integer",
       "format": "uint32",
-      "minimum": 0.0
+      "minimum": 0
     },
     "barn_tile": {
+      "$ref": "#/$defs/Tile",
       "default": {
         "x": 16,
         "y": 2
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/Tile"
-        }
-      ]
-    },
-    "barn_upgrade_tier": {
-      "default": 0,
-      "type": "integer",
-      "format": "uint32",
-      "minimum": 0.0
-    },
-    "blocked_resident_tasks": {
-      "default": {},
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/definitions/BlockedResidentTask"
       }
     },
+    "barn_upgrade_tier": {
+      "type": "integer",
+      "format": "uint32",
+      "default": 0,
+      "minimum": 0
+    },
+    "blocked_resident_tasks": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/BlockedResidentTask"
+      },
+      "default": {}
+    },
     "claimed_crop_unlocks": {
+      "type": "array",
       "default": [
         "wheat",
         "corn"
       ],
-      "type": "array",
       "items": {
         "type": "string"
       }
@@ -61,40 +41,42 @@
     "coins": {
       "type": "integer",
       "format": "uint32",
-      "minimum": 0.0
+      "minimum": 0
     },
     "delivery_board_built": {
       "type": "boolean"
     },
     "delivery_board_tile": {
+      "$ref": "#/$defs/Tile",
       "default": {
         "x": 2,
         "y": 7
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/Tile"
-        }
-      ]
+      }
     },
     "delivery_orders": {
       "type": "array",
       "items": {
-        "$ref": "#/definitions/DeliveryOrder"
+        "$ref": "#/$defs/DeliveryOrder"
       }
     },
     "farm_shop": {
-      "default": null,
       "anyOf": [
         {
-          "$ref": "#/definitions/FarmShopState"
+          "$ref": "#/$defs/FarmShopState"
         },
         {
           "type": "null"
         }
-      ]
+      ],
+      "default": null
     },
     "farmhouse_tool_stock": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0
+      },
       "default": {
         "collection_pail": 1,
         "feed_bucket": 1,
@@ -103,21 +85,16 @@
         "oven_mitt": 1,
         "sickle": 1,
         "wrench": 1
-      },
-      "type": "object",
-      "additionalProperties": {
-        "type": "integer",
-        "format": "uint32",
-        "minimum": 0.0
       }
     },
     "field_plots": {
       "type": "array",
       "items": {
-        "$ref": "#/definitions/FieldPlot"
+        "$ref": "#/$defs/FieldPlot"
       }
     },
     "house_interior": {
+      "$ref": "#/$defs/HouseInterior",
       "default": {
         "rooms": [
           {
@@ -799,19 +776,14 @@
             "width": 8
           }
         ]
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/HouseInterior"
-        }
-      ]
+      }
     },
     "inventory": {
       "type": "object",
       "additionalProperties": {
         "type": "integer",
         "format": "uint32",
-        "minimum": 0.0
+        "minimum": 0
       }
     },
     "last_update_ms": {
@@ -821,38 +793,38 @@
     "level": {
       "type": "integer",
       "format": "uint32",
-      "minimum": 0.0
+      "minimum": 0
     },
     "machines": {
       "type": "array",
       "items": {
-        "$ref": "#/definitions/MachineState"
+        "$ref": "#/$defs/MachineState"
       }
     },
     "next_id": {
       "type": "integer",
       "format": "uint64",
-      "minimum": 0.0
+      "minimum": 0
     },
     "oven": {
+      "$ref": "#/$defs/OvenState",
       "default": {
         "id": "oven",
         "queue": []
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/OvenState"
-        }
-      ]
+      }
     },
     "owned_farmhouse_upgrades": {
-      "default": [],
       "type": "array",
+      "default": [],
       "items": {
-        "$ref": "#/definitions/FarmhouseUpgradeKind"
+        "$ref": "#/$defs/FarmhouseUpgradeKind"
       }
     },
     "resident_inventories": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/ResidentInventory"
+      },
       "default": {
         "man": {
           "item_capacity": 30,
@@ -866,13 +838,13 @@
           "tool_sources": {},
           "tools": {}
         }
-      },
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/definitions/ResidentInventory"
       }
     },
     "resident_locations": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Tile"
+      },
       "default": {
         "man": {
           "x": 9,
@@ -882,26 +854,23 @@
           "x": 8,
           "y": 10
         }
-      },
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/definitions/Tile"
       }
     },
     "resident_task_queues": {
-      "default": {
-        "man": [],
-        "woman": []
-      },
       "type": "object",
       "additionalProperties": {
         "type": "array",
         "items": {
-          "$ref": "#/definitions/ResidentTask"
+          "$ref": "#/$defs/ResidentTask"
         }
+      },
+      "default": {
+        "man": [],
+        "woman": []
       }
     },
     "residents": {
+      "type": "array",
       "default": [
         {
           "display_name": "Woman",
@@ -912,131 +881,139 @@
           "id": "man"
         }
       ],
-      "type": "array",
       "items": {
-        "$ref": "#/definitions/FarmResident"
+        "$ref": "#/$defs/FarmResident"
       }
     },
     "schema_version": {
       "type": "integer",
       "format": "uint32",
-      "minimum": 0.0
+      "minimum": 0
     },
     "selected_resident_id": {
-      "default": "woman",
-      "type": "string"
+      "type": "string",
+      "default": "woman"
     },
     "shelters": {
       "type": "array",
       "items": {
-        "$ref": "#/definitions/AnimalShelterState"
+        "$ref": "#/$defs/AnimalShelterState"
       }
     },
     "silo_capacity": {
       "type": "integer",
       "format": "uint32",
-      "minimum": 0.0
+      "minimum": 0
     },
     "silo_tile": {
+      "$ref": "#/$defs/Tile",
       "default": {
         "x": 14,
         "y": 2
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/Tile"
-        }
-      ]
+      }
     },
     "silo_upgrade_tier": {
-      "default": 0,
       "type": "integer",
       "format": "uint32",
-      "minimum": 0.0
+      "default": 0,
+      "minimum": 0
     },
     "tool_shed": {
-      "default": null,
       "anyOf": [
         {
-          "$ref": "#/definitions/ToolShedState"
+          "$ref": "#/$defs/ToolShedState"
         },
         {
           "type": "null"
         }
-      ]
+      ],
+      "default": null
     },
     "xp": {
       "type": "integer",
       "format": "uint32",
-      "minimum": 0.0
+      "minimum": 0
     }
   },
-  "definitions": {
+  "required": [
+    "schema_version",
+    "last_update_ms",
+    "xp",
+    "level",
+    "coins",
+    "silo_capacity",
+    "barn_capacity",
+    "inventory",
+    "field_plots",
+    "machines",
+    "shelters",
+    "delivery_board_built",
+    "delivery_orders",
+    "next_id"
+  ],
+  "$defs": {
     "AnimalShelterState": {
       "type": "object",
-      "required": [
-        "animals",
-        "id",
-        "kind",
-        "tile"
-      ],
       "properties": {
         "animals": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/AnimalSlot"
+            "$ref": "#/$defs/AnimalSlot"
           }
         },
         "id": {
           "type": "string"
         },
         "kind": {
-          "$ref": "#/definitions/ShelterKind"
+          "$ref": "#/$defs/ShelterKind"
         },
         "tile": {
-          "$ref": "#/definitions/Tile"
+          "$ref": "#/$defs/Tile"
         }
-      }
+      },
+      "required": [
+        "id",
+        "kind",
+        "tile",
+        "animals"
+      ]
     },
     "AnimalSlot": {
       "type": "object",
-      "required": [
-        "id",
-        "state"
-      ],
       "properties": {
         "id": {
           "type": "string"
         },
         "state": {
-          "$ref": "#/definitions/AnimalState"
+          "$ref": "#/$defs/AnimalState"
         }
-      }
+      },
+      "required": [
+        "id",
+        "state"
+      ]
     },
     "AnimalState": {
       "oneOf": [
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "idle"
-              ]
+              "const": "idle"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "fed_at_ms",
-            "ready_at_ms",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "producing"
+            },
             "fed_at_ms": {
               "type": "integer",
               "format": "int64"
@@ -1044,38 +1021,30 @@
             "ready_at_ms": {
               "type": "integer",
               "format": "int64"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "producing"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "fed_at_ms",
+            "ready_at_ms"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "ready"
-              ]
+              "const": "ready"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         }
       ]
     },
     "BlockedResidentTask": {
       "type": "object",
-      "required": [
-        "message",
-        "reason",
-        "task_id"
-      ],
       "properties": {
         "message": {
           "type": "string"
@@ -1086,15 +1055,15 @@
         "task_id": {
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "task_id",
+        "reason",
+        "message"
+      ]
     },
     "DecorationPlacement": {
       "type": "object",
-      "required": [
-        "decoration_id",
-        "id",
-        "tile"
-      ],
       "properties": {
         "decoration_id": {
           "type": "string"
@@ -1103,18 +1072,17 @@
           "type": "string"
         },
         "tile": {
-          "$ref": "#/definitions/RoomTile"
+          "$ref": "#/$defs/RoomTile"
         }
-      }
+      },
+      "required": [
+        "id",
+        "decoration_id",
+        "tile"
+      ]
     },
     "DeliveryOrder": {
       "type": "object",
-      "required": [
-        "id",
-        "requirements",
-        "reward_coins",
-        "reward_xp"
-      ],
       "properties": {
         "id": {
           "type": "string"
@@ -1122,27 +1090,29 @@
         "requirements": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/ItemStack"
+            "$ref": "#/$defs/ItemStack"
           }
         },
         "reward_coins": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "reward_xp": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "id",
+        "requirements",
+        "reward_coins",
+        "reward_xp"
+      ]
     },
     "FarmResident": {
       "type": "object",
-      "required": [
-        "display_name",
-        "id"
-      ],
       "properties": {
         "display_name": {
           "type": "string"
@@ -1150,24 +1120,19 @@
         "id": {
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "id",
+        "display_name"
+      ]
     },
     "FarmShopRejectionWindow": {
       "type": "object",
-      "required": [
-        "base_price",
-        "id",
-        "item_id",
-        "sale_chance_bps",
-        "shop_price",
-        "visible_until_ms",
-        "visited_at_ms"
-      ],
       "properties": {
         "base_price": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "id": {
           "type": "string"
@@ -1178,12 +1143,12 @@
         "sale_chance_bps": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "shop_price": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "visible_until_ms": {
           "type": "integer",
@@ -1193,23 +1158,24 @@
           "type": "integer",
           "format": "int64"
         }
-      }
+      },
+      "required": [
+        "id",
+        "item_id",
+        "shop_price",
+        "base_price",
+        "sale_chance_bps",
+        "visited_at_ms",
+        "visible_until_ms"
+      ]
     },
     "FarmShopSaleWindow": {
       "type": "object",
-      "required": [
-        "coins_gained",
-        "id",
-        "item_id",
-        "quantity",
-        "sold_at_ms",
-        "visible_until_ms"
-      ],
       "properties": {
         "coins_gained": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "id": {
           "type": "string"
@@ -1220,7 +1186,7 @@
         "quantity": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "sold_at_ms": {
           "type": "integer",
@@ -1230,40 +1196,40 @@
           "type": "integer",
           "format": "int64"
         }
-      }
+      },
+      "required": [
+        "id",
+        "item_id",
+        "quantity",
+        "coins_gained",
+        "sold_at_ms",
+        "visible_until_ms"
+      ]
     },
     "FarmShopState": {
       "type": "object",
-      "required": [
-        "id",
-        "next_customer_visit_at_ms",
-        "stock",
-        "stock_capacity",
-        "tile",
-        "visit_count"
-      ],
       "properties": {
         "current_rejection": {
-          "default": null,
           "anyOf": [
             {
-              "$ref": "#/definitions/FarmShopRejectionWindow"
+              "$ref": "#/$defs/FarmShopRejectionWindow"
             },
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "current_sale": {
-          "default": null,
           "anyOf": [
             {
-              "$ref": "#/definitions/FarmShopSaleWindow"
+              "$ref": "#/$defs/FarmShopSaleWindow"
             },
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "id": {
           "type": "string"
@@ -1273,34 +1239,42 @@
           "format": "int64"
         },
         "prices": {
-          "default": {},
           "type": "object",
           "additionalProperties": {
             "type": "integer",
             "format": "uint32",
-            "minimum": 0.0
-          }
+            "minimum": 0
+          },
+          "default": {}
         },
         "stock": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/ItemStack"
+            "$ref": "#/$defs/ItemStack"
           }
         },
         "stock_capacity": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "tile": {
-          "$ref": "#/definitions/Tile"
+          "$ref": "#/$defs/Tile"
         },
         "visit_count": {
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "id",
+        "tile",
+        "stock",
+        "stock_capacity",
+        "next_customer_visit_at_ms",
+        "visit_count"
+      ]
     },
     "FarmhouseUpgradeKind": {
       "type": "string",
@@ -1310,15 +1284,11 @@
     },
     "FieldPlot": {
       "type": "object",
-      "required": [
-        "id",
-        "tile"
-      ],
       "properties": {
         "crop": {
           "anyOf": [
             {
-              "$ref": "#/definitions/PlantedCrop"
+              "$ref": "#/$defs/PlantedCrop"
             },
             {
               "type": "null"
@@ -1329,30 +1299,30 @@
           "type": "string"
         },
         "tile": {
-          "$ref": "#/definitions/Tile"
+          "$ref": "#/$defs/Tile"
         }
-      }
+      },
+      "required": [
+        "id",
+        "tile"
+      ]
     },
     "HouseInterior": {
       "type": "object",
-      "required": [
-        "rooms"
-      ],
       "properties": {
         "rooms": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/Room"
+            "$ref": "#/$defs/Room"
           }
         }
-      }
+      },
+      "required": [
+        "rooms"
+      ]
     },
     "ItemStack": {
       "type": "object",
-      "required": [
-        "item_id",
-        "quantity"
-      ],
       "properties": {
         "item_id": {
           "type": "string"
@@ -1360,18 +1330,16 @@
         "quantity": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "item_id",
+        "quantity"
+      ]
     },
     "MachineJob": {
       "type": "object",
-      "required": [
-        "id",
-        "ready_at_ms",
-        "recipe_id",
-        "started_at_ms"
-      ],
       "properties": {
         "id": {
           "type": "string"
@@ -1387,7 +1355,13 @@
           "type": "integer",
           "format": "int64"
         }
-      }
+      },
+      "required": [
+        "id",
+        "recipe_id",
+        "started_at_ms",
+        "ready_at_ms"
+      ]
     },
     "MachineKind": {
       "type": "string",
@@ -1397,38 +1371,32 @@
     },
     "MachineState": {
       "type": "object",
-      "required": [
-        "id",
-        "kind",
-        "queue",
-        "tile"
-      ],
       "properties": {
         "id": {
           "type": "string"
         },
         "kind": {
-          "$ref": "#/definitions/MachineKind"
+          "$ref": "#/$defs/MachineKind"
         },
         "queue": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/MachineJob"
+            "$ref": "#/$defs/MachineJob"
           }
         },
         "tile": {
-          "$ref": "#/definitions/Tile"
+          "$ref": "#/$defs/Tile"
         }
-      }
+      },
+      "required": [
+        "id",
+        "kind",
+        "tile",
+        "queue"
+      ]
     },
     "OvenJob": {
       "type": "object",
-      "required": [
-        "id",
-        "ready_at_ms",
-        "recipe_id",
-        "started_at_ms"
-      ],
       "properties": {
         "id": {
           "type": "string"
@@ -1445,14 +1413,16 @@
           "format": "int64"
         },
         "status": {
-          "default": "producing",
-          "allOf": [
-            {
-              "$ref": "#/definitions/OvenJobStatus"
-            }
-          ]
+          "$ref": "#/$defs/OvenJobStatus",
+          "default": "producing"
         }
-      }
+      },
+      "required": [
+        "id",
+        "recipe_id",
+        "started_at_ms",
+        "ready_at_ms"
+      ]
     },
     "OvenJobStatus": {
       "type": "string",
@@ -1463,10 +1433,6 @@
     },
     "OvenState": {
       "type": "object",
-      "required": [
-        "id",
-        "queue"
-      ],
       "properties": {
         "id": {
           "type": "string"
@@ -1474,18 +1440,17 @@
         "queue": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/OvenJob"
+            "$ref": "#/$defs/OvenJob"
           }
         }
-      }
+      },
+      "required": [
+        "id",
+        "queue"
+      ]
     },
     "PlantedCrop": {
       "type": "object",
-      "required": [
-        "item_id",
-        "planted_at_ms",
-        "ready_at_ms"
-      ],
       "properties": {
         "item_id": {
           "type": "string"
@@ -1498,197 +1463,179 @@
           "type": "integer",
           "format": "int64"
         }
-      }
+      },
+      "required": [
+        "item_id",
+        "planted_at_ms",
+        "ready_at_ms"
+      ]
     },
     "ReservedWorkTarget": {
       "oneOf": [
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "silo"
-              ]
+              "const": "silo"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "barn"
-              ]
+              "const": "barn"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "tool_source"
-              ]
+              "const": "tool_source"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "plot_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "field_plot"
+            },
             "plot_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "field_plot"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "plot_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "machine_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "machine"
+            },
             "machine_id": {
               "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "machine_id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "oven"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "farm_shop"
             },
-            "type": {
-              "type": "string",
-              "enum": [
-                "machine"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "oven"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "shop_id",
-            "type"
-          ],
-          "properties": {
             "shop_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "farm_shop"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "shop_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "animal_slot",
-            "shelter_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "animal"
+            },
             "animal_slot": {
               "type": "string"
             },
             "shelter_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "animal"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "shelter_id",
+            "animal_slot"
+          ]
         }
       ]
     },
     "ResidentInventory": {
       "type": "object",
-      "required": [
-        "item_capacity",
-        "items",
-        "tools"
-      ],
       "properties": {
         "item_capacity": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "items": {
           "type": "object",
           "additionalProperties": {
             "type": "integer",
             "format": "uint32",
-            "minimum": 0.0
+            "minimum": 0
           }
         },
         "tool_sources": {
-          "default": {},
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/definitions/ToolSourceRef"
-          }
+            "$ref": "#/$defs/ToolSourceRef"
+          },
+          "default": {}
         },
         "tools": {
           "type": "object",
           "additionalProperties": {
             "type": "integer",
             "format": "uint32",
-            "minimum": 0.0
+            "minimum": 0
           }
         }
-      }
+      },
+      "required": [
+        "items",
+        "tools",
+        "item_capacity"
+      ]
     },
     "ResidentTask": {
       "type": "object",
-      "required": [
-        "id",
-        "kind",
-        "ready_at_ms",
-        "started_at_ms",
-        "steps"
-      ],
       "properties": {
         "id": {
           "type": "string"
         },
         "kind": {
-          "$ref": "#/definitions/ResidentTaskKind"
+          "$ref": "#/$defs/ResidentTaskKind"
         },
         "ready_at_ms": {
           "type": "integer",
@@ -1701,448 +1648,409 @@
         "steps": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/ResidentTaskStep"
+            "$ref": "#/$defs/ResidentTaskStep"
           }
         }
-      }
+      },
+      "required": [
+        "id",
+        "kind",
+        "steps",
+        "started_at_ms",
+        "ready_at_ms"
+      ]
     },
     "ResidentTaskKind": {
       "oneOf": [
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "field_work"
-              ]
+              "const": "field_work"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "production_work"
-              ]
+              "const": "production_work"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "shop_work"
-              ]
+              "const": "shop_work"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         }
       ]
     },
     "ResidentTaskStep": {
       "type": "object",
-      "required": [
-        "reserved_work_target",
-        "work"
-      ],
       "properties": {
         "approach_tile": {
-          "default": null,
           "anyOf": [
             {
-              "$ref": "#/definitions/Tile"
+              "$ref": "#/$defs/Tile"
             },
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "duration_ms": {
-          "default": 2000,
           "type": "integer",
-          "format": "int64"
+          "format": "int64",
+          "default": 2000
         },
         "reserved_work_target": {
-          "$ref": "#/definitions/ReservedWorkTarget"
+          "$ref": "#/$defs/ReservedWorkTarget"
         },
         "walk_duration_ms": {
-          "default": 0,
           "type": "integer",
-          "format": "int64"
+          "format": "int64",
+          "default": 0
         },
         "walk_path": {
-          "default": [],
           "type": "array",
+          "default": [],
           "items": {
-            "$ref": "#/definitions/Tile"
+            "$ref": "#/$defs/Tile"
           }
         },
         "work": {
-          "$ref": "#/definitions/ResidentTaskStepWork"
+          "$ref": "#/$defs/ResidentTaskStepWork"
         },
         "work_duration_ms": {
-          "default": 2000,
           "type": "integer",
-          "format": "int64"
+          "format": "int64",
+          "default": 2000
         }
-      }
+      },
+      "required": [
+        "reserved_work_target",
+        "work"
+      ]
     },
     "ResidentTaskStepWork": {
       "oneOf": [
         {
           "type": "object",
-          "required": [
-            "items",
-            "source",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "pickup_items"
+            },
             "items": {
               "type": "array",
               "items": {
-                "$ref": "#/definitions/ItemStack"
+                "$ref": "#/$defs/ItemStack"
               }
             },
             "source": {
-              "$ref": "#/definitions/StorageSourceRef"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "pickup_items"
-              ]
+              "$ref": "#/$defs/StorageSourceRef"
             }
-          }
+          },
+          "required": [
+            "type",
+            "source",
+            "items"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "source",
-            "tools",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "pickup_tools"
+            },
             "source": {
-              "$ref": "#/definitions/ToolSourceRef"
+              "$ref": "#/$defs/ToolSourceRef"
             },
             "tools": {
               "type": "array",
               "items": {
-                "$ref": "#/definitions/ToolStack"
+                "$ref": "#/$defs/ToolStack"
               }
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "pickup_tools"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "source",
+            "tools"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "crop_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "plant_crop"
+            },
             "crop_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "plant_crop"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "crop_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "crop_id",
-            "quantity",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "harvest_crop"
+            },
             "crop_id": {
               "type": "string"
             },
             "quantity": {
               "type": "integer",
               "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "harvest_crop"
-              ]
+              "minimum": 0
             }
-          }
+          },
+          "required": [
+            "type",
+            "crop_id",
+            "quantity"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "job_id",
-            "recipe_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "collect_machine_job"
+            },
             "job_id": {
               "type": "string"
             },
             "recipe_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "collect_machine_job"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "job_id",
+            "recipe_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "job_id",
-            "recipe_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "start_oven_recipe"
+            },
             "job_id": {
               "type": "string"
             },
             "recipe_id": {
               "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "start_oven_recipe"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "job_id",
+            "recipe_id"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "job_id",
-            "recipe_id",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "collect_oven_job"
+            },
             "job_id": {
               "type": "string"
             },
             "recipe_id": {
               "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "job_id",
+            "recipe_id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "feed_animal"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "collect_animal_product"
             },
-            "type": {
-              "type": "string",
-              "enum": [
-                "collect_oven_job"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "feed_animal"
-              ]
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "item_id",
-            "quantity",
-            "type"
-          ],
-          "properties": {
             "item_id": {
               "type": "string"
             },
             "quantity": {
               "type": "integer",
               "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "collect_animal_product"
-              ]
+              "minimum": 0
             }
-          }
+          },
+          "required": [
+            "type",
+            "item_id",
+            "quantity"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "item_id",
-            "quantity",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "deposit_inventory"
+            },
             "item_id": {
               "type": "string"
             },
             "quantity": {
               "type": "integer",
               "format": "uint32",
-              "minimum": 0.0
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "deposit_inventory"
-              ]
+              "minimum": 0
             }
-          }
+          },
+          "required": [
+            "type",
+            "item_id",
+            "quantity"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "destination",
-            "items",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "deposit_items"
+            },
             "destination": {
-              "$ref": "#/definitions/StorageSourceRef"
+              "$ref": "#/$defs/StorageSourceRef"
             },
             "items": {
               "type": "array",
               "items": {
-                "$ref": "#/definitions/ItemStack"
+                "$ref": "#/$defs/ItemStack"
               }
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "deposit_items"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "destination",
+            "items"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "items",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "deposit_shop_stock"
+            },
             "items": {
               "type": "array",
               "items": {
-                "$ref": "#/definitions/ItemStack"
+                "$ref": "#/$defs/ItemStack"
               }
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "deposit_shop_stock"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "items"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "items",
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "pickup_shop_stock"
+            },
             "items": {
               "type": "array",
               "items": {
-                "$ref": "#/definitions/ItemStack"
+                "$ref": "#/$defs/ItemStack"
               }
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "pickup_shop_stock"
-              ]
             }
-          }
+          },
+          "required": [
+            "type",
+            "items"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "return_tools"
+            },
             "source": {
+              "$ref": "#/$defs/ToolSourceRef",
               "default": {
                 "type": "farmhouse"
-              },
-              "allOf": [
-                {
-                  "$ref": "#/definitions/ToolSourceRef"
-                }
-              ]
-            },
-            "tools": {
-              "default": [],
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/ToolStack"
               }
             },
-            "type": {
-              "type": "string",
-              "enum": [
-                "return_tools"
-              ]
+            "tools": {
+              "type": "array",
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/ToolStack"
+              }
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         }
       ]
     },
     "Room": {
       "type": "object",
-      "required": [
-        "decoration_placements",
-        "height",
-        "id",
-        "name",
-        "tiles",
-        "width"
-      ],
       "properties": {
         "decoration_placements": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/DecorationPlacement"
+            "$ref": "#/$defs/DecorationPlacement"
           }
         },
         "height": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "id": {
           "type": "string"
@@ -2153,34 +2061,42 @@
         "tiles": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/RoomTile"
+            "$ref": "#/$defs/RoomTile"
           }
         },
         "width": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "id",
+        "name",
+        "width",
+        "height",
+        "tiles",
+        "decoration_placements"
+      ]
     },
     "RoomTile": {
       "type": "object",
-      "required": [
-        "x",
-        "y"
-      ],
       "properties": {
         "x": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "y": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "x",
+        "y"
+      ]
     },
     "ShelterKind": {
       "type": "string",
@@ -2193,40 +2109,32 @@
       "oneOf": [
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "silo"
-              ]
+              "const": "silo"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "barn"
-              ]
+              "const": "barn"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         }
       ]
     },
     "Tile": {
       "type": "object",
-      "required": [
-        "x",
-        "y"
-      ],
       "properties": {
         "x": {
           "type": "integer",
@@ -2236,7 +2144,11 @@
           "type": "integer",
           "format": "int32"
         }
-      }
+      },
+      "required": [
+        "x",
+        "y"
+      ]
     },
     "ToolKind": {
       "type": "string",
@@ -2252,18 +2164,20 @@
     },
     "ToolShedState": {
       "type": "object",
-      "required": [
-        "id",
-        "tile"
-      ],
       "properties": {
         "id": {
           "type": "string"
         },
         "tile": {
-          "$ref": "#/definitions/Tile"
+          "$ref": "#/$defs/Tile"
         },
         "tool_stock": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
           "default": {
             "collection_pail": 1,
             "feed_bucket": 1,
@@ -2272,68 +2186,62 @@
             "oven_mitt": 1,
             "sickle": 1,
             "wrench": 1
-          },
-          "type": "object",
-          "additionalProperties": {
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0.0
           }
         }
-      }
+      },
+      "required": [
+        "id",
+        "tile"
+      ]
     },
     "ToolSourceRef": {
       "oneOf": [
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "farmhouse"
-              ]
+              "const": "farmhouse"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "id",
-            "type"
-          ],
           "properties": {
-            "id": {
-              "type": "string"
-            },
             "type": {
               "type": "string",
-              "enum": [
-                "tool_shed"
-              ]
+              "const": "tool_shed"
+            },
+            "id": {
+              "type": "string"
             }
-          }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
         }
       ]
     },
     "ToolStack": {
       "type": "object",
-      "required": [
-        "quantity",
-        "tool_kind"
-      ],
       "properties": {
         "quantity": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "tool_kind": {
-          "$ref": "#/definitions/ToolKind"
+          "$ref": "#/$defs/ToolKind"
         }
-      }
+      },
+      "required": [
+        "tool_kind",
+        "quantity"
+      ]
     }
   }
 }

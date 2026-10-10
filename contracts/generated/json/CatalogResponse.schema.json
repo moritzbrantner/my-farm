@@ -1,76 +1,63 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "CatalogResponse",
   "type": "object",
+  "properties": {
+    "catalog": {
+      "$ref": "#/$defs/CatalogDocument"
+    }
+  },
   "required": [
     "catalog"
   ],
-  "properties": {
-    "catalog": {
-      "$ref": "#/definitions/CatalogDocument"
-    }
-  },
-  "definitions": {
+  "$defs": {
     "BalanceConfig": {
       "type": "object",
-      "required": [
-        "max_orders",
-        "time_scale"
-      ],
       "properties": {
         "max_orders": {
           "type": "integer",
           "format": "uint",
-          "minimum": 0.0
+          "minimum": 0
         },
         "time_scale": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "time_scale",
+        "max_orders"
+      ]
     },
     "CatalogDocument": {
       "type": "object",
-      "required": [
-        "balance",
-        "crops",
-        "decorations",
-        "farmhouse_upgrades",
-        "items",
-        "level_xp",
-        "machines",
-        "market_items",
-        "recipes",
-        "shelters",
-        "storage_upgrades"
-      ],
       "properties": {
         "balance": {
-          "$ref": "#/definitions/BalanceConfig"
+          "$ref": "#/$defs/BalanceConfig"
         },
         "crops": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/CropDef"
+            "$ref": "#/$defs/CropDef"
           }
         },
         "decorations": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/DecorationDef"
+            "$ref": "#/$defs/DecorationDef"
           }
         },
         "farmhouse_upgrades": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/FarmhouseUpgradeDef"
+            "$ref": "#/$defs/FarmhouseUpgradeDef"
           }
         },
         "items": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/ItemDef"
+            "$ref": "#/$defs/ItemDef"
           }
         },
         "level_xp": {
@@ -78,55 +65,61 @@
           "items": {
             "type": "integer",
             "format": "uint32",
-            "minimum": 0.0
+            "minimum": 0
           }
         },
         "machines": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/MachineDef"
+            "$ref": "#/$defs/MachineDef"
           }
         },
         "market_items": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/MarketItemDef"
+            "$ref": "#/$defs/MarketItemDef"
           }
         },
         "recipes": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/RecipeDef"
+            "$ref": "#/$defs/RecipeDef"
           }
         },
         "shelters": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/ShelterDef"
+            "$ref": "#/$defs/ShelterDef"
           }
         },
         "storage_upgrades": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/StorageUpgradeDef"
+            "$ref": "#/$defs/StorageUpgradeDef"
           }
         }
-      }
+      },
+      "required": [
+        "balance",
+        "items",
+        "crops",
+        "recipes",
+        "machines",
+        "farmhouse_upgrades",
+        "shelters",
+        "market_items",
+        "storage_upgrades",
+        "decorations",
+        "level_xp"
+      ]
     },
     "CropDef": {
       "type": "object",
-      "required": [
-        "harvest_quantity",
-        "item_id",
-        "reference_seconds",
-        "unlock_level",
-        "xp"
-      ],
       "properties": {
         "harvest_quantity": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "item_id": {
           "type": "string"
@@ -134,30 +127,32 @@
         "reference_seconds": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "unlock_level": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "xp": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "item_id",
+        "reference_seconds",
+        "harvest_quantity",
+        "xp",
+        "unlock_level"
+      ]
     },
     "DecorationDef": {
       "type": "object",
-      "required": [
-        "footprint",
-        "id",
-        "name"
-      ],
       "properties": {
         "footprint": {
-          "$ref": "#/definitions/DecorationFootprint"
+          "$ref": "#/$defs/DecorationFootprint"
         },
         "id": {
           "type": "string"
@@ -165,44 +160,42 @@
         "name": {
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "id",
+        "name",
+        "footprint"
+      ]
     },
     "DecorationFootprint": {
       "type": "object",
-      "required": [
-        "height",
-        "width"
-      ],
       "properties": {
         "height": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "width": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "width",
+        "height"
+      ]
     },
     "FarmhouseUpgradeDef": {
       "type": "object",
-      "required": [
-        "cost_coins",
-        "kind",
-        "name",
-        "queue_limit",
-        "unlock_level"
-      ],
       "properties": {
         "cost_coins": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "kind": {
-          "$ref": "#/definitions/FarmhouseUpgradeKind"
+          "$ref": "#/$defs/FarmhouseUpgradeKind"
         },
         "name": {
           "type": "string"
@@ -210,14 +203,21 @@
         "queue_limit": {
           "type": "integer",
           "format": "uint",
-          "minimum": 0.0
+          "minimum": 0
         },
         "unlock_level": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "kind",
+        "name",
+        "cost_coins",
+        "unlock_level",
+        "queue_limit"
+      ]
     },
     "FarmhouseUpgradeKind": {
       "type": "string",
@@ -227,18 +227,12 @@
     },
     "ItemDef": {
       "type": "object",
-      "required": [
-        "id",
-        "kind",
-        "name",
-        "unlock_level"
-      ],
       "properties": {
         "id": {
           "type": "string"
         },
         "kind": {
-          "$ref": "#/definitions/ItemKind"
+          "$ref": "#/$defs/ItemKind"
         },
         "name": {
           "type": "string"
@@ -246,9 +240,15 @@
         "unlock_level": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "unlock_level"
+      ]
     },
     "ItemKind": {
       "type": "string",
@@ -261,10 +261,6 @@
     },
     "ItemStack": {
       "type": "object",
-      "required": [
-        "item_id",
-        "quantity"
-      ],
       "properties": {
         "item_id": {
           "type": "string"
@@ -272,27 +268,24 @@
         "quantity": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "item_id",
+        "quantity"
+      ]
     },
     "MachineDef": {
       "type": "object",
-      "required": [
-        "build_cost",
-        "kind",
-        "name",
-        "queue_limit",
-        "unlock_level"
-      ],
       "properties": {
         "build_cost": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "kind": {
-          "$ref": "#/definitions/MachineKind"
+          "$ref": "#/$defs/MachineKind"
         },
         "name": {
           "type": "string"
@@ -300,14 +293,21 @@
         "queue_limit": {
           "type": "integer",
           "format": "uint",
-          "minimum": 0.0
+          "minimum": 0
         },
         "unlock_level": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "kind",
+        "name",
+        "build_cost",
+        "unlock_level",
+        "queue_limit"
+      ]
     },
     "MachineKind": {
       "type": "string",
@@ -317,10 +317,6 @@
     },
     "MarketItemDef": {
       "type": "object",
-      "required": [
-        "item_id",
-        "unlock_level"
-      ],
       "properties": {
         "buy_price": {
           "type": [
@@ -328,7 +324,7 @@
             "null"
           ],
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "item_id": {
           "type": "string"
@@ -339,27 +335,21 @@
             "null"
           ],
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "unlock_level": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "item_id",
+        "unlock_level"
+      ]
     },
     "RecipeDef": {
       "type": "object",
-      "required": [
-        "id",
-        "inputs",
-        "name",
-        "outputs",
-        "reference_seconds",
-        "target",
-        "unlock_level",
-        "xp"
-      ],
       "properties": {
         "id": {
           "type": "string"
@@ -367,7 +357,7 @@
         "inputs": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/ItemStack"
+            "$ref": "#/$defs/ItemStack"
           }
         },
         "name": {
@@ -376,79 +366,73 @@
         "outputs": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/ItemStack"
+            "$ref": "#/$defs/ItemStack"
           }
         },
         "reference_seconds": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "target": {
-          "$ref": "#/definitions/RecipeTarget"
+          "$ref": "#/$defs/RecipeTarget"
         },
         "unlock_level": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "xp": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "id",
+        "name",
+        "target",
+        "inputs",
+        "outputs",
+        "reference_seconds",
+        "xp",
+        "unlock_level"
+      ]
     },
     "RecipeTarget": {
       "oneOf": [
         {
           "type": "object",
-          "required": [
-            "type"
-          ],
           "properties": {
             "type": {
               "type": "string",
-              "enum": [
-                "oven"
-              ]
+              "const": "oven"
             }
-          }
+          },
+          "required": [
+            "type"
+          ]
         },
         {
           "type": "object",
-          "required": [
-            "machine_kind",
-            "type"
-          ],
           "properties": {
-            "machine_kind": {
-              "$ref": "#/definitions/MachineKind"
-            },
             "type": {
               "type": "string",
-              "enum": [
-                "machine"
-              ]
+              "const": "machine"
+            },
+            "machine_kind": {
+              "$ref": "#/$defs/MachineKind"
             }
-          }
+          },
+          "required": [
+            "type",
+            "machine_kind"
+          ]
         }
       ]
     },
     "ShelterDef": {
       "type": "object",
-      "required": [
-        "animal_name",
-        "build_cost",
-        "feed_item_id",
-        "kind",
-        "name",
-        "product_item_id",
-        "reference_seconds",
-        "slots",
-        "unlock_level",
-        "xp"
-      ],
       "properties": {
         "animal_name": {
           "type": "string"
@@ -456,13 +440,13 @@
         "build_cost": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "feed_item_id": {
           "type": "string"
         },
         "kind": {
-          "$ref": "#/definitions/ShelterKind"
+          "$ref": "#/$defs/ShelterKind"
         },
         "name": {
           "type": "string"
@@ -473,24 +457,36 @@
         "reference_seconds": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "slots": {
           "type": "integer",
           "format": "uint",
-          "minimum": 0.0
+          "minimum": 0
         },
         "unlock_level": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "xp": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "kind",
+        "name",
+        "animal_name",
+        "build_cost",
+        "unlock_level",
+        "slots",
+        "feed_item_id",
+        "product_item_id",
+        "reference_seconds",
+        "xp"
+      ]
     },
     "ShelterKind": {
       "type": "string",
@@ -508,38 +504,38 @@
     },
     "StorageUpgradeDef": {
       "type": "object",
-      "required": [
-        "capacity",
-        "cost_coins",
-        "storage_kind",
-        "tier",
-        "unlock_level"
-      ],
       "properties": {
         "capacity": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "cost_coins": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "storage_kind": {
-          "$ref": "#/definitions/StorageKind"
+          "$ref": "#/$defs/StorageKind"
         },
         "tier": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "unlock_level": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "storage_kind",
+        "tier",
+        "unlock_level",
+        "cost_coins",
+        "capacity"
+      ]
     }
   }
 }
