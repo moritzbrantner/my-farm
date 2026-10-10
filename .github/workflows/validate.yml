@@ -122,6 +122,17 @@ jobs:
       - name: Build GitHub Pages runtime
         run: bun run build:pages:prepared
 
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run Storybook tests
+        run: bun run test:storybook
+
+      - name: Run Pages demo tests without recompiling WASM
+        env:
+          MY_FARM_PREBUILT_WASM: "1"
+        run: bun run test:e2e:pages-demo
+
   validate:
     name: validate
     needs:
@@ -172,17 +183,6 @@ jobs:
           rm -rf apps/web/src/generated/my_farm_wasm
           mkdir -p apps/web/src/generated/my_farm_wasm
           cp -R .artifacts/my-farm-wasm/. apps/web/src/generated/my_farm_wasm
-
-      - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
-
-      - name: Run Storybook tests
-        run: bun run test:storybook
-
-      - name: Run Pages demo tests without recompiling WASM
-        env:
-          MY_FARM_PREBUILT_WASM: "1"
-        run: bun run test:e2e:pages-demo
 
       - name: Build Pages demo without recompiling WASM
         run: bun run build:pages:prepared
