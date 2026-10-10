@@ -55,7 +55,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.96.1
+          toolchain: 1.99.0
           targets: wasm32-unknown-unknown
           components: rustfmt
 
