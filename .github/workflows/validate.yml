@@ -122,33 +122,6 @@ jobs:
       - name: Build GitHub Pages runtime
         run: bun run build:pages:prepared
 
-      # TEMPORARY diagnostic for the main-only Pages demo renderer crash; removed before merge.
-      - name: Install Playwright Chromium (diagnostic)
-        run: bunx playwright install --with-deps chromium
-
-      - name: Run Storybook tests first, as the Pages job does (diagnostic)
-        run: bun run test:storybook
-
-      - name: Inspect leftover processes and memory (diagnostic)
-        run: |
-          free -m
-          df -h /dev/shm
-          ps -eo pid,rss,etime,args --sort=-rss | head -25
-
-      - name: Run Pages demo tests with Chromium stderr (diagnostic)
-        env:
-          MY_FARM_PREBUILT_WASM: "1"
-          DEBUG: pw:browser
-        run: bun run test:e2e:pages-demo
-
-      - name: Keep Pages demo failure traces (diagnostic)
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: pages-demo-test-results
-          path: apps/web/test-results
-          retention-days: 7
-
   validate:
     name: validate
     needs:
