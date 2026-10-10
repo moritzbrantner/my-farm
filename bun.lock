@@ -24,7 +24,7 @@
         "@react-native-async-storage/async-storage": "1.24.0",
         "@react-native/assets-registry": "0.74.87",
         "@react-native/gradle-plugin": "0.74.87",
-        "@react-native/js-polyfills": "0.74.87",
+        "@react-native/js-polyfills": "0.87.1",
         "@react-native/normalize-colors": "0.87.1",
         "@react-native/virtualized-lists": "0.87.1",
         "@react-three/fiber": "^8.17.10",
@@ -727,7 +727,7 @@
 
     "@react-native/gradle-plugin": ["@react-native/gradle-plugin@0.74.87", "", {}, "sha512-T+VX0N1qP+U9V4oAtn7FTX7pfsoVkd1ocyw9swYXgJqU2fK7hC9famW7b3s3ZiufPGPr1VPJe2TVGtSopBjL6A=="],
 
-    "@react-native/js-polyfills": ["@react-native/js-polyfills@0.74.87", "", {}, "sha512-M5Evdn76CuVEF0GsaXiGi95CBZ4IWubHqwXxV9vG9CC9kq0PSkoM2Pn7Lx7dgyp4vT7ccJ8a3IwHbe+5KJRnpw=="],
+    "@react-native/js-polyfills": ["@react-native/js-polyfills@0.87.1", "", {}, "sha512-L9yKwEJCq7e8RjhthMUht2CP/CPnBR134h9xHkJ0XOO15QOWBAOqSZltTZG/wiokidqePvK+exMsRinuFLsN9w=="],
 
     "@react-native/normalize-colors": ["@react-native/normalize-colors@0.87.1", "", {}, "sha512-8+AutemzX+a7cuKgTUyb7JUk3sFYgLyrSnlTLrL6LuW/LKDE+FYE8lJGWYhJPJcE51Ge1D8yRzxgQEdEFZtuIw=="],
 
