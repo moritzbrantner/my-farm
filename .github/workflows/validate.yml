@@ -126,6 +126,15 @@ jobs:
       - name: Install Playwright Chromium (diagnostic)
         run: bunx playwright install --with-deps chromium
 
+      - name: Run Storybook tests first, as the Pages job does (diagnostic)
+        run: bun run test:storybook
+
+      - name: Inspect leftover processes and memory (diagnostic)
+        run: |
+          free -m
+          df -h /dev/shm
+          ps -eo pid,rss,etime,args --sort=-rss | head -25
+
       - name: Run Pages demo tests with Chromium stderr (diagnostic)
         env:
           MY_FARM_PREBUILT_WASM: "1"
