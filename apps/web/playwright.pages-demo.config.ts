@@ -14,5 +14,13 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:5195",
     trace: "on-first-retry",
   },
-  projects: [{ name: "desktop", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "desktop",
+      // The chromium-headless-shell renderer segfaults (SEGV_ACCERR in JIT code)
+      // on navigation after the WASM runtime and software WebGL have run;
+      // full Chromium in new headless mode does not. See my-farm#178.
+      use: { ...devices["Desktop Chrome"], channel: "chromium" },
+    },
+  ],
 });
