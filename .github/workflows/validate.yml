@@ -131,7 +131,7 @@ jobs:
       - name: Run Pages demo tests without recompiling WASM
         env:
           MY_FARM_PREBUILT_WASM: "1"
-        run: bun run test:e2e:pages-demo -- --repeat-each=3
+        run: bun run test:e2e:pages-demo
 
   validate:
     name: validate
