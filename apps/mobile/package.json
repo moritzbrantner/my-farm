@@ -72,7 +72,7 @@
     "react-refresh": "^0.14.0",
     "react-shallow-renderer": "^16.15.0",
     "react-use-measure": "^2.1.7",
-    "regenerator-runtime": "^0.13.2",
+    "regenerator-runtime": "^0.14.0",
     "scheduler": "0.24.0-canary-efb381bbf-20230505",
     "stacktrace-parser": "^0.1.10",
     "suspend-react": "^0.1.3",
