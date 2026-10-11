@@ -1,9 +1,9 @@
-import type { PlantedCrop } from "@my-farm/contracts";
+import type { FieldPlot } from "@my-farm/contracts";
 
 // This is a view-only selection: it cannot advance a crop or authorize harvest.
 export type WheatAppearance = "early" | "mature" | "ready";
 
-export function wheatAppearanceForCrop(crop: PlantedCrop | null, nowMs: number): WheatAppearance | null {
+export function wheatAppearanceForCrop(crop: FieldPlot["crop"], nowMs: number): WheatAppearance | null {
   if (!crop || crop.item_id !== "wheat") {
     return null;
   }
