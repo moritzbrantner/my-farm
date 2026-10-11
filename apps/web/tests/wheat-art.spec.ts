@@ -95,7 +95,11 @@ test("published asset-tooling Wheat and soil are actual pinned web resources", a
     expect(response.ok(), name).toBe(true);
     const bytes = await response.body();
     expect(bytes.length, name).toBe(metadata.byteLength);
-    expect(bytes.subarray(0, 4).toString("ascii"), name).toBe(name.endsWith(".glb") ? "glTF" : "\u0089PNG");
+    if (name.endsWith(".glb")) {
+      expect(bytes.subarray(0, 4).toString("ascii"), name).toBe("glTF");
+    } else {
+      expect(bytes.subarray(0, 8).toString("hex"), name).toBe("89504e470d0a1a0a");
+    }
   }
 });
 
