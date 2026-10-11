@@ -15,6 +15,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  build-farm-art:
+    name: Build pinned Wheat art
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+    uses: moritzbrantner/reusable-workflows/.github/workflows/build-artifact.yml@5291d5162b128faca9dd83edba24e7342730e604
+    with:
+      source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      artifact_key: my-farm-wheat-art-v1
+      bun_version: "1.4.3"
+      use_environment_v1: false
+      setup_command: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      build_command: bash scripts/build-farm-art.sh
+      artifact_paths: apps/web/public/farm-art
+      reuse_across_runs: true
+      artifact_retention_days: 7
+      timeout_minutes: 45
+
   build-wasm-demo:
     name: Build or reuse WASM demo
     permissions:
@@ -74,9 +93,13 @@ jobs:
       - name: Test mobile model and UI logic
         run: bun run test:mobile
 
+      - name: Test authoritative Wheat appearance mapping
+        run: bun run test:wheat
+
   validate-web:
     name: Web validation
     needs:
+      - build-farm-art
       - build-wasm-demo
       - validate-core
     runs-on: ubuntu-latest
@@ -116,6 +139,25 @@ jobs:
           mkdir -p apps/web/src/generated/my_farm_wasm
           cp -R .artifacts/my-farm-wasm/. apps/web/src/generated/my_farm_wasm
 
+      - name: Consume verified generated Wheat artwork
+        uses: moritzbrantner/reusable-workflows/.github/actions/consume-build-artifact@5291d5162b128faca9dd83edba24e7342730e604
+        with:
+          producer_run_id: ${{ needs.build-farm-art.outputs.producer_run_id }}
+          receipt_artifact_name: ${{ needs.build-farm-art.outputs.receipt_artifact_name }}
+          artifact_name: ${{ needs.build-farm-art.outputs.artifact_name }}
+          artifact_digest: ${{ needs.build-farm-art.outputs.artifact_digest }}
+          source_sha: ${{ needs.build-farm-art.outputs.source_sha }}
+          artifact_key: ${{ needs.build-farm-art.outputs.artifact_key }}
+          identity_digest: ${{ needs.build-farm-art.outputs.identity_digest }}
+          destination_path: .artifacts/my-farm-art
+          github_token: ${{ github.token }}
+
+      - name: Stage generated Wheat artwork
+        run: |
+          mkdir -p apps/web/public/farm-art
+          cp -R .artifacts/my-farm-art/. apps/web/public/farm-art/
+          node scripts/verify-farm-art.mjs
+
       - name: Build web client
         run: bun run build:web:prepared
 
@@ -133,6 +175,14 @@ jobs:
           MY_FARM_PREBUILT_WASM: "1"
         run: bun run test:e2e:pages-demo
 
+      - name: Upload Wheat desktop/mobile visual evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: wheat-visual-evidence
+          path: apps/web/wheat-evidence/
+          if-no-files-found: ignore
+
   validate:
     name: validate
     needs:
@@ -145,7 +195,9 @@ jobs:
   pages-build:
     name: Build Pages from verified WASM
     if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
-    needs: build-wasm-demo
+    needs:
+      - build-wasm-demo
+      - build-farm-art
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -183,6 +235,25 @@ jobs:
           rm -rf apps/web/src/generated/my_farm_wasm
           mkdir -p apps/web/src/generated/my_farm_wasm
           cp -R .artifacts/my-farm-wasm/. apps/web/src/generated/my_farm_wasm
+
+      - name: Consume verified generated Wheat artwork
+        uses: moritzbrantner/reusable-workflows/.github/actions/consume-build-artifact@5291d5162b128faca9dd83edba24e7342730e604
+        with:
+          producer_run_id: ${{ needs.build-farm-art.outputs.producer_run_id }}
+          receipt_artifact_name: ${{ needs.build-farm-art.outputs.receipt_artifact_name }}
+          artifact_name: ${{ needs.build-farm-art.outputs.artifact_name }}
+          artifact_digest: ${{ needs.build-farm-art.outputs.artifact_digest }}
+          source_sha: ${{ needs.build-farm-art.outputs.source_sha }}
+          artifact_key: ${{ needs.build-farm-art.outputs.artifact_key }}
+          identity_digest: ${{ needs.build-farm-art.outputs.identity_digest }}
+          destination_path: .artifacts/my-farm-art
+          github_token: ${{ github.token }}
+
+      - name: Stage generated Wheat artwork
+        run: |
+          mkdir -p apps/web/public/farm-art
+          cp -R .artifacts/my-farm-art/. apps/web/public/farm-art/
+          node scripts/verify-farm-art.mjs
 
       - name: Build Pages demo without recompiling WASM
         run: bun run build:pages:prepared

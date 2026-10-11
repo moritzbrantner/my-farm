@@ -2301,6 +2301,16 @@ h2 {
 .resource-icon--wheat {
   background: #e2c85a;
 }
+.resource-icon--wheat::before {
+  content: none;
+}
+.resource-icon__art {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgba(38, 53, 47, 0.24));
+}
+
 
 .resource-icon--corn,
 .resource-icon--corn-bread {

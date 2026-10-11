@@ -13,7 +13,7 @@
     "test:e2e": "playwright test",
     "test:e2e:pages-demo": "playwright test -c playwright.pages-demo.config.ts",
     "test:storybook": "NODE_BIN=\"$(dirname \"$(command -v npm)\")/node\"; \"$NODE_BIN\" ./node_modules/vitest/vitest.mjs --project=storybook --run",
-    "build:prepared": "tsc --noEmit && vite build"
+    "build:prepared": "node ../../scripts/verify-farm-art.mjs && tsc --noEmit && vite build"
   },
   "dependencies": {
     "@my-farm/contracts": "workspace:*",

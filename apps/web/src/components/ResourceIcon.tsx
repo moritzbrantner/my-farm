@@ -22,7 +22,11 @@ export function ResourceIcon(props: ResourceIconProps) {
       className={`resource-icon resource-icon--${meta.className}`}
       data-glyph={meta.glyph}
       aria-hidden="true"
-    />
+    >
+      {props.type === "item" && props.itemId === "wheat" ? (
+        <img className="resource-icon__art" src={`${import.meta.env.BASE_URL}farm-art/wheat-mature-straw.png`} alt="" />
+      ) : null}
+    </span>
   );
 }
 
