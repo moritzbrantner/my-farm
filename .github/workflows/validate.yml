@@ -27,6 +27,7 @@ jobs:
       artifact_key: my-farm-wheat-art-v1
       bun_version: "1.4.3"
       use_environment_v1: false
+      setup_command: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       build_command: bash scripts/build-farm-art.sh
       artifact_paths: apps/web/public/farm-art
       reuse_across_runs: true
