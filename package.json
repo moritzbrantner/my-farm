@@ -13,7 +13,7 @@
     "dev": "cd apps/web && bun run dev",
     "build:art": "bash scripts/build-farm-art.sh",
     "verify:art": "node scripts/verify-farm-art.mjs",
-    "test:wheat": "bun test packages/game-model/src/cropAppearance.test.ts",
+    "test:wheat": "bun test packages/game-model/src/cropAppearance.test.ts apps/web/src/components/farmScene/wheatPresentation.test.ts",
     "build:web": "cd apps/web && bun run build",
     "build:wasm-demo": "cd crates/my_farm_wasm && wasm-pack build --target web --out-dir ../../apps/web/src/generated/my_farm_wasm --out-name my_farm_wasm",
     "build:pages": "cd apps/web && VITE_MY_FARM_RUNTIME=wasm_demo VITE_BASE_PATH=/my-farm/ bun run build",

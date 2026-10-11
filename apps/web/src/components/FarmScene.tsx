@@ -149,6 +149,7 @@ export function FarmScene({
             key={plot.id}
             plot={plot}
             nowMs={nowMs}
+            visualClockPaused={visualClockPaused}
             selected={selection?.type === "plot" && selection.id === plot.id}
             activeFieldTool={activeFieldTool}
             buildPlacement={buildPlacement}
@@ -923,6 +924,7 @@ function FarmGround({
 function FieldMesh({
   plot,
   nowMs,
+  visualClockPaused,
   selected,
   activeFieldTool,
   buildPlacement,
@@ -942,6 +944,7 @@ function FieldMesh({
 }: {
   plot: FieldPlot;
   nowMs: number;
+  visualClockPaused: boolean;
   selected: boolean;
   activeFieldTool: ActiveFieldTool;
   buildPlacement: BuildPlacementState;
@@ -1311,6 +1314,8 @@ function FieldMesh({
             cropItemId: plot.crop?.item_id,
             cropReady,
             wheatAppearance,
+            wheatWindPhase: plot.tile.x * 0.47 + plot.tile.y * 0.73,
+            wheatAnimationPaused: visualClockPaused,
           }}
         />
         <mesh position={[0, 0.24, 0]} rotation={[-Math.PI / 2, 0, 0]}>

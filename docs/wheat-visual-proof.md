@@ -9,9 +9,9 @@ remain separate consumer work under #125 / #148.
 | Phase | Existing Pages (prototype) | Updated Pages (this PR) |
 | --- | --- | --- |
 | Empty Field Plot | Flat brown box | Tileable generated tilled soil, with PBR normal and roughness textures |
-| Wheat just planted | Six cylinders topped by balls | Bounded Blender-authored green Wheat stalks |
-| Wheat growing | The same cylinders/balls | Recognizable golden heads, same authored Wheat family |
-| Ready Wheat | Larger yellow balls | Golden mature heads and a subtle circular ready indicator |
+| Wheat just planted | Six cylinders topped by balls | Sixteen larger, green, Blender-authored stems with a subtle green bed tint, readable at overview scale |
+| Wheat growing | The same cylinders/balls | Taller, denser grain-bearing heads in the same authored Wheat family, with restrained cosmetic wind sway |
+| Ready Wheat | Larger yellow balls | Golden mature heads and a stronger bounded golden ring, with unchanged harvest authorization |
 | Resident Harvest | Command queued, then state changes | Queued command remains visibly ready; actual completed task removes Wheat |
 | Silo inventory | Generic letter W | PNG derived from the same approved mature Wheat GLB |
 | Save/reload | Browser-local WASM save | Identical authority; appearance rederived from saved timestamps |
@@ -25,11 +25,11 @@ No generator runs in the browser.
 ## How to review the actual scene
 
 On the PR, open the GitHub Actions **Validate → Web validation** artifacts and
-download `wheat-visual-evidence`. It contains six real Chromium browser captures:
+download `wheat-visual-evidence`. It contains eight real Chromium browser captures:
 
 - `01-desktop-early.png`, `02-desktop-mature.png`, `03-desktop-ready.png`
-- `04-mobile-ready.png`, `05-desktop-harvested.png`,
-  `06-mobile-harvested.png`
+- `04-mobile-ready.png`, `05-desktop-harvested.png`, `06-mobile-harvested.png`
+- `07-mobile-early.png`, `08-mobile-mature.png`
 
 Review these against the existing [deployed prototype](https://moritzbrantner.github.io/my-farm/)
 **before merging**. The deployed URL updates only after merge and successful

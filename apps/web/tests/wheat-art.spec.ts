@@ -104,7 +104,9 @@ test("published asset-tooling Wheat and soil are actual pinned web resources", a
 });
 
 test("Wheat appearance follows planted Crop state through progress, harvest and reload", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
+  // Stable overview screenshots; separate pure tests verify the active wind motion.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await seedPlantedWheat(page);
   await startSavedFarm(page);
   const field = page.getByLabel("Field Plot plot-1");
@@ -112,12 +114,24 @@ test("Wheat appearance follows planted Crop state through progress, harvest and 
   await waitForGeneratedWheat(page, "wheat-early.glb");
   await screenshot(page, "01-desktop-early.png");
 
+  await page.setViewportSize({ width: 390, height: 844 });
+  await startSavedFarm(page);
+  await expect(field).toHaveAttribute("data-wheat-appearance", "early");
+  await screenshot(page, "07-mobile-early.png");
+
+  await page.setViewportSize({ width: 1280, height: 800 });
   await changeWheatProgress(page, 0.7);
   await startSavedFarm(page);
   await expect(field).toHaveAttribute("data-wheat-appearance", "mature");
   await waitForGeneratedWheat(page, "wheat-mature-straw.glb");
   await screenshot(page, "02-desktop-mature.png");
 
+  await page.setViewportSize({ width: 390, height: 844 });
+  await startSavedFarm(page);
+  await expect(field).toHaveAttribute("data-wheat-appearance", "mature");
+  await screenshot(page, "08-mobile-mature.png");
+
+  await page.setViewportSize({ width: 1280, height: 800 });
   await changeWheatProgress(page, 1.1);
   await startSavedFarm(page);
   await expect(field).toHaveAttribute("data-wheat-appearance", "ready");

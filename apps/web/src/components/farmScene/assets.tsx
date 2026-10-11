@@ -1,11 +1,13 @@
-import { Billboard, Html, Text, useGLTF, useTexture } from "@react-three/drei";
+import { Billboard, Html, Text, useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { Suspense, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { Suspense, useEffect, useMemo, useRef, type JSX } from "react";
 import * as THREE from "three";
 import type { StructureFootprint } from "@my-farm/game-model/selectors";
 import type { StructureProductionStatus } from "@my-farm/game-model/structureStatus";
 import { colorForItem } from "../../assets/sprites";
 import type { WheatAppearance } from "@my-farm/game-model";
+import { WheatStalks } from "./WheatStalks";
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
 export type FarmAssetKind =
   | "ground_tile"
@@ -28,6 +30,8 @@ export type FarmAssetState = {
   cropItemId?: string;
   cropReady?: boolean;
   wheatAppearance?: WheatAppearance | null;
+  wheatWindPhase?: number;
+  wheatAnimationPaused?: boolean;
 };
 
 type FarmAssetProps = {
@@ -281,14 +285,6 @@ function GroundTile({ state }: { state: FarmAssetState }) {
   );
 }
 
-const wheatStalkOffsets = [
-  [-0.2, -0.18, 0],
-  [0.14, -0.21, 0.7],
-  [-0.17, 0.14, 1.6],
-  [0.17, 0.14, 2.4],
-  [0, 0, 0.35],
-] as const;
-
 const farmArt = (name: string) => `${import.meta.env.BASE_URL}farm-art/${name}`;
 
 function FieldPlotAsset({ state }: { state: FarmAssetState }) {
@@ -315,7 +311,7 @@ function FieldPlotAsset({ state }: { state: FarmAssetState }) {
       </Suspense>
       {state.wheatAppearance ? (
         <Suspense fallback={null}>
-          <WheatStalks appearance={state.wheatAppearance} />
+          <WheatStalks appearance={state.wheatAppearance} windPhase={state.wheatWindPhase ?? 0} paused={state.wheatAnimationPaused ?? false} />
         </Suspense>
       ) : state.cropItemId ? (
         <CropCluster color={cropColor} ready={state.cropReady ?? false} />
@@ -352,32 +348,6 @@ function TilledSoil() {
         metalness={0}
       />
     </mesh>
-  );
-}
-
-function WheatStalks({ appearance }: { appearance: WheatAppearance }) {
-  const modelName = appearance === "early" ? "wheat-early.glb" : "wheat-mature-straw.glb";
-  const { scene } = useGLTF(farmArt(modelName));
-  // Three.js objects cannot be parented to multiple scene nodes; clone only on asset change.
-  const stalks = useMemo(() => wheatStalkOffsets.map(() => scene.clone(true)), [scene]);
-  return (
-    <group position={[0, 0.138, 0]}>
-      {wheatStalkOffsets.map(([x, z, angle], index) => (
-        <primitive
-          key={index}
-          object={stalks[index]}
-          position={[x, 0, z]}
-          rotation={[0, angle, 0]}
-          scale={[0.72, 0.72, 0.72]}
-        />
-      ))}
-      {appearance === "ready" ? (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
-          <ringGeometry args={[0.29, 0.33, 32]} />
-          <meshBasicMaterial color="#f9d873" transparent opacity={0.8} depthWrite={false} />
-        </mesh>
-      ) : null}
-    </group>
   );
 }
 
@@ -893,20 +863,6 @@ function StorageBlockedMarker({ y }: { y: number }) {
 
 function isMachineAsset(kind: FarmAssetKind) {
   return kind === "feed_mill";
-}
-
-function usePrefersReducedMotion() {
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReducedMotion(query.matches);
-    const onChange = () => setReducedMotion(query.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
-
-  return reducedMotion;
 }
 
 function StructureLabel({
