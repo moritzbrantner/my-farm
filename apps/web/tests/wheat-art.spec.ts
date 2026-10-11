@@ -121,6 +121,7 @@ test("Wheat appearance follows planted Crop state through progress, harvest and 
   await changeWheatProgress(page, 1.1);
   await startSavedFarm(page);
   await expect(field).toHaveAttribute("data-wheat-appearance", "ready");
+  await field.click({ force: true });
   await expect(page.locator(".resource-icon--wheat img").first())
     .toHaveAttribute("src", /farm-art\/wheat-mature-straw\.png$/);
   await screenshot(page, "03-desktop-ready.png");
@@ -152,6 +153,8 @@ test("Wheat appearance follows planted Crop state through progress, harvest and 
     const plot = save.farm.field_plots.find((entry: { id: string }) => entry.id === "plot-1");
     if (plot?.crop) throw new Error("Resident harvest did not complete");
     if (!(save.farm.inventory.wheat > before)) throw new Error("Wheat was not deposited in the Silo");
+    // Test-only fast-forward should not leave the loaded save's clock in the future.
+    save.farm.last_update_ms = now;
     window.localStorage.setItem(key, JSON.stringify(save));
   }, saveKey);
   await startSavedFarm(page);

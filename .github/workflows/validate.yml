@@ -161,25 +161,6 @@ jobs:
       - name: Build web client
         run: bun run build:web:prepared
 
-      - name: Consume verified generated Wheat artwork
-        uses: moritzbrantner/reusable-workflows/.github/actions/consume-build-artifact@5291d5162b128faca9dd83edba24e7342730e604
-        with:
-          producer_run_id: ${{ needs.build-farm-art.outputs.producer_run_id }}
-          receipt_artifact_name: ${{ needs.build-farm-art.outputs.receipt_artifact_name }}
-          artifact_name: ${{ needs.build-farm-art.outputs.artifact_name }}
-          artifact_digest: ${{ needs.build-farm-art.outputs.artifact_digest }}
-          source_sha: ${{ needs.build-farm-art.outputs.source_sha }}
-          artifact_key: ${{ needs.build-farm-art.outputs.artifact_key }}
-          identity_digest: ${{ needs.build-farm-art.outputs.identity_digest }}
-          destination_path: .artifacts/my-farm-art
-          github_token: ${{ github.token }}
-
-      - name: Stage generated Wheat artwork
-        run: |
-          mkdir -p apps/web/public/farm-art
-          cp -R .artifacts/my-farm-art/. apps/web/public/farm-art/
-          node scripts/verify-farm-art.mjs
-
       - name: Build GitHub Pages runtime
         run: bun run build:pages:prepared
 
@@ -254,6 +235,25 @@ jobs:
           rm -rf apps/web/src/generated/my_farm_wasm
           mkdir -p apps/web/src/generated/my_farm_wasm
           cp -R .artifacts/my-farm-wasm/. apps/web/src/generated/my_farm_wasm
+
+      - name: Consume verified generated Wheat artwork
+        uses: moritzbrantner/reusable-workflows/.github/actions/consume-build-artifact@5291d5162b128faca9dd83edba24e7342730e604
+        with:
+          producer_run_id: ${{ needs.build-farm-art.outputs.producer_run_id }}
+          receipt_artifact_name: ${{ needs.build-farm-art.outputs.receipt_artifact_name }}
+          artifact_name: ${{ needs.build-farm-art.outputs.artifact_name }}
+          artifact_digest: ${{ needs.build-farm-art.outputs.artifact_digest }}
+          source_sha: ${{ needs.build-farm-art.outputs.source_sha }}
+          artifact_key: ${{ needs.build-farm-art.outputs.artifact_key }}
+          identity_digest: ${{ needs.build-farm-art.outputs.identity_digest }}
+          destination_path: .artifacts/my-farm-art
+          github_token: ${{ github.token }}
+
+      - name: Stage generated Wheat artwork
+        run: |
+          mkdir -p apps/web/public/farm-art
+          cp -R .artifacts/my-farm-art/. apps/web/public/farm-art/
+          node scripts/verify-farm-art.mjs
 
       - name: Build Pages demo without recompiling WASM
         run: bun run build:pages:prepared
