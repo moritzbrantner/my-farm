@@ -19,6 +19,7 @@ import {
   type StructureSelection,
 } from "@my-farm/game-model/selectors";
 import { FarmArrivalEnvironment, FarmAsset, type FarmAssetKind } from "./farmScene/assets";
+import { wheatAppearanceForCrop } from "@my-farm/game-model";
 import { FarmResidentFigure, type FarmResidentPresentation } from "./farmScene/residents";
 import {
   computeFarmCameraFrame,
@@ -147,6 +148,7 @@ export function FarmScene({
           <FieldMesh
             key={plot.id}
             plot={plot}
+            nowMs={nowMs}
             selected={selection?.type === "plot" && selection.id === plot.id}
             activeFieldTool={activeFieldTool}
             buildPlacement={buildPlacement}
@@ -920,6 +922,7 @@ function FarmGround({
 
 function FieldMesh({
   plot,
+  nowMs,
   selected,
   activeFieldTool,
   buildPlacement,
@@ -938,6 +941,7 @@ function FieldMesh({
   onCancelFieldToolAction,
 }: {
   plot: FieldPlot;
+  nowMs: number;
   selected: boolean;
   activeFieldTool: ActiveFieldTool;
   buildPlacement: BuildPlacementState;
@@ -955,7 +959,8 @@ function FieldMesh({
   onEnterHarvestSweepPlot: (plotId: string) => void;
   onCancelFieldToolAction: () => void;
 }) {
-  const cropReady = plot.crop ? Date.now() >= plot.crop.ready_at_ms : false;
+  const cropReady = plot.crop ? nowMs >= plot.crop.ready_at_ms : false;
+  const wheatAppearance = wheatAppearanceForCrop(plot.crop, nowMs);
   const longPressTimer = useRef<number | null>(null);
   const longPressStart = useRef<{ x: number; y: number } | null>(null);
   const ignoreNextClick = useRef(false);
@@ -1305,6 +1310,7 @@ function FieldMesh({
             movingTarget: sweptByHarvest || sweptByPlant,
             cropItemId: plot.crop?.item_id,
             cropReady,
+            wheatAppearance,
           }}
         />
         <mesh position={[0, 0.24, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -1323,6 +1329,7 @@ function FieldMesh({
           type="button"
           tabIndex={-1}
           aria-label={`Field Plot ${plot.id}`}
+          data-wheat-appearance={wheatAppearance ?? "none"}
           onClick={selectFromDom}
           onContextMenu={openDomMenu}
           onPointerDown={startDomPointer}

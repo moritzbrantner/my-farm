@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
-  testMatch: ["pages-demo.spec.ts", "zz-pages-demo-scenarios.spec.ts"],
+  testMatch: ["pages-demo.spec.ts", "zz-pages-demo-scenarios.spec.ts", "wheat-art.spec.ts"],
   workers: 1,
   webServer: {
     command:

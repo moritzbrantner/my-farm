@@ -16,6 +16,22 @@ Open `http://127.0.0.1:5176` on this machine, or `http://castle:5176` from anoth
 
 The server listens on `http://0.0.0.0:8081` by default so it is reachable over the local network at `http://castle:8081`. Set `MY_FARM_HOST=127.0.0.1` to restrict it to this machine. It stores `my-farm.sqlite` in the project directory unless `MY_FARM_DATABASE_URL` is set.
 
+## First generated Wheat artwork
+
+The web Field Plot now consumes offline-generated Wheat and tilled-soil outputs from
+`asset-tooling`, pinned in `scripts/farm-art-source.json`. For a fresh local
+checkout, generate and verify the asset bundle **before** starting the app:
+
+```sh
+bun run build:art
+bun run verify:art
+```
+
+The source producer runs once during asset building, not during gameplay or ordinary
+web startup. The exported assets are verified by hash before the web build and
+distributed as static files with the Pages demo. Gameplay timestamps continue to
+control appearance and harvesting. See `docs/wheat-visual-proof.md`.
+
 ## Expo Mobile Client
 
 The native mobile client lives in `apps/mobile`. It is an Expo development-build app that connects to the existing Rust server over the same gameplay WebSocket protocol as the web client.
@@ -87,4 +103,4 @@ bun run validate
 - Single local farm.
 - No real-money purchases.
 - No premium currency.
-- Original placeholder assets and terminology.
+- Original terminology; Wheat and Field Plot soil use generated web artwork while the other art families still use placeholders.

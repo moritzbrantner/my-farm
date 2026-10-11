@@ -1,10 +1,11 @@
-import { Billboard, Html, Text } from "@react-three/drei";
+import { Billboard, Html, Text, useGLTF, useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import * as THREE from "three";
 import type { StructureFootprint } from "@my-farm/game-model/selectors";
 import type { StructureProductionStatus } from "@my-farm/game-model/structureStatus";
 import { colorForItem } from "../../assets/sprites";
+import type { WheatAppearance } from "@my-farm/game-model";
 
 export type FarmAssetKind =
   | "ground_tile"
@@ -26,6 +27,7 @@ export type FarmAssetState = {
   productionStatus?: StructureProductionStatus;
   cropItemId?: string;
   cropReady?: boolean;
+  wheatAppearance?: WheatAppearance | null;
 };
 
 type FarmAssetProps = {
@@ -279,6 +281,16 @@ function GroundTile({ state }: { state: FarmAssetState }) {
   );
 }
 
+const wheatStalkOffsets = [
+  [-0.2, -0.18, 0],
+  [0.14, -0.21, 0.7],
+  [-0.17, 0.14, 1.6],
+  [0.17, 0.14, 2.4],
+  [0, 0, 0.35],
+] as const;
+
+const farmArt = (name: string) => `${import.meta.env.BASE_URL}farm-art/${name}`;
+
 function FieldPlotAsset({ state }: { state: FarmAssetState }) {
   const cropColor = state.cropItemId ? colorForItem(state.cropItemId) : "#8a5a35";
   const bedColor = state.blockedByPlacement
@@ -293,16 +305,83 @@ function FieldPlotAsset({ state }: { state: FarmAssetState }) {
         <boxGeometry args={[0.84, 0.13, 0.84]} />
         <meshStandardMaterial color={bedColor} roughness={0.9} metalness={0} />
       </mesh>
-      <mesh receiveShadow position={[0, 0.112, 0]}>
-        <boxGeometry args={[0.72, 0.035, 0.72]} />
-        <meshStandardMaterial color="#60412d" roughness={1} metalness={0} />
-      </mesh>
-      {state.cropItemId ? <CropCluster color={cropColor} ready={state.cropReady ?? false} /> : null}
+      <Suspense fallback={
+        <mesh receiveShadow position={[0, 0.112, 0]}>
+          <boxGeometry args={[0.72, 0.035, 0.72]} />
+          <meshStandardMaterial color="#60412d" roughness={1} metalness={0} />
+        </mesh>
+      }>
+        <TilledSoil />
+      </Suspense>
+      {state.wheatAppearance ? (
+        <Suspense fallback={null}>
+          <WheatStalks appearance={state.wheatAppearance} />
+        </Suspense>
+      ) : state.cropItemId ? (
+        <CropCluster color={cropColor} ready={state.cropReady ?? false} />
+      ) : null}
       <SelectionPlate state={state} width={0.94} depth={0.94} y={0.01} />
     </group>
   );
 }
 
+// These texture outputs are built offline by asset-tooling and distributed with the web app.
+function TilledSoil() {
+  const [color, normal, roughness] = useTexture([
+    farmArt("soil-tilled-shallow-color.png"),
+    farmArt("soil-tilled-shallow-normal.png"),
+    farmArt("soil-tilled-shallow-roughness.png"),
+  ]);
+  useEffect(() => {
+    color.colorSpace = THREE.SRGBColorSpace;
+    for (const texture of [color, normal, roughness]) {
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.needsUpdate = true;
+    }
+  }, [color, normal, roughness]);
+  return (
+    <mesh receiveShadow position={[0, 0.112, 0]}>
+      <boxGeometry args={[0.72, 0.035, 0.72]} />
+      <meshStandardMaterial
+        map={color}
+        normalMap={normal}
+        normalScale={new THREE.Vector2(1, -1)}
+        roughnessMap={roughness}
+        roughness={1}
+        metalness={0}
+      />
+    </mesh>
+  );
+}
+
+function WheatStalks({ appearance }: { appearance: WheatAppearance }) {
+  const modelName = appearance === "early" ? "wheat-early.glb" : "wheat-mature-straw.glb";
+  const { scene } = useGLTF(farmArt(modelName));
+  // Three.js objects cannot be parented to multiple scene nodes; clone only on asset change.
+  const stalks = useMemo(() => wheatStalkOffsets.map(() => scene.clone(true)), [scene]);
+  return (
+    <group position={[0, 0.138, 0]}>
+      {wheatStalkOffsets.map(([x, z, angle], index) => (
+        <primitive
+          key={index}
+          object={stalks[index]}
+          position={[x, 0, z]}
+          rotation={[0, angle, 0]}
+          scale={[0.72, 0.72, 0.72]}
+        />
+      ))}
+      {appearance === "ready" ? (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
+          <ringGeometry args={[0.29, 0.33, 32]} />
+          <meshBasicMaterial color="#f9d873" transparent opacity={0.8} depthWrite={false} />
+        </mesh>
+      ) : null}
+    </group>
+  );
+}
+
+// Other Crops remain on the original prototype appearance until their consumer slice.
 function CropCluster({ color, ready }: { color: string; ready: boolean }) {
   const cropHeight = ready ? 0.46 : 0.3;
   const cropPositions = [
@@ -317,7 +396,7 @@ function CropCluster({ color, ready }: { color: string; ready: boolean }) {
   return (
     <group>
       {cropPositions.map(([x, z], index) => (
-        <group key={`${x}-${z}-${index}`} position={[x, 0.17, z]}>
+        <group key={index} position={[x, 0.17, z]}>
           <mesh castShadow position={[0, cropHeight / 2, 0]}>
             <cylinderGeometry args={[0.025, 0.035, cropHeight, 5]} />
             <meshStandardMaterial color={color} roughness={0.82} metalness={0} />

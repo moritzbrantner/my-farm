@@ -1,0 +1,10 @@
+{
+  "assetToolingCommit": "3e436886f8b8039c1b1034f221166f86c97f5c86",
+  "soilPreset": "soil-tilled-shallow",
+  "wheatStages": [
+    "early",
+    "mature-straw",
+    "harvested"
+  ],
+  "profile": "static-glb-png-v1"
+}

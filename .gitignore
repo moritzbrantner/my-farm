@@ -11,3 +11,6 @@
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+/.artifacts/
+/apps/web/public/farm-art/
+/apps/web/wheat-evidence/

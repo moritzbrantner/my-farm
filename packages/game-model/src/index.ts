@@ -1,4 +1,5 @@
 export * from "./basicFarmScenarios";
+export * from "./cropAppearance";
 export * from "./houseInterior";
 export * from "./residentTasks";
 export * from "./selectors";
